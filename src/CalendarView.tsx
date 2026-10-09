@@ -241,7 +241,7 @@ export default function CalendarView(props: {
     const isMoving = moving?.item.key === it.key;
     const cls = ["cal-chip", extra, chipClass(it, props.selected), isMoving && "origin", landed === it.key && "landed"].filter(Boolean).join(" ");
     return (
-      <div key={it.key} className={cls} style={accent(p?.color)} title={tip(it, p)}
+      <div key={it.key} className={cls} style={accent(p?.color)} title={tip(it, p)} data-task-id={it.virtual ? undefined : it.task.id}
         onPointerDown={(e) => begin(e, it, "move")} onDoubleClick={(e) => e.stopPropagation()}>
         <Check it={it} onToggle={props.onToggle} />
         {it.start != null && <span className="cal-chip-time">{label(it.start)}</span>}
@@ -269,6 +269,7 @@ export default function CalendarView(props: {
     const canResize = movable(it) && !ghost;
     return (
       <div key={ghost ? "drag" : it.key} className={cls} style={style} title={ghost ? undefined : tip(it, p)}
+        data-task-id={ghost || it.virtual ? undefined : it.task.id}
         onPointerDown={ghost ? undefined : (e) => begin(e, it, "move")}>
         {canResize && h >= 30 && <div className="cal-grip top" onPointerDown={(e) => begin(e, it, "start")} />}
         <div className="cal-ev-head">
