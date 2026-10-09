@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
-import { Toggle } from "./Settings";
+import { ResetSection, Row, Toggle } from "./Settings";
 import { BLOCKS, blockOrder, DEFAULT_ORDER, hiddenBlocks, KEY_HIDDEN, KEY_ORDER, type BlockId } from "./home/data";
 
 /*
@@ -22,6 +22,8 @@ export function HomeSettings(props: { settings: Record<string, string>; onSet: (
   const [order, setOrder] = useState(blockOrder(s));
   useEffect(() => setOrder(blockOrder(s)), [s[KEY_ORDER]]); // eslint-disable-line react-hooks/exhaustive-deps
   const [drag, setDrag] = useState<BlockId | null>(null);
+  const blocksChanged = order.some((id, i) => id !== DEFAULT_ORDER[i]) || hidden.length > 0;
+  const resetBlocks = () => (saveOrder(DEFAULT_ORDER), props.onSet(KEY_HIDDEN, "[]"));
   const saveOrder = (o: BlockId[]) => (setOrder(o), props.onSet(KEY_ORDER, JSON.stringify(o)));
   const move = (id: BlockId, to: number) => {
     const o = order.filter((k) => k !== id);
@@ -31,6 +33,7 @@ export function HomeSettings(props: { settings: Record<string, string>; onSet: (
 
   const start = num(s, "home:day_start", 9);
   const end = num(s, "home:day_end", 20);
+  const capacity = num(s, "home:capacity", 6);
   const [name, setName] = useState(s["home:name"] ?? "Игорь");
   const [goal, setGoal] = useState(String(num(s, "home:goal", 5)));
   const commitGoal = () => {
@@ -45,10 +48,9 @@ export function HomeSettings(props: { settings: Record<string, string>; onSet: (
         <div className="set-text">
           <div className="set-name">Блоки и их порядок</div>
           <div className="hint">Перетащи строку за ручку или двигай стрелками. Выключенные блоки на главной не показываются</div>
+          <div className="set-def">По умолчанию: <b>все блоки включены, стандартный порядок</b></div>
         </div>
-        {(s[KEY_ORDER] || s[KEY_HIDDEN]) && (
-          <button type="button" className="link" onClick={() => (saveOrder(DEFAULT_ORDER), props.onSet(KEY_HIDDEN, "[]"))}>Как было</button>
-        )}
+        {blocksChanged && <button type="button" className="link" onClick={resetBlocks}>Сбросить</button>}
       </div>
       <div className="block-list" onDragOver={(e) => e.preventDefault()}>
         {order.map((id, i) => {
@@ -70,11 +72,8 @@ export function HomeSettings(props: { settings: Record<string, string>; onSet: (
         })}
       </div>
 
-      <div className="set-row">
-        <div className="set-text">
-          <div className="set-name">Рабочий день</div>
-          <div className="hint">Границы полосы дня в блоке «Сегодня»</div>
-        </div>
+      <Row name="Рабочий день" hint="Границы полосы дня в блоке «Сегодня»"
+        def={{ text: "9:00 до 20:00", changed: start !== 9 || end !== 20, reset: () => (props.onSet("home:day_start", "9"), props.onSet("home:day_end", "20")) }}>
         <div className="seg">
           <select className="field set-select narrow" value={start} aria-label="Начало дня"
             onChange={(e) => {
@@ -90,36 +89,36 @@ export function HomeSettings(props: { settings: Record<string, string>; onSet: (
             {hours(start + 1, 24).map((h) => <option key={h} value={h}>{h}:00</option>)}
           </select>
         </div>
-      </div>
-      <div className="set-row">
-        <div className="set-text">
-          <div className="set-name">Сколько часов можно занять задачами</div>
-          <div className="hint">Остальное время дня уходит на встречи и непредвиденное. Кольцо «занято» считается от этого числа</div>
-        </div>
-        <select className="field set-select narrow" value={num(s, "home:capacity", 6)} aria-label="Часов на задачи"
+      </Row>
+      <Row name="Сколько часов можно занять задачами"
+        hint="Остальное время дня уходит на встречи и непредвиденное. Кольцо «занято» считается от этого числа"
+        def={{ text: "6 ч", changed: capacity !== 6, reset: () => props.onSet("home:capacity", "6") }}>
+        <select className="field set-select narrow" value={capacity} aria-label="Часов на задачи"
           onChange={(e) => props.onSet("home:capacity", e.target.value)}>
           {hours(1, 16).map((h) => <option key={h} value={h}>{h} ч</option>)}
         </select>
-      </div>
-      <div className="set-row">
-        <div className="set-text">
-          <div className="set-name">Цель на день</div>
-          <div className="hint">Сколько задач хочешь закрывать в день: по ней считается кольцо «сделано»</div>
-        </div>
+      </Row>
+      <Row name="Цель на день" hint="Сколько задач хочешь закрывать в день: по ней считается кольцо «сделано»"
+        def={{ text: "5", changed: num(s, "home:goal", 5) !== 5, reset: () => (setGoal("5"), props.onSet("home:goal", "5")) }}>
         <input className="field set-input" inputMode="numeric" value={goal} aria-label="Цель на день"
           onChange={(e) => setGoal(e.target.value.replace(/\D/g, "").slice(0, 3))}
           onBlur={commitGoal} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLElement).blur()} />
-      </div>
-      <div className="set-row">
-        <div className="set-text">
-          <div className="set-name">Как к тебе обращаться</div>
-          <div className="hint">Имя в приветствии на главной</div>
-        </div>
+      </Row>
+      <Row name="Как к тебе обращаться" hint="Имя в приветствии на главной"
+        def={{ text: "Игорь", changed: (s["home:name"] ?? "Игорь") !== "Игорь", reset: () => (setName("Игорь"), props.onSet("home:name", "Игорь")) }}>
         <input className="field set-input wide" value={name} aria-label="Имя"
           onChange={(e) => setName(e.target.value)}
           onBlur={() => props.onSet("home:name", name.trim())}
           onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLElement).blur()} />
-      </div>
+      </Row>
+      <ResetSection name="Главная" changed={blocksChanged || start !== 9 || end !== 20 || capacity !== 6 || num(s, "home:goal", 5) !== 5 || (s["home:name"] ?? "Игорь") !== "Игорь"}
+        onReset={() => {
+          resetBlocks();
+          setGoal("5");
+          setName("Игорь");
+          props.onSet("home:day_start", "9"); props.onSet("home:day_end", "20"); props.onSet("home:capacity", "6");
+          props.onSet("home:goal", "5"); props.onSet("home:name", "Игорь");
+        }} />
     </div>
   );
 }

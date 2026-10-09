@@ -417,8 +417,11 @@ function StatsBlock(props: { tasks: Task[]; projects: Project[]; cfg: DayConfig 
             </g>
           );
         })}
-        <line x1={pl} x2={W} y1={y(s.goal)} y2={y(s.goal)} stroke="var(--exercise)" strokeWidth="1.5" strokeDasharray="4 4" />
-        <text x={W - 2} y={y(s.goal) - 5} textAnchor="end" className="goal">цель {s.goal}</text>
+        <line x1={pl} x2={W} y1={y(s.goal)} y2={y(s.goal)} className="goal-line" />
+        <g className="goal-tag" transform={`translate(${W - 4} ${y(s.goal)})`}>
+          <rect x="-58" y="-18" width="58" height="16" rx="8" />
+          <text x="-29" y="-6.5" textAnchor="middle">цель {s.goal}</text>
+        </g>
       </svg>
       <div className="h-legend">
         {series.map((r) => <span key={r.id}><i className="sw" style={{ background: `var(--${r.color})` }} />{r.name}</span>)}
