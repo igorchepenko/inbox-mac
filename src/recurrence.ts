@@ -110,14 +110,16 @@ export function firstOccurrence(rule: Rule, from: string): string {
 
 /**
  * Следующий повтор после выполнения. due — дата текущей задачи, doneDay — день выполнения.
- * По расписанию пропущенные даты в прошлом не создаются: следующий повтор будет не раньше сегодня.
+ * Пропущенные даты в прошлом не создаются: следующий повтор всегда позже сегодняшнего дня.
  * null — серия закончилась.
  */
 export function nextOccurrence(rule: Rule, due: string | null, doneDay: string): { date: string; rule: Rule } | null {
   if (rule.count != null && rule.count <= 1) return null;
   const t = today();
   let next = step(rule, rule.fromDone || !due ? doneDay : due);
-  for (let i = 0; next < t && i < 1000; i++) next = step(rule, next);
+  // Просроченную догоняем: следующий повтор всегда позже дня выполнения
+  const floor = doneDay > t ? doneDay : t;
+  for (let i = 0; next <= floor && i < 1000; i++) next = step(rule, next);
   if (rule.until && next > rule.until) return null;
   return { date: next, rule: rule.count != null ? { ...rule, count: rule.count - 1 } : rule };
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import * as db from "./db";
 import type { Project, ProjectFields, Task } from "./db";
 import { fmtDay, nowStamp, today } from "./dates";
@@ -7,7 +8,8 @@ import { countFor, listFor, progressFor, VIEWS, type ViewId } from "./views";
 import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
 import { Icon } from "./icons";
 import { IconGrid, Popover, ProjectDialog, ThemeSwitch } from "./widgets";
-import { Pencil } from "lucide-react";
+import { Link2, ListChecks, Paperclip, Pencil, Repeat } from "lucide-react";
+import { fmtRange, QuadrantGlyph } from "./extras";
 import { ensurePermission, fireDueReminders } from "./reminders";
 
 export default function App() {
@@ -90,18 +92,17 @@ export default function App() {
     run(() => db.updateTask(id, p));
   };
   const triage = (x: Task) => run(() => db.updateTask(x.id, { status: "active", triaged_at: nowStamp() }));
-  const toggleDone = (x: Task) =>
-    run(() =>
-      db.updateTask(x.id, x.status === "done" ? { status: "active", done_at: null } : { status: "done", done_at: nowStamp() }),
-    );
+  // Через completeTask: у повторяющейся задачи она создаёт следующий повтор, reopenTask его убирает
+  const toggleDone = (x: Task) => run(() => (x.status === "done" ? db.reopenTask(x) : db.completeTask(x)));
   const archive = (x: Task) => run(() => db.updateTask(x.id, { status: "archived", done_at: x.done_at ?? nowStamp() }));
   const restore = (x: Task) => run(() => db.updateTask(x.id, { status: "active", done_at: null }));
 
-  const saveNew = (title: string, note: string) => {
+  const saveNew = (title: string, note: string, draft: db.Draft) => {
     setNewOpen(false);
+    if (draft.remind_at) ensurePermission();
     (async () => {
       try {
-        const id = await db.addTask(title, note);
+        const id = await db.addTask(title, note, draft);
         await reload();
         setView("inbox");
         setSel(id);
@@ -110,6 +111,36 @@ export default function App() {
       }
     })();
   };
+
+  // Файлы из Finder: брошенные на строку прикрепляются к этой задаче, брошенные в другое место — к выбранной
+  const [dropTarget, setDropTarget] = useState<number | null>(null);
+  const [dropOnDetails, setDropOnDetails] = useState(false);
+  const live = useRef({ sel, tasks, busy: false });
+  live.current = { sel, tasks, busy: newOpen || !!projectDlg || helpOpen };
+  useEffect(() => {
+    const targetAt = (pos: { x: number; y: number }) => {
+      const el = document.elementFromPoint(pos.x / devicePixelRatio, pos.y / devicePixelRatio);
+      const row = el?.closest<HTMLElement>("[data-task-id]");
+      const id = row ? Number(row.dataset.taskId) : live.current.sel;
+      const t = live.current.tasks.find((x) => x.id === id);
+      return { id: t && t.status !== "archived" && !live.current.busy ? t.id : null, onRow: !!row };
+    };
+    const un = getCurrentWebview().onDragDropEvent(({ payload: p }) => {
+      if (p.type === "leave") return setDropTarget(null);
+      const { id, onRow } = targetAt(p.position);
+      if (p.type === "drop") {
+        setDropTarget(null);
+        if (id != null && p.paths.length) {
+          setSel(id);
+          run(() => db.attachFiles(id, p.paths));
+        }
+        return;
+      }
+      setDropTarget(id);
+      setDropOnDetails(!onRow);
+    });
+    return () => void un.then((f) => f());
+  }, [run]);
 
   // Клавиатура
   useEffect(() => {
@@ -215,6 +246,7 @@ export default function App() {
             <div key={x.id}>
               {group && <div className="group">{group}</div>}
               <TaskRow task={x} project={projects.find((p) => p.id === x.project_id)} selected={x.id === sel}
+                dropping={dropTarget === x.id && !dropOnDetails}
                 onSelect={() => setSel(x.id)} onToggle={() => toggleDone(x)} />
             </div>
           ))}
@@ -224,7 +256,8 @@ export default function App() {
 
       {task ? (
         <Details key={task.id} task={task} projects={projects}
-          onPatch={(p) => patch(task.id, p)}
+          onPatch={(p) => patch(task.id, p)} run={run} onError={setError}
+          dropping={dropTarget === task.id && dropOnDetails}
           onTriage={() => triage(task)} onToggleDone={() => toggleDone(task)}
           onArchive={() => archive(task)} onRestore={() => restore(task)}
           onDelete={() => run(() => db.deleteTask(task.id))} />
@@ -234,7 +267,7 @@ export default function App() {
 
       {newOpen && (
         <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && setNewOpen(false)}>
-          <QuickForm onSave={saveNew} onCancel={() => setNewOpen(false)} />
+          <QuickForm projects={projects} onSave={saveNew} onCancel={() => setNewOpen(false)} />
         </div>
       )}
       {helpOpen && <Help onClose={() => setHelpOpen(false)} />}
@@ -321,7 +354,7 @@ function Sidebar(props: {
   );
 }
 
-function TaskRow(props: { task: Task; project?: Project; selected: boolean; onSelect: () => void; onToggle: () => void }) {
+function TaskRow(props: { task: Task; project?: Project; selected: boolean; dropping?: boolean; onSelect: () => void; onToggle: () => void }) {
   const { task: x, project } = props;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -330,11 +363,20 @@ function TaskRow(props: { task: Task; project?: Project; selected: boolean; onSe
   const done = x.status === "done" || x.status === "archived";
   const overdue = x.status === "active" && !!x.due_date && x.due_date < today();
   return (
-    <div ref={ref} role="option" aria-selected={props.selected} className={`row ${props.selected ? "sel" : ""} ${done ? "done" : ""}`}
+    <div ref={ref} role="option" aria-selected={props.selected} data-task-id={x.id}
+      className={`row ${props.selected ? "sel" : ""} ${done ? "done" : ""} ${props.dropping ? "drop" : ""}`}
       onMouseDown={props.onSelect}>
       <button className="chk" title={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
         onClick={(e) => (e.stopPropagation(), props.onToggle())} />
       <span className="t">{x.title}</span>
+      {x.subtasks.length > 0 && (
+        <span className="meta badge" title="Чеклист"><ListChecks size={12} /> {x.subtasks.filter((s) => s.done).length}/{x.subtasks.length}</span>
+      )}
+      {x.links.length > 0 && <span className="meta badge" title="Ссылки"><Link2 size={12} />{x.links.length > 1 ? ` ${x.links.length}` : ""}</span>}
+      {x.files.length > 0 && <span className="meta badge" title="Файлы"><Paperclip size={12} />{x.files.length > 1 ? ` ${x.files.length}` : ""}</span>}
+      {x.recurrence && !done && <span className="meta badge" title="Повторяется"><Repeat size={12} /></span>}
+      {x.quadrant && !done && <QuadrantGlyph q={x.quadrant} />}
+      {x.start_time && <span className="meta" title="Время">{fmtRange(x.start_time, x.end_time)}</span>}
       {x.remind_at && !x.reminded && !done && <span className="meta" title="Напоминание">⏰ {x.remind_at.slice(11, 16)}</span>}
       {x.priority === 3 && !done && <span className="tag" style={{ background: "var(--move)" }}>!</span>}
       {project && <span className="tag" style={{ background: `var(--${project.color})` }}>{project.name}</span>}
