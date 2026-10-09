@@ -23,8 +23,12 @@ export interface Project {
   id: number;
   name: string;
   color: Accent;
+  icon: string;
+  description: string;
   position: number;
 }
+
+export type ProjectFields = Pick<Project, "name" | "description" | "color" | "icon">;
 
 let dbPromise: Promise<Database> | null = null;
 function db(): Promise<Database> {
@@ -64,8 +68,30 @@ export async function deleteTask(id: number): Promise<void> {
   await (await db()).execute("DELETE FROM tasks WHERE id = $1", [id]);
 }
 
-export async function addProject(name: string, color: Accent, position: number): Promise<void> {
-  await (await db()).execute("INSERT INTO projects (name, color, position) VALUES ($1, $2, $3)", [name, color, position]);
+export async function addProject(p: ProjectFields, position: number): Promise<void> {
+  await (await db()).execute(
+    "INSERT INTO projects (name, description, color, icon, position) VALUES ($1, $2, $3, $4, $5)",
+    [p.name, p.description, p.color, p.icon, position],
+  );
+}
+
+export async function updateProject(id: number, p: ProjectFields): Promise<void> {
+  await (await db()).execute(
+    "UPDATE projects SET name = $1, description = $2, color = $3, icon = $4 WHERE id = $5",
+    [p.name, p.description, p.color, p.icon, id],
+  );
+}
+
+export async function loadSettings(): Promise<Record<string, string>> {
+  const rows = await (await db()).select<{ key: string; value: string }[]>("SELECT key, value FROM settings");
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  await (await db()).execute(
+    "INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    [key, value],
+  );
 }
 
 export async function deleteProject(id: number): Promise<void> {

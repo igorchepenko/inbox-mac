@@ -29,7 +29,7 @@
         "url": "index.html?window=quick",
         "width": 580,
         "height": 230,
-        "resizable": false,
+        "resizable": true,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,

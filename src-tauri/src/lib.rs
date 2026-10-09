@@ -16,17 +16,27 @@ const DB_URL: &str = "sqlite:inbox.db";
 static MAIN_WAS_FOCUSED: AtomicBool = AtomicBool::new(false);
 
 fn migrations() -> Vec<Migration> {
-    vec![Migration {
-        version: 1,
-        description: "create projects and tasks",
-        sql: include_str!("../migrations/001_init.sql"),
-        kind: MigrationKind::Up,
-    }]
+    vec![
+        Migration {
+            version: 1,
+            description: "create projects and tasks",
+            sql: include_str!("../migrations/001_init.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 2,
+            description: "project description and icon, settings",
+            sql: include_str!("../migrations/002_settings.sql"),
+            kind: MigrationKind::Up,
+        },
+    ]
 }
 
 /// Окно быстрого ввода: показать поверх всех приложений или спрятать, если уже открыто.
 fn toggle_quick(app: &AppHandle) {
-    let Some(w) = app.get_webview_window("quick") else { return };
+    let Some(w) = app.get_webview_window("quick") else {
+        return;
+    };
     if w.is_visible().unwrap_or(false) {
         hide_quick(app.clone());
         return;
@@ -91,10 +101,17 @@ pub fn run() {
                 eprintln!("Не удалось занять ⌥Space: {e}");
             }
 
-            let quick_i = MenuItem::with_id(app, "quick", "Записать задачу    ⌥Space", true, None::<&str>)?;
+            let quick_i = MenuItem::with_id(
+                app,
+                "quick",
+                "Записать задачу    ⌥Space",
+                true,
+                None::<&str>,
+            )?;
             let open_i = MenuItem::with_id(app, "open", "Открыть Inbox", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
-            let quit_i = MenuItem::with_id(app, "quit", "Выйти из Inbox", true, Some("CmdOrCtrl+Q"))?;
+            let quit_i =
+                MenuItem::with_id(app, "quit", "Выйти из Inbox", true, Some("CmdOrCtrl+Q"))?;
             let menu = Menu::with_items(app, &[&quick_i, &open_i, &sep, &quit_i])?;
 
             TrayIconBuilder::with_id("tray")

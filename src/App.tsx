@@ -1,17 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import * as db from "./db";
-import type { Accent, Project, Task } from "./db";
+import type { Project, ProjectFields, Task } from "./db";
 import { fmtDay, nowStamp, today } from "./dates";
 import { countFor, listFor, progressFor, VIEWS, type ViewId } from "./views";
 import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
+import { Icon } from "./icons";
+import { IconGrid, Popover, ProjectDialog, ThemeSwitch } from "./widgets";
+import { Pencil } from "lucide-react";
 import { ensurePermission, fireDueReminders } from "./reminders";
-
-const ACCENTS: Accent[] = ["move", "stand", "exercise"];
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [settings, setSettings] = useState<Record<string, string>>({});
+  // null закрыто, "new" новый проект, иначе редактируемый
+  const [projectDlg, setProjectDlg] = useState<Project | "new" | null>(null);
   const [view, setView] = useState<ViewId>("inbox");
   const [sel, setSel] = useState<number | null>(null);
   const [newOpen, setNewOpen] = useState(false);
@@ -22,9 +26,10 @@ export default function App() {
   const reload = useCallback(async () => {
     try {
       await db.archiveOldDone();
-      const [t, p] = await Promise.all([db.loadTasks(), db.loadProjects()]);
+      const [t, p, st] = await Promise.all([db.loadTasks(), db.loadProjects(), db.loadSettings()]);
       setTasks(t);
       setProjects(p);
+      setSettings(st);
       setError(null);
       return t;
     } catch (e) {
@@ -109,7 +114,7 @@ export default function App() {
   // Клавиатура
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (newOpen) return; // форма ввода сама ловит Enter и Esc
+      if (newOpen || projectDlg) return; // формы сами ловят Enter и Esc
       if (helpOpen) {
         if (e.key === "Escape" || (e.metaKey && e.code === "Slash")) setHelpOpen(false);
         return;
@@ -174,18 +179,26 @@ export default function App() {
   return (
     <div className="app">
       <div className="titlebar" data-tauri-drag-region />
-      <Sidebar view={view} tasks={tasks} projects={projects} onOpen={openView}
-        onAddProject={(name) => run(() => db.addProject(name, ACCENTS[projects.length % 3], projects.length + 1))} />
+      <Sidebar view={view} tasks={tasks} projects={projects} settings={settings} onOpen={openView}
+        onNewProject={() => setProjectDlg("new")} onEditProject={(p) => setProjectDlg(p)}
+        onViewIcon={(id, icon) => run(() => db.setSetting(`icon:${id}`, icon))} />
 
       <main className="main">
         <header className="head" data-tauri-drag-region>
-          {progress ? <Ring fraction={progress.fraction} accent={progress.accent} /> :
-            <span className="head-dot" style={{ background: `var(--${project?.color ?? current?.accent ?? "muted"})` }} />}
+          {progress ? <Ring fraction={progress.fraction} accent={progress.accent} count={progress.count} /> : (
+            <span className="head-icon" style={{ color: `var(--${project?.color ?? current?.accent ?? "muted"})` }}>
+              <Icon name={project?.icon ?? viewIcon(current?.id ?? "inbox", settings)} size={24} />
+            </span>
+          )}
           <div className="head-text">
             <h2>{project?.name ?? current?.name ?? ""}</h2>
-            <p>{progress?.subtitle ?? subtitleFor(view, list.length)}</p>
+            <p>{project?.description || progress?.subtitle || subtitleFor(view, list.length)}</p>
           </div>
-          {project && <DeleteProject name={project.name} onDelete={() => run(() => db.deleteProject(project.id))} />}
+          {project && (
+            <button className="icon-btn" title="Изменить проект" onClick={() => setProjectDlg(project)}>
+              <Pencil size={13} /> Изменить
+            </button>
+          )}
           <button className="icon-btn" title="Клавиши (⌘/)" onClick={() => setHelpOpen(true)}>⌘/</button>
         </header>
 
@@ -225,6 +238,22 @@ export default function App() {
         </div>
       )}
       {helpOpen && <Help onClose={() => setHelpOpen(false)} />}
+      {projectDlg && (
+        <ProjectDialog
+          initial={projectDlg === "new" ? undefined : projectDlg}
+          onClose={() => setProjectDlg(null)}
+          onSave={(fields: ProjectFields) => {
+            const target = projectDlg;
+            setProjectDlg(null);
+            run(() => (target === "new" ? db.addProject(fields, projects.length + 1) : db.updateProject(target.id, fields)));
+          }}
+          onDelete={projectDlg === "new" ? undefined : () => {
+            const id = projectDlg.id;
+            setProjectDlg(null);
+            run(() => db.deleteProject(id));
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -242,44 +271,51 @@ function emptyText(view: ViewId): string {
   return "Здесь пока ничего нет.";
 }
 
+function viewIcon(id: ViewId, settings: Record<string, string>): string {
+  return settings[`icon:${id}`] ?? VIEWS.find((v) => v.id === id)?.icon ?? "folder";
+}
+
 function Sidebar(props: {
   view: ViewId;
   tasks: Task[];
   projects: Project[];
+  settings: Record<string, string>;
   onOpen: (v: ViewId) => void;
-  onAddProject: (name: string) => void;
+  onNewProject: () => void;
+  onEditProject: (p: Project) => void;
+  onViewIcon: (id: ViewId, icon: string) => void;
 }) {
-  const [adding, setAdding] = useState(false);
-  const [name, setName] = useState("");
-  const item = (id: ViewId, label: string, accent: string) => {
+  // Пункт меню, у которого сейчас открыт выбор иконки
+  const [picker, setPicker] = useState<{ id: ViewId; el: HTMLElement } | null>(null);
+  const item = (id: ViewId, label: string, accent: string, icon: string, onIcon: (el: HTMLElement) => void) => {
     const n = countFor(id, props.tasks);
     return (
-      <button key={id} className={`nav ${props.view === id ? "on" : ""}`} onClick={() => props.onOpen(id)}>
-        <i className="dot" style={{ background: `var(--${accent})` }} />
+      <div key={id} className={`nav ${props.view === id ? "on" : ""}`} onClick={() => props.onOpen(id)} role="button">
+        <button className="nav-icon" title="Сменить иконку" style={{ color: `var(--${accent})` }}
+          onClick={(e) => (e.stopPropagation(), onIcon(e.currentTarget))}>
+          <Icon name={icon} size={15} />
+        </button>
         <span className="nav-name">{label}</span>
         <span className="n">{n || ""}</span>
-      </button>
+      </div>
     );
   };
-  const finish = () => {
-    if (name.trim()) props.onAddProject(name.trim());
-    setName("");
-    setAdding(false);
-  };
+  const pickerView = picker && VIEWS.find((v) => v.id === picker.id);
   return (
     <nav className="side">
-      {VIEWS.map((v) => item(v.id, v.name, v.accent))}
+      {VIEWS.map((v) => item(v.id, v.name, v.accent, viewIcon(v.id, props.settings), (el) => setPicker({ id: v.id, el })))}
       <div className="sec">Проекты</div>
-      {props.projects.map((p) => item(`p:${p.id}`, p.name, p.color))}
-      {adding ? (
-        <input className="field new-project" autoFocus placeholder="Название проекта" value={name}
-          onChange={(e) => setName(e.target.value)} onBlur={finish}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") finish();
-            if (e.key === "Escape") (setName(""), setAdding(false));
-          }} />
-      ) : (
-        <button className="nav add-project" onClick={() => setAdding(true)}>+ Новый проект</button>
+      {props.projects.map((p) => item(`p:${p.id}`, p.name, p.color, p.icon, () => props.onEditProject(p)))}
+      <button className="nav add-project" onClick={props.onNewProject}>+ Новый проект</button>
+      <div className="side-foot">
+        <ThemeSwitch />
+      </div>
+      {picker && pickerView && (
+        <Popover anchor={picker.el} onClose={() => setPicker(null)} width={232}>
+          <div className="lbl">Иконка для «{pickerView.name}»</div>
+          <IconGrid value={viewIcon(picker.id, props.settings)} accent={pickerView.accent}
+            onPick={(icon) => (props.onViewIcon(picker.id, icon), setPicker(null))} />
+        </Popover>
       )}
     </nav>
   );
@@ -304,16 +340,5 @@ function TaskRow(props: { task: Task; project?: Project; selected: boolean; onSe
       {project && <span className="tag" style={{ background: `var(--${project.color})` }}>{project.name}</span>}
       {x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`}>{fmtDay(x.due_date)}</span>}
     </div>
-  );
-}
-
-function DeleteProject({ name, onDelete }: { name: string; onDelete: () => void }) {
-  const [armed, setArmed] = useState(false);
-  return (
-    <button className={`link danger ${armed ? "armed" : ""}`} onBlur={() => setArmed(false)}
-      onClick={() => (armed ? onDelete() : setArmed(true))}
-      title="Задачи проекта останутся, просто без проекта">
-      {armed ? `Удалить «${name}»?` : "Удалить проект"}
-    </button>
   );
 }

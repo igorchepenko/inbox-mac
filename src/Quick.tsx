@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { LogicalSize } from "@tauri-apps/api/dpi";
 import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -14,11 +15,29 @@ export default function QuickApp() {
   const [key, setKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const win = getCurrentWindow();
+  const root = useRef<HTMLDivElement>(null);
+
+  // Окно подстраивает высоту под карточку: длинная заметка растягивает его вниз.
+  // Пока окно спрятано, браузер может не сообщать об изменениях, поэтому меряем ещё и при открытии
+  const fit = () => {
+    if (!root.current) return;
+    const h = Math.ceil(root.current.getBoundingClientRect().height);
+    win.setSize(new LogicalSize(580, h)).catch(() => {});
+  };
+  useEffect(() => {
+    if (!root.current) return;
+    const ro = new ResizeObserver(fit);
+    ro.observe(root.current);
+    return () => ro.disconnect();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadProjects().catch(() => {}); // заранее открыть базу, чтобы первое сохранение было мгновенным
     const focusTitle = () => document.querySelector<HTMLInputElement>(".qi-title")?.focus();
-    const un = [listen("quick-open", focusTitle), win.onFocusChanged(({ payload }) => payload && focusTitle())];
+    const un = [
+      listen("quick-open", () => (fit(), focusTitle())),
+      win.onFocusChanged(({ payload }) => payload && focusTitle()),
+    ];
     return () => un.forEach((p) => p.then((f) => f()));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -41,7 +60,7 @@ export default function QuickApp() {
   };
 
   return (
-    <div className="quick-root">
+    <div ref={root} className="quick-root">
       <QuickForm key={key} onSave={save} onCancel={cancel} />
       {error && <div className="error">Не сохранилось: {error}</div>}
     </div>

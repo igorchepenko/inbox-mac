@@ -3,11 +3,11 @@ import { fmtDay, today } from "./dates";
 
 export type ViewId = "inbox" | "today" | "soon" | "archive" | `p:${number}`;
 
-export const VIEWS: { id: ViewId; name: string; accent: string }[] = [
-  { id: "inbox", name: "На разбор", accent: "move" },
-  { id: "today", name: "Сегодня", accent: "exercise" },
-  { id: "soon", name: "Скоро", accent: "stand" },
-  { id: "archive", name: "Архив", accent: "muted" },
+export const VIEWS: { id: ViewId; name: string; accent: string; icon: string }[] = [
+  { id: "inbox", name: "На разбор", accent: "move", icon: "inbox" },
+  { id: "today", name: "Сегодня", accent: "exercise", icon: "sun" },
+  { id: "soon", name: "Скоро", accent: "stand", icon: "calendar" },
+  { id: "archive", name: "Архив", accent: "muted", icon: "archive" },
 ];
 
 export interface ListItem {
@@ -68,6 +68,7 @@ export function countFor(view: ViewId, tasks: Task[]): number {
 
 export interface Progress {
   fraction: number;
+  count: number; // сколько осталось: неразобранных или несделанных
   accent: string;
   subtitle: string;
 }
@@ -80,13 +81,14 @@ export function progressFor(view: ViewId, tasks: Task[]): Progress | null {
     const subtitle = left
       ? `${plural(left, "задача ждёт", "задачи ждут", "задач ждут")} разбора${sorted ? `, разобрано сегодня ${sorted}` : ""}`
       : sorted ? `Всё разобрано, сегодня ${sorted}` : "Пусто. Нажми ⌥Space, чтобы записать задачу";
-    return { fraction: left + sorted ? sorted / (left + sorted) : 0, accent: "move", subtitle };
+    return { fraction: left + sorted ? sorted / (left + sorted) : 0, count: left, accent: "move", subtitle };
   }
   if (view === "today") {
     const items = listFor("today", tasks);
     const done = items.filter((i) => i.task.status === "done").length;
     return {
       fraction: items.length ? done / items.length : 0,
+      count: items.length - done,
       accent: "exercise",
       subtitle: items.length ? `${done} из ${items.length} сделано` : "На сегодня ничего не запланировано",
     };

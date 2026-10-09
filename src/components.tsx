@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { Project, Task } from "./db";
 import { addDays, fmtDay, nextMonday, today } from "./dates";
+import { CalendarDays } from "lucide-react";
+import { Icon } from "./icons";
+import { Calendar, Popover, TimeInput, useAutosize } from "./widgets";
 
 export const PRIORITY = [
   { value: 1, name: "Низкая", accent: "stand" },
@@ -13,6 +16,8 @@ export function QuickForm(props: { onSave: (title: string, note: string) => void
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
   const titleRef = useRef<HTMLInputElement>(null);
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+  useAutosize(noteRef, note, 260);
   useEffect(() => titleRef.current?.focus(), []);
 
   const submit = () => {
@@ -35,7 +40,7 @@ export function QuickForm(props: { onSave: (title: string, note: string) => void
   return (
     <form className="qi" onSubmit={(e) => (e.preventDefault(), submit())} onKeyDown={onKey}>
       <input ref={titleRef} className="field qi-title" placeholder="Что нужно сделать?" value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="off" spellCheck={false} />
-      <textarea className="field qi-note" placeholder="Заметка, если нужна" value={note} onChange={(e) => setNote(e.target.value)} />
+      <textarea ref={noteRef} rows={2} className="field qi-note" placeholder="Заметка, если нужна" value={note} onChange={(e) => setNote(e.target.value)} />
       <div className="qi-foot">
         <span>Попадёт в «На разбор»</span>
         <kbd>Esc</kbd>
@@ -46,8 +51,10 @@ export function QuickForm(props: { onSave: (title: string, note: string) => void
   );
 }
 
-export function Ring({ fraction, accent }: { fraction: number; accent: string }) {
+/** Кольцо прогресса в логике Apple Fitness, внутри число оставшихся задач */
+export function Ring({ fraction, accent, count }: { fraction: number; accent: string; count: number }) {
   const r = 22, c = 2 * Math.PI * r;
+  const label = count > 99 ? "99+" : count > 0 ? String(count) : fraction > 0 ? "✓" : "";
   return (
     <svg className="ring" width="54" height="54" viewBox="0 0 54 54" aria-hidden="true">
       <circle cx="27" cy="27" r={r} fill="none" stroke="var(--ring-track)" strokeWidth="8" />
@@ -55,6 +62,8 @@ export function Ring({ fraction, accent }: { fraction: number; accent: string })
         <circle cx="27" cy="27" r={r} fill="none" stroke={`var(--${accent})`} strokeWidth="8" strokeLinecap="round"
           strokeDasharray={`${c * fraction} ${c}`} transform="rotate(-90 27 27)" />
       )}
+      <text x="27" y="27" textAnchor="middle" dominantBaseline="central" className={`ring-n ${label.length > 2 ? "small" : ""}`}
+        fill={label === "✓" ? `var(--${accent})` : "var(--fg)"}>{label}</text>
     </svg>
   );
 }
@@ -75,6 +84,10 @@ export function Details(props: {
   const [title, setTitle] = useState(x.title);
   const [note, setNote] = useState(x.note);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [calOpen, setCalOpen] = useState(false);
+  const calBtn = useRef<HTMLButtonElement>(null);
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+  useAutosize(noteRef, note);
   const isInbox = x.status === "inbox";
   const locked = x.status === "archived";
   const t = today();
@@ -94,6 +107,10 @@ export function Details(props: {
     }
     onPatch(patch);
   };
+  const pickDate = (d: string | null) => {
+    setCalOpen(false);
+    setDate(d);
+  };
   const setRemind = (time: string) =>
     onPatch(time ? { remind_at: `${x.due_date ?? t}T${time}`, reminded: 0 } : { remind_at: null, reminded: 0 });
 
@@ -109,7 +126,7 @@ export function Details(props: {
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLElement).blur(); } }} />
       </div>
 
-      <fieldset disabled={locked}>
+      <fieldset className="det-sec" disabled={locked}>
         <div className="lbl">Важность</div>
         <div className="seg">
           {PRIORITY.map((p) => (
@@ -119,32 +136,46 @@ export function Details(props: {
         </div>
       </fieldset>
 
-      <fieldset disabled={locked}>
+      <fieldset className="det-sec" disabled={locked}>
         <div className="lbl">Проект</div>
         <div className="seg">
           {projects.map((p) => (
             <Chip key={p.id} on={x.project_id === p.id} accent={p.color}
-              onClick={() => onPatch({ project_id: x.project_id === p.id ? null : p.id })}>{p.name}</Chip>
+              onClick={() => onPatch({ project_id: x.project_id === p.id ? null : p.id })}>
+              <Icon name={p.icon} size={12} /> {p.name}
+            </Chip>
           ))}
           {!projects.length && <span className="hint">Создай проект в боковой панели</span>}
         </div>
       </fieldset>
 
-      <fieldset disabled={locked}>
+      <fieldset className="det-sec" disabled={locked}>
         <div className="lbl">Дата</div>
         <div className="seg">
           {dateChips.map((d) => (
             <Chip key={d} on={x.due_date === d} accent="stand" onClick={() => setDate(x.due_date === d ? null : d)}>{fmtDay(d)}</Chip>
           ))}
-          <input type="date" className={`field date ${x.due_date && !dateChips.includes(x.due_date) ? "picked" : ""}`}
-            value={x.due_date ?? ""} onChange={(e) => setDate(e.target.value || null)} />
+          {(() => {
+            const other = !!x.due_date && !dateChips.includes(x.due_date);
+            return (
+              <button type="button" ref={calBtn} className={`chip ${other ? "on" : ""}`} onClick={() => setCalOpen((o) => !o)}
+                style={other ? { background: "var(--stand)" } : undefined}>
+                <CalendarDays size={13} /> {other ? fmtDay(x.due_date!) : "Другая"}
+              </button>
+            );
+          })()}
+          {calOpen && (
+            <Popover anchor={calBtn.current} onClose={() => setCalOpen(false)} width={260}>
+              <Calendar value={x.due_date} onPick={pickDate} />
+            </Popover>
+          )}
         </div>
       </fieldset>
 
-      <fieldset disabled={locked}>
+      <fieldset className="det-sec" disabled={locked}>
         <div className="lbl">Напоминание</div>
         <div className="seg">
-          <input type="time" className="field time" value={remindTime} onChange={(e) => setRemind(e.target.value)} />
+          <TimeInput value={remindTime} disabled={locked} onCommit={setRemind} />
           {remindTime && (
             <>
               <span className="hint">{fmtDay(x.remind_at!.slice(0, 10))}{x.reminded ? ", уже пришло" : ""}</span>
@@ -154,9 +185,9 @@ export function Details(props: {
         </div>
       </fieldset>
 
-      <div>
+      <div className="det-sec">
         <div className="lbl">Заметка</div>
-        <textarea className="field note" value={note} placeholder="Пусто" disabled={locked}
+        <textarea ref={noteRef} rows={3} className="field note" value={note} placeholder="Пусто" disabled={locked}
           onChange={(e) => setNote(e.target.value)} onBlur={() => note !== x.note && onPatch({ note })} />
       </div>
 
