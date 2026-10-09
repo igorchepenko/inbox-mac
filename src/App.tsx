@@ -16,6 +16,7 @@ import { Settings } from "./Settings";
 import { labelFromAccel, pref, quickKeyLabel, setQuickKeyLabel } from "./prefs";
 import Home, { HomeIcon } from "./home/Home";
 import { KEY_HIDDEN, KEY_ORDER } from "./home/data";
+import CalendarView from "./CalendarView";
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -86,11 +87,12 @@ export default function App() {
 
   const list = useMemo(() => listFor(view, tasks), [view, tasks]);
   const ids = list.map((i) => i.task.id);
-  const task = tasks.find((x) => x.id === sel && ids.includes(x.id)) ?? null;
+  const task = tasks.find((x) => x.id === sel && (view === "calendar" || ids.includes(x.id))) ?? null;
 
   // Когда выбранная задача ушла из списка (разобрана, сделана), выбираем ту, что встала на её место
   const lastIdx = useRef(0);
   useEffect(() => {
+    if (view === "calendar") return; // в календаре выбор не зависит от списка
     const i = ids.indexOf(sel ?? -1);
     if (i >= 0) lastIdx.current = i;
     else setSel(ids[Math.min(lastIdx.current, ids.length - 1)] ?? null);
@@ -211,7 +213,7 @@ export default function App() {
       }
       if (e.metaKey && e.code === "Slash") return e.preventDefault(), setHelpOpen(true);
       if (e.metaKey && e.code === "Digit0") return e.preventDefault(), openView("home");
-      if (e.metaKey && /^Digit[1-4]$/.test(e.code)) {
+      if (e.metaKey && /^Digit[1-5]$/.test(e.code)) {
         e.preventDefault();
         const v = VIEWS[Number(e.code.slice(5)) - 1].id;
         if (!hidden(v)) openView(v);
@@ -280,6 +282,14 @@ export default function App() {
         onSettings={() => setSettingsOpen(true)}
         onViewIcon={(id, icon) => run(() => db.setSetting(`icon:${id}`, icon))} />
 
+      {view === "calendar" ? (
+        <CalendarView tasks={tasks} projects={projects} selected={sel} onSelect={setSel}
+          onToggle={(x) => run(() => (x.status === "done" ? db.reopenTask(x) : db.completeTask(x)))}
+          onMove={(id, p) => {
+            if (p.remind_at) ensurePermission();
+            run(() => db.updateTask(id, p));
+          }} />
+      ) : (
       <main className="main">
         {view === "home" ? (
           <Home tasks={tasks} projects={projects} settings={settings}
@@ -333,6 +343,7 @@ export default function App() {
         </div>
         </>)}
       </main>
+      )}
 
       {view === "home" ? null : task ? (
         <Details key={task.id} task={task} projects={projects}
