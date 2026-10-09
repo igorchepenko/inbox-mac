@@ -1,38 +1,12 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import { Toggle } from "./Settings";
+import { BLOCKS, blockOrder, DEFAULT_ORDER, hiddenBlocks, KEY_HIDDEN, KEY_ORDER, type BlockId } from "./home/data";
 
 /*
  * Раздел «Главная» в настройках. Пишет в те же ключи таблицы settings, что читает главная (src/home/data.ts):
  * home:order и home:hidden (JSON-массивы id блоков), home:day_start, home:day_end, home:capacity, home:goal, home:name.
  */
-
-// Тот же список и порядок по умолчанию, что BLOCKS в src/home/data.ts
-const BLOCKS = [
-  { id: "summary", name: "Итоги дня" },
-  { id: "today", name: "Сегодня" },
-  { id: "inbox", name: "На разбор" },
-  { id: "week", name: "Ближайшие 7 дней" },
-  { id: "matrix", name: "Матрица Эйзенхауэра" },
-  { id: "stats", name: "Статистика" },
-  { id: "projects", name: "Проекты" },
-];
-const IDS = BLOCKS.map((b) => b.id);
-
-function parseIds(json: string | undefined): string[] {
-  try {
-    const v = JSON.parse(json ?? "[]");
-    return Array.isArray(v) ? v.filter((k) => IDS.includes(k)) : [];
-  } catch {
-    return [];
-  }
-}
-
-/** Сохранённый порядок; блоки, которых в нём нет, встают в конец, как и на самой главной */
-function orderOf(settings: Record<string, string>): string[] {
-  const saved = [...new Set(parseIds(settings["home:order"]))];
-  return [...saved, ...IDS.filter((k) => !saved.includes(k))];
-}
 
 function num(settings: Record<string, string>, key: string, def: number): number {
   const n = Number(settings[key]);
@@ -43,13 +17,13 @@ const hours = (from: number, to: number) => Array.from({ length: to - from + 1 }
 
 export function HomeSettings(props: { settings: Record<string, string>; onSet: (key: string, value: string) => void }) {
   const s = props.settings;
-  const hidden = parseIds(s["home:hidden"]);
+  const hidden = hiddenBlocks(s);
   // Порядок держим локально, чтобы перетаскивание шло без задержки на запись в базу
-  const [order, setOrder] = useState(orderOf(s));
-  useEffect(() => setOrder(orderOf(s)), [s["home:order"]]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [drag, setDrag] = useState<string | null>(null);
-  const saveOrder = (o: string[]) => (setOrder(o), props.onSet("home:order", JSON.stringify(o)));
-  const move = (id: string, to: number) => {
+  const [order, setOrder] = useState(blockOrder(s));
+  useEffect(() => setOrder(blockOrder(s)), [s[KEY_ORDER]]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [drag, setDrag] = useState<BlockId | null>(null);
+  const saveOrder = (o: BlockId[]) => (setOrder(o), props.onSet(KEY_ORDER, JSON.stringify(o)));
+  const move = (id: BlockId, to: number) => {
     const o = order.filter((k) => k !== id);
     o.splice(Math.max(0, Math.min(to, o.length)), 0, id);
     return o;
@@ -72,8 +46,8 @@ export function HomeSettings(props: { settings: Record<string, string>; onSet: (
           <div className="set-name">Блоки и их порядок</div>
           <div className="hint">Перетащи строку за ручку или двигай стрелками. Выключенные блоки на главной не показываются</div>
         </div>
-        {(s["home:order"] || s["home:hidden"]) && (
-          <button type="button" className="link" onClick={() => (saveOrder(IDS), props.onSet("home:hidden", "[]"))}>Как было</button>
+        {(s[KEY_ORDER] || s[KEY_HIDDEN]) && (
+          <button type="button" className="link" onClick={() => (saveOrder(DEFAULT_ORDER), props.onSet(KEY_HIDDEN, "[]"))}>Как было</button>
         )}
       </div>
       <div className="block-list" onDragOver={(e) => e.preventDefault()}>
@@ -90,7 +64,7 @@ export function HomeSettings(props: { settings: Record<string, string>; onSet: (
               <button type="button" className="cal-nav" disabled={i === 0} aria-label="Выше" onClick={() => saveOrder(move(id, i - 1))}><ChevronUp size={14} /></button>
               <button type="button" className="cal-nav" disabled={i === order.length - 1} aria-label="Ниже" onClick={() => saveOrder(move(id, i + 1))}><ChevronDown size={14} /></button>
               <Toggle label={`Показывать «${b.name}»`} on={!off}
-                onChange={(on) => props.onSet("home:hidden", JSON.stringify(on ? hidden.filter((k) => k !== id) : [...hidden, id]))} />
+                onChange={(on) => props.onSet(KEY_HIDDEN, JSON.stringify(on ? hidden.filter((k) => k !== id) : [...hidden, id]))} />
             </div>
           );
         })}

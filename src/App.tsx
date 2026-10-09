@@ -9,8 +9,10 @@ import { countFor, listFor, progressFor, VIEWS, type ViewId } from "./views";
 import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
 import { Icon } from "./icons";
 import { IconGrid, Popover, ProjectDialog, ThemeSwitch } from "./widgets";
-import { Link2, ListChecks, Paperclip, Pencil, Repeat, Settings as Gear } from "lucide-react";
+import { CheckCheck, Link2, ListChecks, Paperclip, Pencil, Repeat, Settings as Gear } from "lucide-react";
 import { fmtRange, QuadrantGlyph } from "./extras";
+import { boardFor, bulkMove, layoutOf, type Layout } from "./boardOps";
+import { BoardView, BulkPanel, LayoutSwitch, StackView, type Pick } from "./Board";
 import { ensurePermission, fireDueReminders, maybeSendDigest } from "./reminders";
 import { Settings } from "./Settings";
 import { labelFromAccel, pref, quickKeyLabel, setQuickKeyLabel } from "./prefs";
@@ -26,6 +28,9 @@ export default function App() {
   const [projectDlg, setProjectDlg] = useState<Project | "new" | null>(null);
   const [view, setView] = useState<ViewId>("home");
   const [sel, setSel] = useState<number | null>(null);
+  // Выделение для массовых действий и режим «Выбрать», в котором клик добавляет задачу к выделению
+  const [picked, setPicked] = useState<number[]>([]);
+  const [selecting, setSelecting] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -85,8 +90,12 @@ export default function App() {
     };
   }, [reload]);
 
+  const layout = layoutOf(view, settings);
   const list = useMemo(() => listFor(view, tasks), [view, tasks]);
-  const ids = list.map((i) => i.task.id);
+  const columns = useMemo(() => (layout === "board" ? boardFor(view, tasks) : null), [layout, view, tasks]);
+  const ids = columns ? columns.flatMap((c) => c.items.map((i) => i.task.id)) : list.map((i) => i.task.id);
+  const pickedTasks = tasks.filter((x) => picked.includes(x.id) && ids.includes(x.id));
+  const bulk = selecting || pickedTasks.length > 1;
   const task = tasks.find((x) => x.id === sel && (view === "calendar" || ids.includes(x.id))) ?? null;
 
   // Когда выбранная задача ушла из списка (разобрана, сделана), выбираем ту, что встала на её место
@@ -98,8 +107,10 @@ export default function App() {
     else setSel(ids[Math.min(lastIdx.current, ids.length - 1)] ?? null);
   }, [ids.join(","), sel]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const clearPick = () => (setPicked([]), setSelecting(false));
   const openView = (v: ViewId, from = tasks) => {
     setView(v);
+    clearPick();
     lastIdx.current = 0;
     setSel(listFor(v, from)[0]?.task.id ?? null);
     db.setSetting("last.view", v).catch(() => {}); // для начального экрана «Где остановился»
@@ -124,7 +135,7 @@ export default function App() {
     const start = pref(st, "start.view");
     const v = (start === "last" ? st["last.view"] ?? "inbox" : start) as ViewId;
     // Удалённый проект или спрятанный список сам сменится на «На разбор»
-    if (v !== "inbox") openView(v, t);
+    openView(v, t);
     const accel = pref(st, "quick.shortcut");
     if (accel !== "Alt+Space") applyShortcut(accel).then((err) => err && setShortcutError(`Не удалось занять ${labelFromAccel(accel)}: ${err}`));
   }
@@ -156,6 +167,22 @@ export default function App() {
     setView(v);
     setSel(x.id);
   };
+  // Клик выбирает задачу, ⌘-клик или режим «Выбрать» добавляют к выделению, ⇧-клик берёт всё подряд от выбранной
+  const pick: Pick = (id, m) => {
+    if (m.shift && sel != null && ids.includes(sel)) {
+      const [a, b] = [ids.indexOf(sel), ids.indexOf(id)].sort((x, y) => x - y);
+      setPicked(ids.slice(a, b + 1));
+      return;
+    }
+    if (m.meta || selecting) {
+      const base = picked.length ? picked : sel != null && sel !== id ? [sel] : [];
+      setPicked(base.includes(id) ? base.filter((x) => x !== id) : [...base, id]);
+    } else setPicked([]);
+    setSel(id);
+  };
+  const setLayout = (l: Layout) => run(() => db.setSetting(`layout:${view}`, l));
+  const moveCards = (moved: number[], col: Parameters<typeof bulkMove>[1]) =>
+    run(() => bulkMove(tasks.filter((x) => moved.includes(x.id)), col));
 
   const saveNew = (title: string, note: string, draft: db.Draft) => {
     setNewOpen(false);
@@ -224,6 +251,8 @@ export default function App() {
         if (e.key === "Escape") el.blur();
         return;
       }
+      if (e.metaKey && e.code === "KeyA") return e.preventDefault(), setPicked(ids);
+      if (e.key === "Escape" && bulk) return clearPick();
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const i = ids.indexOf(sel ?? -1);
       // e.code не зависит от раскладки: N работает и на русской
@@ -319,6 +348,11 @@ export default function App() {
               <Pencil size={13} /> Изменить
             </button>
           )}
+          <LayoutSwitch value={layout} onChange={setLayout} />
+          <button className={`icon-btn ${selecting ? "on" : ""}`} title="Выбрать несколько задач (⌘-клик, ⌘A)"
+            onClick={() => (selecting ? clearPick() : (setSelecting(true), setPicked(sel != null ? [sel] : [])))}>
+            <CheckCheck size={13} /> Выбрать
+          </button>
           <button className="icon-btn" title="Клавиши (⌘/)" onClick={() => setHelpOpen(true)}>⌘/</button>
         </header>
 
@@ -330,22 +364,35 @@ export default function App() {
 
         {error && <div className="error">Ошибка базы: {error}</div>}
 
-        <div className="list" role="listbox">
-          {list.map(({ task: x, group }) => (
-            <div key={x.id}>
-              {group && <div className="group">{group}</div>}
-              <TaskRow task={x} project={projects.find((p) => p.id === x.project_id)} selected={x.id === sel}
-                dropping={dropTarget === x.id && !dropOnDetails}
-                onSelect={() => setSel(x.id)} onToggle={() => toggleDone(x)} />
+        <div className={`views ${selecting ? "selecting" : ""}`}>
+          {columns ? (
+            <BoardView columns={columns} current={view} projects={projects} sel={sel} picked={picked}
+              fileDrop={dropOnDetails ? null : dropTarget}
+              onPick={pick} onToggle={toggleDone} onMove={moveCards} />
+          ) : layout === "cards" ? (
+            <StackView items={list} projects={projects} sel={sel} picked={picked} empty={emptyText(view)}
+              fileDrop={dropOnDetails ? null : dropTarget} onPick={pick} onToggle={toggleDone} />
+          ) : (
+            <div className="list" role="listbox">
+              {list.map(({ task: x, group }) => (
+                <div key={x.id}>
+                  {group && <div className="group">{group}</div>}
+                  <TaskRow task={x} project={projects.find((p) => p.id === x.project_id)} selected={x.id === sel}
+                    picked={picked.includes(x.id)} dropping={dropTarget === x.id && !dropOnDetails} onSelect={(m) => pick(x.id, m)} onToggle={() => toggleDone(x)} />
+                </div>
+              ))}
+              {!list.length && <div className="empty">{emptyText(view)}</div>}
             </div>
-          ))}
-          {!list.length && <div className="empty">{emptyText(view)}</div>}
+          )}
         </div>
         </>)}
       </main>
       )}
 
-      {view === "home" ? null : task ? (
+      {view === "home" ? null : bulk ? (
+        <BulkPanel tasks={pickedTasks} total={ids.length} projects={projects} selecting={selecting} run={run}
+          onSelectAll={() => setPicked(ids)} onClear={clearPick} />
+      ) : task ? (
         <Details key={task.id} task={task} projects={projects}
           onPatch={(p) => patch(task.id, p)} run={run} onError={setError}
           dropping={dropTarget === task.id && dropOnDetails}
@@ -460,7 +507,15 @@ function Sidebar(props: {
   );
 }
 
-function TaskRow(props: { task: Task; project?: Project; selected: boolean; dropping?: boolean; onSelect: () => void; onToggle: () => void }) {
+function TaskRow(props: {
+  task: Task;
+  project?: Project;
+  selected: boolean;
+  picked: boolean;
+  dropping?: boolean;
+  onSelect: (mods: { meta: boolean; shift: boolean }) => void;
+  onToggle: () => void;
+}) {
   const { task: x, project } = props;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -470,10 +525,10 @@ function TaskRow(props: { task: Task; project?: Project; selected: boolean; drop
   const overdue = x.status === "active" && !!x.due_date && x.due_date < today();
   return (
     <div ref={ref} role="option" aria-selected={props.selected} data-task-id={x.id}
-      className={`row ${props.selected ? "sel" : ""} ${done ? "done" : ""} ${props.dropping ? "drop" : ""}`}
-      onMouseDown={props.onSelect}>
+      className={`row ${props.selected ? "sel" : ""} ${props.picked ? "picked" : ""} ${done ? "done" : ""} ${props.dropping ? "drop" : ""}`}
+      onMouseDown={(e) => props.onSelect({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey })}>
       <button className="chk" title={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
-        onClick={(e) => (e.stopPropagation(), props.onToggle())} />
+        onMouseDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), props.onToggle())} />
       <span className="t">{x.title}</span>
       {x.subtasks.length > 0 && (
         <span className="meta badge" title="Чеклист"><ListChecks size={12} /> {x.subtasks.filter((s) => s.done).length}/{x.subtasks.length}</span>

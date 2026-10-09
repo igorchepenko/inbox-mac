@@ -5,6 +5,7 @@ import { Icon } from "./icons";
 import { VIEWS, type ViewId } from "./views";
 import { IconGrid, Popover, ThemeSwitch, TimeInput } from "./widgets";
 import { HomeSettings } from "./HomeSettings";
+import { HomeIcon } from "./home/Home";
 import { ensurePermission, notify } from "./reminders";
 import {
   accelFromEvent, DEFAULTS, FONTS, labelFromAccel, pref, savedAppearance, setAppearance, SIZES, SOUNDS, type Appearance,
@@ -116,6 +117,7 @@ function General(p: SettingsProps) {
       <Row name="Начальный экран" hint="Что открыто при запуске">
         <Choice value={pref(p.settings, "start.view")} onPick={(v) => p.onSet("start.view", v)}
           options={[
+            { id: "home", name: "Главная" },
             ...visible.filter((v) => v.id !== "archive").map((v) => ({ id: v.id as string, name: v.name })),
             { id: "last", name: "Где остановился" },
           ]} />
@@ -250,6 +252,15 @@ function MenuItems(p: SettingsProps) {
   return (
     <div className="set-group">
       <div className="hint">Какие списки показывать в меню слева и с какой иконкой. Иконку можно сменить и кликом по ней прямо в меню.</div>
+      {/* Главная всегда в меню: она открывается по ⌘0 и при запуске, иконка у неё своя */}
+      <div className="set-row menu-row">
+        <span className="nav-icon big"><HomeIcon /></span>
+        <div className="set-text">
+          <div className="set-name">Главная</div>
+          <div className="hint">Сводка дня, поэтому этот пункт всегда виден</div>
+        </div>
+        <Toggle label="Показывать «Главная»" on disabled onChange={() => {}} />
+      </div>
       {VIEWS.map((v) => {
         const hidden = p.settings[`hidden:${v.id}`] === "1";
         return (

@@ -78,7 +78,7 @@ export function followAppearanceChanges() {
 
 export const DEFAULTS = {
   "quick.shortcut": "Alt+Space",
-  "start.view": "inbox", // inbox, today, soon или last (где остановился)
+  "start.view": "home", // home, inbox, today, soon, calendar или last (где остановился)
   "remind.enabled": "1",
   "remind.sound": "Glass", // системный звук macOS или none
   "digest.enabled": "0", // утренняя сводка: сколько задач на сегодня и на разбор
