@@ -5,6 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { addTask, loadProjects } from "./db";
 import { QuickForm } from "./components";
+import { currentZoom } from "./prefs";
 
 const hideQuick = () => invoke("hide_quick");
 
@@ -21,14 +22,16 @@ export default function QuickApp() {
   // Пока окно спрятано, браузер может не сообщать об изменениях, поэтому меряем ещё и при открытии
   const fit = () => {
     if (!root.current) return;
-    const h = Math.ceil(root.current.getBoundingClientRect().height);
+    // Размер текста в настройках масштабирует окно: высота карточки в пикселях окна больше на этот множитель
+    const h = Math.ceil(root.current.getBoundingClientRect().height * currentZoom());
     win.setSize(new LogicalSize(580, h)).catch(() => {});
   };
   useEffect(() => {
     if (!root.current) return;
     const ro = new ResizeObserver(fit);
     ro.observe(root.current);
-    return () => ro.disconnect();
+    addEventListener("inbox-appearance", fit);
+    return () => (ro.disconnect(), removeEventListener("inbox-appearance", fit));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

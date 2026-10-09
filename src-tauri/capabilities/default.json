@@ -13,6 +13,8 @@
     "core:window:allow-set-size",
     "sql:default",
     "sql:allow-execute",
-    "notification:default"
+    "notification:default",
+    "core:webview:allow-set-webview-zoom",
+    "autostart:default"
   ]
 }

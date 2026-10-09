@@ -28,6 +28,7 @@ export function setTheme(t: Theme) {
     // без localStorage тема просто не переживёт перезапуск
   }
   applyTheme(t);
+  window.dispatchEvent(new CustomEvent<Theme>("inbox-theme", { detail: t }));
   emit("theme-changed", t).catch(() => {});
 }
 

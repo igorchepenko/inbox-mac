@@ -1,19 +1,26 @@
 use tauri::{
     image::Image,
-    menu::{Menu, MenuItem, PredefinedMenuItem},
+    menu::{Menu, MenuItem, MenuItemKind, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, WindowEvent,
+    AppHandle, Emitter, Manager, State, WindowEvent, Wry,
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 const DB_URL: &str = "sqlite:inbox.db";
 
 /// Было ли главное окно активно, когда открыли быстрый ввод. Если нет, после ввода
 /// возвращаем фокус в приложение, из которого нажали ⌥Space.
 static MAIN_WAS_FOCUSED: AtomicBool = AtomicBool::new(false);
+
+/// Текущее сочетание быстрого ввода. Меняется в настройках, по умолчанию ⌥Space
+struct QuickKey(Mutex<Shortcut>);
+
+/// Пункт «Записать задачу» в меню строки меню: в нём подписано текущее сочетание
+struct TrayQuickItem(MenuItem<Wry>);
 
 fn migrations() -> Vec<Migration> {
     vec![
@@ -72,6 +79,38 @@ fn hide_quick(app: AppHandle) {
     }
 }
 
+/// Сменить сочетание быстрого ввода. accel в формате «Alt+Shift+KeyN», label для меню вида «⌥⇧N».
+/// Если сочетание занято системой или другим приложением, оставляем прежнее и возвращаем ошибку
+#[tauri::command]
+fn set_quick_shortcut(
+    app: AppHandle,
+    key: State<'_, QuickKey>,
+    tray: State<'_, TrayQuickItem>,
+    accel: String,
+    label: String,
+) -> Result<(), String> {
+    let next: Shortcut = accel
+        .parse()
+        .map_err(|e| format!("Не получилось разобрать сочетание: {e}"))?;
+    let mut cur = key.0.lock().map_err(|e| e.to_string())?;
+    let gs = app.global_shortcut();
+    if *cur != next || !gs.is_registered(next) {
+        let _ = gs.unregister(*cur);
+        if let Err(e) = gs.register(next) {
+            let _ = gs.register(*cur);
+            return Err(format!("Сочетание занято системой или другим приложением ({e})"));
+        }
+        *cur = next;
+    }
+    let _ = tray.0.set_text(format!("Записать задачу    {label}"));
+    Ok(())
+}
+
+fn open_settings(app: &AppHandle) {
+    show_main(app);
+    let _ = app.emit_to("main", "open-settings", ());
+}
+
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.unminimize();
@@ -83,6 +122,7 @@ fn show_main(app: &AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let quick_shortcut = Shortcut::new(Some(Modifiers::ALT), Code::Space);
+    let autostart_args: Option<Vec<&'static str>> = None;
 
     let app = tauri::Builder::default()
         .plugin(
@@ -91,16 +131,28 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            autostart_args,
+        ))
         .plugin(
+            // Зарегистрировано всегда одно сочетание, быстрого ввода, поэтому сверять, какое нажато, не нужно
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |app, shortcut, event| {
-                    if shortcut == &quick_shortcut && event.state() == ShortcutState::Pressed {
+                .with_handler(|app, _shortcut, event| {
+                    if event.state() == ShortcutState::Pressed {
                         toggle_quick(app);
                     }
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![hide_quick])
+        .manage(QuickKey(Mutex::new(quick_shortcut)))
+        .invoke_handler(tauri::generate_handler![hide_quick, set_quick_shortcut])
+        // «Настройки…» ⌘, в меню приложения
+        .on_menu_event(|app, event| {
+            if event.id() == "settings" {
+                open_settings(app);
+            }
+        })
         .setup(move |app| {
             // ⌥Space может быть занят другим приложением: тогда работаем без него, через иконку в строке меню
             if let Err(e) = app.global_shortcut().register(quick_shortcut) {
@@ -115,10 +167,31 @@ pub fn run() {
                 None::<&str>,
             )?;
             let open_i = MenuItem::with_id(app, "open", "Открыть Inbox", true, None::<&str>)?;
+            let settings_i =
+                MenuItem::with_id(app, "tray-settings", "Настройки…", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
             let quit_i =
                 MenuItem::with_id(app, "quit", "Выйти из Inbox", true, Some("CmdOrCtrl+Q"))?;
-            let menu = Menu::with_items(app, &[&quick_i, &open_i, &sep, &quit_i])?;
+            let menu = Menu::with_items(app, &[&quick_i, &open_i, &settings_i, &sep, &quit_i])?;
+            app.manage(TrayQuickItem(quick_i.clone()));
+
+            // Стандартное меню macOS (Правка с копированием и вставкой, Окно) плюс «Настройки…» после «О программе»
+            #[cfg(target_os = "macos")]
+            {
+                let app_menu = Menu::default(app.handle())?;
+                if let Some(MenuItemKind::Submenu(sub)) = app_menu.items()?.first() {
+                    let prefs_i = MenuItem::with_id(
+                        app,
+                        "settings",
+                        "Настройки…",
+                        true,
+                        Some("CmdOrCtrl+,"),
+                    )?;
+                    sub.insert(&PredefinedMenuItem::separator(app)?, 1)?;
+                    sub.insert(&prefs_i, 2)?;
+                }
+                app.set_menu(app_menu)?;
+            }
 
             TrayIconBuilder::with_id("tray")
                 .icon(Image::from_bytes(include_bytes!("../icons/tray.png"))?)
@@ -129,6 +202,7 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quick" => toggle_quick(app),
                     "open" => show_main(app),
+                    "tray-settings" => open_settings(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })

@@ -4,6 +4,7 @@ import { addDays, fmtDay, nextMonday, today } from "./dates";
 import { CalendarDays } from "lucide-react";
 import { Icon } from "./icons";
 import { Calendar, Popover, TimeInput, useAutosize } from "./widgets";
+import { quickKeyLabel } from "./prefs";
 
 export const PRIORITY = [
   // Зелёный и бирюзовый заняты под «сделано» и время, поэтому важность берёт нейтральный и янтарный
@@ -238,6 +239,7 @@ export const SHORTCUTS: [string, string][] = [
   ["T", "Дата: сегодня"],
   ["⌘1 … ⌘4", "На разбор, Сегодня, Скоро, Архив"],
   ["⌘/", "Эта шпаргалка"],
+  ["⌘,", "Настройки"],
   ["Esc", "Закрыть"],
 ];
 
@@ -247,7 +249,7 @@ export function Help({ onClose }: { onClose: () => void }) {
       <div className="help">
         <h3>Клавиши</h3>
         {SHORTCUTS.map(([k, v]) => (
-          <div className="help-row" key={k}><kbd>{k}</kbd><span>{v}</span></div>
+          <div className="help-row" key={k}><kbd>{k === "⌥ Space" ? quickKeyLabel() : k}</kbd><span>{v}</span></div>
         ))}
       </div>
     </div>
