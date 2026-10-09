@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Bell, CalendarDays, Clock, Columns3, Layers, Link2, List, ListChecks, Paperclip } from "lucide-react";
+import { Bell, CalendarDays, Clock, Columns3, Layers, Link2, List, ListChecks, Paperclip, Repeat } from "lucide-react";
 import type { Project, Task } from "./db";
 import { addDays, fmtDay, nextMonday, today } from "./dates";
 import { COLUMNS, dropHint, type Column, type Layout } from "./board";
@@ -9,6 +9,7 @@ import { plural } from "./views";
 import { PRIORITY } from "./components";
 import { Icon } from "./icons";
 import { Calendar, Popover } from "./widgets";
+import { fmtRange, QuadrantGlyph } from "./extras";
 import "./board.css";
 
 const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -43,18 +44,20 @@ function Meta({ task: x, project }: { task: Task; project?: Project }) {
   return (
     <div className="card-meta">
       {x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`}><CalendarDays size={11} /> {fmtDay(x.due_date)}</span>}
-      {x.start_time && <span className="meta"><Clock size={11} /> {x.start_time}{x.end_time ? `–${x.end_time}` : ""}</span>}
+      {x.start_time && <span className="meta"><Clock size={11} /> {fmtRange(x.start_time, x.end_time)}</span>}
       {x.remind_at && !x.reminded && !done && <span className="meta"><Bell size={11} /> {x.remind_at.slice(11, 16)}</span>}
       {x.subtasks.length > 0 && <span className="meta"><ListChecks size={11} /> {checked}/{x.subtasks.length}</span>}
       {x.links.length > 0 && <span className="meta"><Link2 size={11} /> {x.links.length}</span>}
       {x.files.length > 0 && <span className="meta"><Paperclip size={11} /> {x.files.length}</span>}
+      {x.recurrence && !done && <span className="meta" title="Повторяется"><Repeat size={11} /></span>}
+      {x.quadrant && !done && <QuadrantGlyph q={x.quadrant} />}
       {project && <span className="tag" style={{ background: `var(--${project.color})` }}>{project.name}</span>}
     </div>
   );
 }
 
 function hasMeta(x: Task, project?: Project) {
-  return !!(x.due_date || x.start_time || x.remind_at || x.subtasks.length || x.links.length || x.files.length || project);
+  return !!(x.due_date || x.start_time || x.remind_at || x.recurrence || x.quadrant || x.subtasks.length || x.links.length || x.files.length || project);
 }
 
 /**
@@ -98,6 +101,7 @@ export function BoardView(props: {
   projects: Project[];
   sel: number | null;
   picked: number[];
+  fileDrop: number | null; // над какой карточкой держат файлы из Finder
   onPick: Pick;
   onToggle: (x: Task) => void;
   onMove: (ids: number[], col: Column) => Promise<void>;
@@ -207,14 +211,14 @@ export function BoardView(props: {
         const isOver = drag?.over === col && drag.from !== col;
         return (
           <section key={col} ref={(el) => void (el ? colRefs.current.set(col, el) : colRefs.current.delete(col))}
-            className={`col ${props.current === col ? "cur" : ""} ${isOver ? "drop" : ""}`} style={{ "--c": `var(--${meta.accent})` } as React.CSSProperties}>
+            className={`col ${props.current === col ? "cur" : ""} ${isOver ? "over" : ""}`} style={{ "--c": `var(--${meta.accent})` } as React.CSSProperties}>
             <header className="col-head">
               <span className="col-icon"><Icon name={meta.icon} size={14} /></span>
               <span>{meta.name}</span>
               <span className="col-n">{col === "archive" ? items.length || "" : open || ""}</span>
             </header>
             <div className="col-body">
-              {isOver && <div className="drop-hint">{dropHint(col)}</div>}
+              {isOver && <div className="col-hint">{dropHint(col)}</div>}
               {items.map(({ task: x, group }) => {
                 const project = props.projects.find((p) => p.id === x.project_id);
                 const done = x.status === "done" || x.status === "archived";
@@ -222,8 +226,8 @@ export function BoardView(props: {
                 return (
                   <div key={x.id}>
                     {group && <div className="group col-group">{group}</div>}
-                    <article data-card={x.id} onPointerDown={(e) => start(e, x, col)}
-                      className={`kcard ${props.sel === x.id ? "sel" : ""} ${props.picked.includes(x.id) ? "picked" : ""} ${done ? "done" : ""} ${lifted ? "lifted" : ""}`}>
+                    <article data-card={x.id} data-task-id={x.id} onPointerDown={(e) => start(e, x, col)}
+                      className={`kcard ${props.sel === x.id ? "sel" : ""} ${props.fileDrop === x.id ? "filedrop" : ""} ${props.picked.includes(x.id) ? "picked" : ""} ${done ? "done" : ""} ${lifted ? "lifted" : ""}`}>
                       <div className="kcard-top">
                         <button className="chk" title={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
                           onClick={(e) => (e.stopPropagation(), props.onToggle(x))} />
@@ -254,6 +258,7 @@ export function StackView(props: {
   sel: number | null;
   picked: number[];
   empty: string;
+  fileDrop: number | null;
   onPick: Pick;
   onToggle: (x: Task) => void;
 }) {
@@ -270,9 +275,9 @@ export function StackView(props: {
         const note = x.note.trim();
         return [
           group && <div key={`g${x.id}`} className="group stack-group">{group}</div>,
-          <article key={x.id} data-card={x.id} role="option" aria-selected={props.sel === x.id}
+          <article key={x.id} data-card={x.id} data-task-id={x.id} role="option" aria-selected={props.sel === x.id}
             style={{ "--c": `var(--${project?.color ?? "graphite"})` } as React.CSSProperties}
-            className={`scard ${group ? "first" : ""} ${props.sel === x.id ? "sel" : ""} ${props.picked.includes(x.id) ? "picked" : ""} ${done ? "done" : ""}`}
+            className={`scard ${group ? "first" : ""} ${props.sel === x.id ? "sel" : ""} ${props.fileDrop === x.id ? "filedrop" : ""} ${props.picked.includes(x.id) ? "picked" : ""} ${done ? "done" : ""}`}
             onMouseDown={(e) => props.onPick(x.id, mods(e))}>
             <span className="scard-tab" aria-hidden="true" />
             <div className="kcard-top">

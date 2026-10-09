@@ -11,6 +11,9 @@
 .kcard.done .t, .scard.done .t { text-decoration: line-through; color: var(--muted); }
 .kcard.done .chk, .scard.done .chk { background: var(--exercise); border-color: var(--exercise); }
 
+/* Файл из Finder над карточкой */
+.kcard.filedrop, .scard.filedrop { border-color: var(--stand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--stand) 35%, transparent); }
+
 /* Выделенные для массовых действий: заметная бирюзовая рамка и галочка в углу */
 .row.picked, .kcard.picked, .scard.picked { border-color: var(--stand); box-shadow: inset 0 0 0 1px var(--stand); }
 .row.picked { background: color-mix(in srgb, var(--stand) 14%, var(--surface)); }
@@ -27,8 +30,8 @@
 .col-body { flex: 1; min-height: 60px; overflow-y: auto; padding: 2px 8px 10px; display: flex; flex-direction: column; gap: 6px; }
 .col-group { margin: 8px 4px 0; }
 .col-empty { color: var(--muted); font-size: 12px; text-align: center; padding: 18px 0; opacity: .7; }
-.col.drop { border-color: var(--c); background: color-mix(in srgb, var(--c) 7%, var(--surface)); box-shadow: inset 0 0 0 1px var(--c); }
-.drop-hint { border: 1.5px dashed var(--c); color: var(--c); border-radius: 10px; padding: 12px 10px; font-size: 12px; font-weight: 600; text-align: center;
+.col.over { border-color: var(--c); background: color-mix(in srgb, var(--c) 7%, var(--surface)); box-shadow: inset 0 0 0 1px var(--c); }
+.col-hint { border: 1.5px dashed var(--c); color: var(--c); border-radius: 10px; padding: 12px 10px; font-size: 12px; font-weight: 600; text-align: center;
   background: color-mix(in srgb, var(--c) 8%, transparent); }
 
 .kcard { position: relative; display: flex; flex-direction: column; gap: 7px; padding: 9px 10px; border-radius: 11px; background: var(--surface);
@@ -74,7 +77,7 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
   .scard { transition: transform .26s cubic-bezier(.2, .8, .2, 1), box-shadow .26s, border-color .12s, background .12s; }
   .kcard { transition: border-color .12s, background .12s, opacity .15s; }
   .col { transition: border-color .15s, background .15s, box-shadow .15s; }
-  .drop-hint { animation: drop-in .18s cubic-bezier(.2, .8, .2, 1); }
+  .col-hint { animation: drop-in .18s cubic-bezier(.2, .8, .2, 1); }
 }
 @keyframes drop-in { from { opacity: 0; transform: scaleY(.6); } }
 

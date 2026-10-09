@@ -3,7 +3,7 @@ import { LogicalSize } from "@tauri-apps/api/dpi";
 import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { addTask, loadProjects } from "./db";
+import { addTask, loadProjects, type Draft, type Project } from "./db";
 import { QuickForm } from "./components";
 
 const hideQuick = () => invoke("hide_quick");
@@ -14,6 +14,8 @@ export default function QuickApp() {
   // а не при открытии: иначе первые буквы, набранные сразу после ⌥Space, потеряются
   const [key, setKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const refreshProjects = () => loadProjects().then(setProjects).catch(() => {});
   const win = getCurrentWindow();
   const root = useRef<HTMLDivElement>(null);
 
@@ -32,18 +34,18 @@ export default function QuickApp() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    loadProjects().catch(() => {}); // заранее открыть базу, чтобы первое сохранение было мгновенным
+    refreshProjects(); // заодно заранее открыть базу, чтобы первое сохранение было мгновенным
     const focusTitle = () => document.querySelector<HTMLInputElement>(".qi-title")?.focus();
     const un = [
-      listen("quick-open", () => (fit(), focusTitle())),
+      listen("quick-open", () => (fit(), focusTitle(), refreshProjects())),
       win.onFocusChanged(({ payload }) => payload && focusTitle()),
     ];
     return () => un.forEach((p) => p.then((f) => f()));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const save = async (title: string, note: string) => {
+  const save = async (title: string, note: string, draft: Draft) => {
     try {
-      await addTask(title, note);
+      await addTask(title, note, draft);
       setError(null);
       setKey((k) => k + 1);
       await hideQuick();
@@ -61,7 +63,7 @@ export default function QuickApp() {
 
   return (
     <div ref={root} className="quick-root">
-      <QuickForm key={key} onSave={save} onCancel={cancel} />
+      <QuickForm key={key} projects={projects} onSave={save} onCancel={cancel} />
       {error && <div className="error">Не сохранилось: {error}</div>}
     </div>
   );

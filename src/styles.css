@@ -180,6 +180,78 @@ html.quick, html.quick body { background: transparent; }
 .quick-root { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .quick-root .qi { width: 100%; box-shadow: 0 6px 16px -8px rgba(0, 0, 0, .5); }
 
+/* Расширенные поля задачи: строки «подпись — поле», время, повтор, матрица */
+.lines { display: flex; flex-direction: column; gap: 8px; }
+.lines > .lbl { margin-bottom: -1px; }
+.line { display: grid; grid-template-columns: 68px minmax(0, 1fr); align-items: start; gap: 8px; }
+.line-lbl { font-size: 12px; color: var(--muted); padding-top: 6px; }
+.lbl .opt { text-transform: none; letter-spacing: 0; opacity: .75; margin-left: 4px; }
+.sub-lbl { margin-top: 12px; }
+.dash { color: var(--muted); }
+.durations { gap: 3px; width: 100%; }
+.mini { font-size: 11px; font-weight: 600; padding: 3px 7px; border-radius: 7px; border: 1px solid var(--line); color: var(--muted); font-variant-numeric: tabular-nums; }
+.mini:hover:not(:disabled) { color: var(--fg); border-color: var(--border); }
+.mini.on { background: var(--stand); border-color: transparent; color: var(--on-acc); }
+.mini.wd { min-width: 30px; }
+.field.num { width: 54px; padding: 5px 7px; font-variant-numeric: tabular-nums; }
+.inline-pop { flex: 1 1 100%; max-width: 330px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+
+.quad { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; width: 100%; }
+.quad-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 6px 9px; border-radius: 9px; border: 1px solid var(--line); text-align: left; background: var(--surface); }
+.quad-cell b { font-size: 12px; font-weight: 600; }
+.quad-cell span { font-size: 11px; color: var(--muted); }
+.quad-cell:hover:not(:disabled) { filter: brightness(1.03); border-color: var(--border) !important; }
+.quad-cell.on { border-color: transparent !important; color: var(--on-acc); }
+.quad-cell.on span { color: inherit; opacity: .8; }
+.quad-glyph { flex: none; }
+
+.rule { display: flex; flex-direction: column; gap: 9px; }
+.rule .line { grid-template-columns: 62px minmax(0, 1fr); }
+.rule-sep { margin: 4px 0 -2px; padding-top: 10px; border-top: 1px solid var(--line); }
+.rule-foot { display: flex; align-items: center; gap: 10px; justify-content: space-between; margin-top: 2px; }
+
+/* Чеклист: строки сдвигаются плавно, пока тащишь пункт */
+.checklist { display: flex; flex-direction: column; gap: 6px; }
+.subs { display: flex; flex-direction: column; gap: 3px; position: relative; }
+.sub { display: flex; align-items: center; gap: 7px; padding: 3px 6px 3px 2px; border-radius: 8px; background: var(--surface); position: relative; transition: transform .18s cubic-bezier(.2, .8, .2, 1), box-shadow .18s; }
+.sub:hover { background: color-mix(in srgb, var(--fg) 4%, var(--surface)); }
+.sub.lifted { box-shadow: 0 10px 22px -12px rgba(0, 0, 0, .5), 0 0 0 1px var(--border); background: var(--surface); }
+.subs.dragging, .subs.dragging * { cursor: grabbing !important; user-select: none; }
+.grip { display: grid; place-items: center; color: var(--muted); opacity: 0; cursor: grab; padding: 2px 0; touch-action: none; }
+.sub:hover .grip, .sub.lifted .grip { opacity: .8; }
+.chk.small { width: 15px; height: 15px; border-radius: 5px; }
+.sub.done .chk { background: var(--exercise); border-color: var(--exercise); }
+.sub-t { flex: 1; min-width: 0; border: 0; background: none; outline: none; padding: 3px 0; }
+.sub.done .sub-t { text-decoration: line-through; color: var(--muted); }
+.x { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; color: var(--muted); opacity: 0; flex: none; }
+.sub:hover .x, .att:hover .x { opacity: 1; }
+.x:hover { background: var(--field); color: var(--fg); }
+.sub-new { padding: 7px 10px; width: 100%; }
+
+.attach { display: flex; flex-direction: column; gap: 4px; }
+.att { display: flex; align-items: center; gap: 7px; padding: 4px 4px 4px 6px; border-radius: 8px; }
+.att:hover { background: color-mix(in srgb, var(--fg) 4%, var(--surface)); }
+.att-ic { color: var(--stand); flex: none; }
+.att-name { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.att-name:hover { color: var(--stand); text-decoration: underline; text-underline-offset: 2px; }
+.att-add { display: flex; gap: 6px; margin-top: 2px; }
+.att-add .field { flex: 1; min-width: 0; padding: 7px 10px; }
+.field.bad { border-color: var(--move); }
+.btn.small { display: inline-flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 10px; font-size: 12px; flex: none; }
+
+/* Значки в строке задачи и перетаскивание файлов */
+.badge { display: inline-flex; align-items: center; gap: 3px; }
+.row.drop { border-color: var(--stand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--stand) 35%, transparent); }
+.det { position: relative; }
+.det.dropping { box-shadow: inset 0 0 0 2px var(--stand); }
+.drop-hint { position: sticky; bottom: 0; margin: 0 -4px; padding: 10px; border-radius: 12px; text-align: center; font-weight: 600; color: var(--on-acc); background: var(--stand); box-shadow: 0 8px 18px -10px var(--stand); }
+
+/* Параметры в форме записи задачи */
+.qi-more { padding: 10px 2px 2px; border-top: 1px solid var(--line); }
+.more-btn { font-size: 12px; font-weight: 600; color: var(--stand); padding: 5px 9px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--stand) 40%, transparent); }
+.more-btn:hover { background: color-mix(in srgb, var(--stand) 10%, transparent); }
+.more-btn.on { color: var(--muted); border-color: var(--line); }
+
 @media (prefers-reduced-motion: no-preference) {
   .row, .nav, .chip { transition: background .12s, border-color .12s; }
 }
