@@ -12,7 +12,8 @@ export const layoutOf = (view: ViewId, settings: Record<string, string>): Layout
 
 /** Столбцы канбана: те же четыре списка, что в боковой панели */
 export type Column = "inbox" | "today" | "soon" | "archive";
-export const COLUMNS = VIEWS as { id: Column; name: string; accent: string; icon: string }[];
+const COLUMN_IDS: string[] = ["inbox", "today", "soon", "archive"];
+export const COLUMNS = VIEWS.filter((v) => COLUMN_IDS.includes(v.id)) as { id: Column; name: string; accent: string; icon: string }[];
 
 /** В проекте канбан показывает только его задачи, в остальных списках все */
 function scoped(view: ViewId, tasks: Task[]): Task[] {
