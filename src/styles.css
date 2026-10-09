@@ -4,6 +4,7 @@
   --bg: #E1E5EC; --surface: #F1F3F7; --field: #E6EAF0;
   --fg: #161B26; --muted: #535C6E; --line: #D5DAE3; --border: #C9D0DB;
   --move: #E0104F; --exercise: #3C9A0C; --stand: #0890AA;
+  --amber: #C27A00; --violet: #7046E0; --orange: #E2640F; --blue: #2E62E8; --graphite: #6B7A90;
   --on-acc: #FFFFFF; --sel: rgba(8, 144, 170, .12); --ring-track: rgba(22, 27, 38, .09);
   --font: -apple-system, "SF Pro Text", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, monospace;
@@ -15,6 +16,7 @@
     --bg: #16181C; --surface: #22252C; --field: #1B1E23;
     --fg: #F2F4F8; --muted: #A4ACBB; --line: #30343D; --border: #363B45;
     --move: #FA114F; --exercise: #92E82A; --stand: #1EEAEF;
+    --amber: #FFB938; --violet: #A688FF; --orange: #FF8A3D; --blue: #6E9BFF; --graphite: #8C99AD;
     --on-acc: #0D0F12; --sel: rgba(30, 234, 239, .12); --ring-track: rgba(255, 255, 255, .08);
     color-scheme: dark;
   }
@@ -23,6 +25,7 @@
     --bg: #16181C; --surface: #22252C; --field: #1B1E23;
     --fg: #F2F4F8; --muted: #A4ACBB; --line: #30343D; --border: #363B45;
     --move: #FA114F; --exercise: #92E82A; --stand: #1EEAEF;
+    --amber: #FFB938; --violet: #A688FF; --orange: #FF8A3D; --blue: #6E9BFF; --graphite: #8C99AD;
     --on-acc: #0D0F12; --sel: rgba(30, 234, 239, .12); --ring-track: rgba(255, 255, 255, .08);
     color-scheme: dark;
 }

@@ -6,8 +6,9 @@ import { Icon } from "./icons";
 import { Calendar, Popover, TimeInput, useAutosize } from "./widgets";
 
 export const PRIORITY = [
-  { value: 1, name: "Низкая", accent: "stand" },
-  { value: 2, name: "Средняя", accent: "exercise" },
+  // Зелёный и бирюзовый заняты под «сделано» и время, поэтому важность берёт нейтральный и янтарный
+  { value: 1, name: "Низкая", accent: "muted" },
+  { value: 2, name: "Средняя", accent: "amber" },
   { value: 3, name: "Высокая", accent: "move" },
 ];
 

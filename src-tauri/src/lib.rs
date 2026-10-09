@@ -29,6 +29,12 @@ fn migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/002_settings.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 3,
+            description: "separate palette for projects",
+            sql: include_str!("../migrations/003_project_palette.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 

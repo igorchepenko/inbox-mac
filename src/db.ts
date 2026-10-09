@@ -2,7 +2,8 @@ import Database from "@tauri-apps/plugin-sql";
 import { nowStamp, today } from "./dates";
 
 export type Status = "inbox" | "active" | "done" | "archived";
-export type Accent = "move" | "exercise" | "stand";
+/** Цвета проектов. Системные move, exercise и stand проектам не достаются */
+export type ProjectColor = "violet" | "orange" | "blue" | "graphite";
 
 export interface Task {
   id: number;
@@ -22,7 +23,7 @@ export interface Task {
 export interface Project {
   id: number;
   name: string;
-  color: Accent;
+  color: ProjectColor;
   icon: string;
   description: string;
   position: number;

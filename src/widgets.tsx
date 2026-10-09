@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefO
 import { ChevronLeft, ChevronRight, Monitor, Moon, Sun } from "lucide-react";
 import { dayKey, parseDay, today } from "./dates";
 import { Icon, ICONS } from "./icons";
-import type { Accent, ProjectFields } from "./db";
+import type { ProjectColor, ProjectFields } from "./db";
 import { setTheme, savedTheme, type Theme } from "./theme";
 
 /** Высота textarea растёт вместе с текстом. Пересчитывается и при смене ширины окна */
@@ -191,10 +191,12 @@ export function ThemeSwitch() {
   );
 }
 
-const COLORS: { value: Accent; name: string }[] = [
-  { value: "move", name: "Красный" },
-  { value: "exercise", name: "Зелёный" },
-  { value: "stand", name: "Бирюзовый" },
+// Своя палитра проектов: не пересекается с системными красным, зелёным и бирюзовым
+const COLORS: { value: ProjectColor; name: string }[] = [
+  { value: "violet", name: "Фиолетовый" },
+  { value: "orange", name: "Оранжевый" },
+  { value: "blue", name: "Синий" },
+  { value: "graphite", name: "Графит" },
 ];
 
 /** Создание и редактирование проекта: название, описание, цвет, иконка */
@@ -204,7 +206,7 @@ export function ProjectDialog(props: {
   onDelete?: () => void;
   onClose: () => void;
 }) {
-  const [p, setP] = useState<ProjectFields>(props.initial ?? { name: "", description: "", color: "stand", icon: "folder" });
+  const [p, setP] = useState<ProjectFields>(props.initial ?? { name: "", description: "", color: "violet", icon: "folder" });
   const [armed, setArmed] = useState(false);
   const desc = useRef<HTMLTextAreaElement>(null);
   useAutosize(desc, p.description, 200);
