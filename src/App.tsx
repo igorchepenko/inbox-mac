@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { invoke } from "@tauri-apps/api/core";
 import * as db from "./db";
 import type { Project, ProjectFields, Task } from "./db";
 import { fmtDay, nowStamp, today } from "./dates";
@@ -8,9 +9,11 @@ import { countFor, listFor, progressFor, VIEWS, type ViewId } from "./views";
 import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
 import { Icon } from "./icons";
 import { IconGrid, Popover, ProjectDialog, ThemeSwitch } from "./widgets";
-import { Link2, ListChecks, Paperclip, Pencil, Repeat } from "lucide-react";
+import { Link2, ListChecks, Paperclip, Pencil, Repeat, Settings as Gear } from "lucide-react";
 import { fmtRange, QuadrantGlyph } from "./extras";
-import { ensurePermission, fireDueReminders } from "./reminders";
+import { ensurePermission, fireDueReminders, maybeSendDigest } from "./reminders";
+import { Settings } from "./Settings";
+import { labelFromAccel, pref, quickKeyLabel, setQuickKeyLabel } from "./prefs";
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -22,6 +25,10 @@ export default function App() {
   const [sel, setSel] = useState<number | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shortcutError, setShortcutError] = useState<string | null>(null);
+  const settingsRef = useRef<Record<string, string>>({});
+  const started = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [, setTick] = useState(0);
 
@@ -32,7 +39,12 @@ export default function App() {
       setTasks(t);
       setProjects(p);
       setSettings(st);
+      settingsRef.current = st;
       setError(null);
+      if (!started.current) {
+        started.current = true;
+        startUp(t, st);
+      }
       return t;
     } catch (e) {
       setError(String(e));
@@ -55,17 +67,18 @@ export default function App() {
 
   useEffect(() => {
     reload();
-    // Задачи из окна быстрого ввода
-    const un = listen("tasks-changed", () => reload());
-    // Раз в 30 секунд: напоминания, смена дня, архив вчерашних сделанных
+    // Задачи из окна быстрого ввода и «Настройки…» из меню приложения
+    const un = [listen("tasks-changed", () => reload()), listen("open-settings", () => setSettingsOpen(true))];
+    // Раз в 30 секунд: напоминания, утренняя сводка, смена дня, архив вчерашних сделанных
     const id = setInterval(async () => {
       const t = await reload();
-      if (await fireDueReminders(t)) await reload();
+      const fired = await fireDueReminders(t, settingsRef.current);
+      if ((await maybeSendDigest(t, settingsRef.current)) || fired) await reload();
       setTick((n) => n + 1);
     }, 30_000);
     return () => {
       clearInterval(id);
-      un.then((f) => f());
+      un.forEach((p) => p.then((f) => f()));
     };
   }, [reload]);
 
@@ -81,11 +94,36 @@ export default function App() {
     else setSel(ids[Math.min(lastIdx.current, ids.length - 1)] ?? null);
   }, [ids.join(","), sel]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const openView = (v: ViewId) => {
+  const openView = (v: ViewId, from = tasks) => {
     setView(v);
     lastIdx.current = 0;
-    setSel(listFor(v, tasks)[0]?.task.id ?? null);
+    setSel(listFor(v, from)[0]?.task.id ?? null);
+    db.setSetting("last.view", v).catch(() => {}); // для начального экрана «Где остановился»
   };
+
+  const hidden = (v: ViewId) => v !== "inbox" && settings[`hidden:${v}`] === "1";
+
+  // Сочетание быстрого ввода: Rust при запуске занимает ⌥Space, здесь меняем на сохранённое в настройках
+  const applyShortcut = async (accel: string): Promise<string | null> => {
+    try {
+      await invoke("set_quick_shortcut", { accel, label: labelFromAccel(accel) });
+      setQuickKeyLabel(accel);
+      setShortcutError(null);
+      return null;
+    } catch (e) {
+      return String(e);
+    }
+  };
+
+  // Первая загрузка: начальный экран и сочетание из настроек
+  function startUp(t: Task[], st: Record<string, string>) {
+    const start = pref(st, "start.view");
+    const v = (start === "last" ? st["last.view"] ?? "inbox" : start) as ViewId;
+    // Удалённый проект или спрятанный список сам сменится на «На разбор»
+    if (v !== "inbox") openView(v, t);
+    const accel = pref(st, "quick.shortcut");
+    if (accel !== "Alt+Space") applyShortcut(accel).then((err) => err && setShortcutError(`Не удалось занять ${labelFromAccel(accel)}: ${err}`));
+  }
 
   const patch = (id: number, p: TaskPatch) => {
     if (p.remind_at) ensurePermission();
@@ -145,13 +183,19 @@ export default function App() {
   // Клавиатура
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (newOpen || projectDlg) return; // формы сами ловят Enter и Esc
+      if (e.metaKey && e.code === "Comma") return e.preventDefault(), setSettingsOpen(true);
+      if (newOpen || projectDlg || settingsOpen) return; // формы сами ловят Enter и Esc
       if (helpOpen) {
         if (e.key === "Escape" || (e.metaKey && e.code === "Slash")) setHelpOpen(false);
         return;
       }
       if (e.metaKey && e.code === "Slash") return e.preventDefault(), setHelpOpen(true);
-      if (e.metaKey && /^Digit[1-4]$/.test(e.code)) return e.preventDefault(), openView(VIEWS[Number(e.code.slice(5)) - 1].id);
+      if (e.metaKey && /^Digit[1-4]$/.test(e.code)) {
+        e.preventDefault();
+        const v = VIEWS[Number(e.code.slice(5)) - 1].id;
+        if (!hidden(v)) openView(v);
+        return;
+      }
       const el = document.activeElement as HTMLElement | null;
       if (el && /INPUT|TEXTAREA|SELECT/.test(el.tagName)) {
         if (e.key === "Escape") el.blur();
@@ -204,7 +248,7 @@ export default function App() {
 
   const current = VIEWS.find((v) => v.id === view);
   const project = view.startsWith("p:") ? projects.find((p) => `p:${p.id}` === view) : undefined;
-  if (!current && !project && projects.length) queueMicrotask(() => openView("inbox"));
+  if ((!current && !project && projects.length) || hidden(view)) queueMicrotask(() => openView("inbox"));
   const progress = progressFor(view, tasks);
 
   return (
@@ -212,6 +256,7 @@ export default function App() {
       <div className="titlebar" data-tauri-drag-region />
       <Sidebar view={view} tasks={tasks} projects={projects} settings={settings} onOpen={openView}
         onNewProject={() => setProjectDlg("new")} onEditProject={(p) => setProjectDlg(p)}
+        onSettings={() => setSettingsOpen(true)}
         onViewIcon={(id, icon) => run(() => db.setSetting(`icon:${id}`, icon))} />
 
       <main className="main">
@@ -271,6 +316,15 @@ export default function App() {
         </div>
       )}
       {helpOpen && <Help onClose={() => setHelpOpen(false)} />}
+      {settingsOpen && (
+        <Settings settings={settings} shortcutError={shortcutError} onClose={() => setSettingsOpen(false)}
+          onSet={(key, value) => run(() => db.setSetting(key, value))}
+          onQuickShortcut={async (accel) => {
+            const err = await applyShortcut(accel);
+            if (!err) await run(() => db.setSetting("quick.shortcut", accel));
+            return err;
+          }} />
+      )}
       {projectDlg && (
         <ProjectDialog
           initial={projectDlg === "new" ? undefined : projectDlg}
@@ -298,7 +352,7 @@ function subtitleFor(view: ViewId, n: number): string {
 }
 
 function emptyText(view: ViewId): string {
-  if (view === "inbox") return "Здесь пусто. Нажми ⌥Space в любом приложении, чтобы записать задачу.";
+  if (view === "inbox") return `Здесь пусто. Нажми ${quickKeyLabel()} в любом приложении, чтобы записать задачу.`;
   if (view === "today") return "На сегодня ничего. Поставь дату «Сегодня» при разборе.";
   if (view === "archive") return "Сделанные задачи попадают сюда на следующий день.";
   return "Здесь пока ничего нет.";
@@ -317,6 +371,7 @@ function Sidebar(props: {
   onNewProject: () => void;
   onEditProject: (p: Project) => void;
   onViewIcon: (id: ViewId, icon: string) => void;
+  onSettings: () => void;
 }) {
   // Пункт меню, у которого сейчас открыт выбор иконки
   const [picker, setPicker] = useState<{ id: ViewId; el: HTMLElement } | null>(null);
@@ -336,12 +391,13 @@ function Sidebar(props: {
   const pickerView = picker && VIEWS.find((v) => v.id === picker.id);
   return (
     <nav className="side">
-      {VIEWS.map((v) => item(v.id, v.name, v.accent, viewIcon(v.id, props.settings), (el) => setPicker({ id: v.id, el })))}
+      {VIEWS.filter((v) => v.id === "inbox" || props.settings[`hidden:${v.id}`] !== "1").map((v) => item(v.id, v.name, v.accent, viewIcon(v.id, props.settings), (el) => setPicker({ id: v.id, el })))}
       <div className="sec">Проекты</div>
       {props.projects.map((p) => item(`p:${p.id}`, p.name, p.color, p.icon, () => props.onEditProject(p)))}
       <button className="nav add-project" onClick={props.onNewProject}>+ Новый проект</button>
       <div className="side-foot">
         <ThemeSwitch />
+        <button className="gear" title="Настройки (⌘,)" onClick={props.onSettings}><Gear size={15} /></button>
       </div>
       {picker && pickerView && (
         <Popover anchor={picker.el} onClose={() => setPicker(null)} width={232}>

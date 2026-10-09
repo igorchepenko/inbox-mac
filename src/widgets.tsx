@@ -174,18 +174,25 @@ export function IconGrid(props: { value: string; accent: string; onPick: (name: 
   );
 }
 
-export function ThemeSwitch() {
+/** Тема: быстрый переключатель в углу меню и он же, с подписями (wide), в настройках */
+export function ThemeSwitch(props: { wide?: boolean }) {
   const [t, setT] = useState<Theme>(savedTheme());
+  // Два переключателя в одном окне должны показывать одно и то же
+  useEffect(() => {
+    const on = (e: Event) => setT((e as CustomEvent<Theme>).detail);
+    window.addEventListener("inbox-theme", on);
+    return () => window.removeEventListener("inbox-theme", on);
+  }, []);
   const opts: [Theme, ReactNode, string][] = [
     ["system", <Monitor size={14} />, "Как в системе"],
     ["light", <Sun size={14} />, "Светлая"],
     ["dark", <Moon size={14} />, "Тёмная"],
   ];
   return (
-    <div className="theme-switch" role="radiogroup" aria-label="Тема">
+    <div className={`theme-switch ${props.wide ? "wide" : ""}`} role="radiogroup" aria-label="Тема">
       {opts.map(([v, icon, label]) => (
         <button key={v} role="radio" aria-checked={t === v} title={label} className={t === v ? "on" : ""}
-          onClick={() => (setTheme(v), setT(v))}>{icon}</button>
+          onClick={() => (setTheme(v), setT(v))}>{icon}{props.wide && <span>{label}</span>}</button>
       ))}
     </div>
   );

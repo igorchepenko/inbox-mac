@@ -1,5 +1,6 @@
 import type { Task } from "./db";
 import { fmtDay, today } from "./dates";
+import { quickKeyLabel } from "./prefs";
 
 export type ViewId = "inbox" | "today" | "soon" | "archive" | `p:${number}`;
 
@@ -80,7 +81,7 @@ export function progressFor(view: ViewId, tasks: Task[]): Progress | null {
     const sorted = tasks.filter((x) => x.triaged_at?.slice(0, 10) === t).length;
     const subtitle = left
       ? `${plural(left, "задача ждёт", "задачи ждут", "задач ждут")} разбора${sorted ? `, разобрано сегодня ${sorted}` : ""}`
-      : sorted ? `Всё разобрано, сегодня ${sorted}` : "Пусто. Нажми ⌥Space, чтобы записать задачу";
+      : sorted ? `Всё разобрано, сегодня ${sorted}` : `Пусто. Нажми ${quickKeyLabel()}, чтобы записать задачу`;
     return { fraction: left + sorted ? sorted / (left + sorted) : 0, count: left, accent: "move", subtitle };
   }
   if (view === "today") {

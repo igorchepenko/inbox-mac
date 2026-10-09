@@ -14,6 +14,8 @@
     "sql:default",
     "sql:allow-execute",
     "notification:default",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "core:webview:allow-set-webview-zoom",
+    "autostart:default"
   ]
 }
