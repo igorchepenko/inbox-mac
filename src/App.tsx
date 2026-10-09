@@ -9,6 +9,7 @@ import { Icon } from "./icons";
 import { IconGrid, Popover, ProjectDialog, ThemeSwitch } from "./widgets";
 import { Pencil } from "lucide-react";
 import { ensurePermission, fireDueReminders } from "./reminders";
+import CalendarView from "./CalendarView";
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -69,11 +70,12 @@ export default function App() {
 
   const list = useMemo(() => listFor(view, tasks), [view, tasks]);
   const ids = list.map((i) => i.task.id);
-  const task = tasks.find((x) => x.id === sel && ids.includes(x.id)) ?? null;
+  const task = tasks.find((x) => x.id === sel && (view === "calendar" || ids.includes(x.id))) ?? null;
 
   // Когда выбранная задача ушла из списка (разобрана, сделана), выбираем ту, что встала на её место
   const lastIdx = useRef(0);
   useEffect(() => {
+    if (view === "calendar") return; // в календаре выбор не зависит от списка
     const i = ids.indexOf(sel ?? -1);
     if (i >= 0) lastIdx.current = i;
     else setSel(ids[Math.min(lastIdx.current, ids.length - 1)] ?? null);
@@ -120,7 +122,7 @@ export default function App() {
         return;
       }
       if (e.metaKey && e.code === "Slash") return e.preventDefault(), setHelpOpen(true);
-      if (e.metaKey && /^Digit[1-4]$/.test(e.code)) return e.preventDefault(), openView(VIEWS[Number(e.code.slice(5)) - 1].id);
+      if (e.metaKey && /^Digit[1-5]$/.test(e.code)) return e.preventDefault(), openView(VIEWS[Number(e.code.slice(5)) - 1].id);
       const el = document.activeElement as HTMLElement | null;
       if (el && /INPUT|TEXTAREA|SELECT/.test(el.tagName)) {
         if (e.key === "Escape") el.blur();
@@ -183,6 +185,14 @@ export default function App() {
         onNewProject={() => setProjectDlg("new")} onEditProject={(p) => setProjectDlg(p)}
         onViewIcon={(id, icon) => run(() => db.setSetting(`icon:${id}`, icon))} />
 
+      {view === "calendar" ? (
+        <CalendarView tasks={tasks} projects={projects} selected={sel} onSelect={setSel}
+          onToggle={(x) => run(() => (x.status === "done" ? db.reopenTask(x) : db.completeTask(x)))}
+          onMove={(id, p) => {
+            if (p.remind_at) ensurePermission();
+            run(() => db.updateTask(id, p));
+          }} />
+      ) : (
       <main className="main">
         <header className="head" data-tauri-drag-region>
           {progress ? <Ring fraction={progress.fraction} accent={progress.accent} count={progress.count} /> : (
@@ -221,6 +231,7 @@ export default function App() {
           {!list.length && <div className="empty">{emptyText(view)}</div>}
         </div>
       </main>
+      )}
 
       {task ? (
         <Details key={task.id} task={task} projects={projects}

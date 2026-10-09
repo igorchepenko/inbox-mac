@@ -1,0 +1,135 @@
+/* Календарь: та же плоская палитра. Цвет плашки — цвет проекта (--c), без проекта бирюзовый: время */
+
+.cal-main { gap: 10px; }
+.cal-main.is-dragging, .cal-main.is-dragging * { cursor: grabbing !important; }
+.cal-tools { display: flex; align-items: center; gap: 10px; flex: none; }
+.cal-stepper { display: flex; align-items: center; gap: 2px; }
+.cal-today { padding: 4px 10px; border-radius: 8px; font-weight: 600; font-size: 12px; border: 1px solid var(--line); }
+.cal-today:hover { border-color: var(--border); }
+.cal-modes { display: inline-flex; padding: 2px; gap: 2px; border-radius: 9px; background: var(--field); border: 1px solid var(--line); }
+.cal-modes button { padding: 4px 10px; border-radius: 7px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.cal-modes button:hover { color: var(--fg); }
+.cal-modes button.on { background: var(--surface); color: var(--fg); box-shadow: 0 1px 2px rgba(0, 0, 0, .15); }
+
+/* Плашка в строке «весь день» и в ячейке месяца */
+.cal-chip { --c: var(--stand); position: relative; display: flex; align-items: center; gap: 5px; min-width: 0; padding: 2px 6px 2px 4px; border-radius: 6px;
+  font-size: 11.5px; font-weight: 600; line-height: 16px; cursor: grab;
+  background: color-mix(in srgb, var(--c) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--c) 30%, transparent); }
+.cal-chip:hover { border-color: color-mix(in srgb, var(--c) 60%, transparent); }
+.cal-chip-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-chip-time { font-family: var(--mono); font-size: 10.5px; color: var(--muted); flex: none; }
+.cal-rep { color: var(--muted); flex: none; }
+
+/* Кружок «сделано» внутри плашки */
+.cal-chk { width: 11px; height: 11px; border-radius: 50%; flex: none; border: 1.5px solid var(--c); background: transparent; }
+.cal-chk:hover:not(:disabled) { background: color-mix(in srgb, var(--exercise) 35%, transparent); border-color: var(--exercise); }
+.cal-chk:disabled { cursor: default; }
+
+/* Состояния плашек: сделано, будущий повтор, выбрано, важное, просрочено */
+.cal-chip.done, .cal-ev.done { background: transparent; border-color: var(--line); color: var(--muted); }
+.cal-chip.done .cal-chip-t, .cal-ev.done .cal-ev-t { text-decoration: line-through; }
+.done .cal-chk { background: var(--exercise); border-color: var(--exercise); }
+.cal-chip.virtual, .cal-ev.virtual { background: transparent; border-style: dashed; color: var(--muted); }
+.virtual .cal-chk { border-style: dashed; opacity: .7; }
+.cal-chip.locked, .cal-ev.locked { cursor: pointer; }
+.cal-chip.sel, .cal-ev.sel { box-shadow: 0 0 0 1.5px var(--stand); }
+.cal-chip.high::after, .cal-ev.high .cal-ev-head::after { content: "!"; color: var(--move); font-weight: 800; flex: none; }
+.overdue .cal-chk { border-color: var(--move); }
+
+/* Сетка месяца */
+.cal-month { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.cal-month-wd { display: grid; grid-template-columns: repeat(7, 1fr); padding-bottom: 6px; }
+.cal-month-wd span { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding-left: 8px; }
+.cal-month-grid { flex: 1; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-template-rows: repeat(6, minmax(0, 1fr));
+  gap: 4px; min-height: 0; }
+.cal-cell { display: flex; flex-direction: column; gap: 2px; padding: 4px; min-height: 0; overflow: hidden; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--line); transition: background .15s, border-color .15s; }
+.cal-cell.other { background: transparent; }
+.cal-cell.other .cal-cell-n { color: var(--muted); opacity: .6; }
+.cal-cell.target { border-color: var(--stand); background: color-mix(in srgb, var(--stand) 9%, var(--surface)); }
+.cal-cell-n { align-self: flex-start; min-width: 22px; height: 20px; padding: 0 5px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  font-variant-numeric: tabular-nums; text-align: center; }
+.cal-cell-n:hover { background: var(--field); }
+.cal-cell.today .cal-cell-n { background: var(--stand); color: var(--on-acc); box-shadow: 0 4px 10px -6px var(--stand); }
+.cal-more { align-self: flex-start; font-size: 11px; color: var(--muted); padding: 0 4px; }
+.cal-more:hover { color: var(--fg); }
+.cal-chip.floating { position: fixed; z-index: 20; pointer-events: none; width: 150px; transform: translate(-30%, -50%) rotate(-1.5deg) scale(1.05);
+  box-shadow: 0 12px 24px -12px var(--c); background: color-mix(in srgb, var(--c) 18%, var(--surface)); }
+
+/* Сетка часов: день и неделя */
+.cal-time { flex: 1; display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.cal-days, .cal-allday { display: grid; grid-template-columns: 48px minmax(0, 1fr); border-bottom: 1px solid var(--line); flex: none; }
+.cal-days { grid-template-columns: 48px repeat(var(--n), minmax(0, 1fr)); }
+.cal-gutter { font-size: 9.5px; color: var(--muted); text-align: right; padding: 6px 6px 0 0; line-height: 1.1; }
+.cal-dayhead { display: flex; align-items: baseline; justify-content: center; gap: 6px; padding: 7px 0; border-left: 1px solid var(--line); }
+.cal-dayhead .wd { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.cal-dayhead .dn { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 24px; height: 24px; line-height: 24px; border-radius: 999px; }
+.cal-dayhead:not(:disabled):hover .dn { background: var(--field); }
+.cal-dayhead.past .dn { color: var(--muted); }
+.cal-dayhead.today .dn { background: var(--stand); color: var(--on-acc); box-shadow: 0 4px 10px -6px var(--stand); }
+.cal-dayhead.today .wd { color: var(--stand); }
+.cal-allday-cols { display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); max-height: 92px; overflow-y: auto; }
+.cal-allday-col { display: flex; flex-direction: column; gap: 2px; padding: 3px; min-height: 28px; min-width: 0; border-left: 1px solid var(--line);
+  transition: background .15s; }
+.cal-allday-col.target { background: color-mix(in srgb, var(--stand) 10%, transparent); }
+
+.cal-scroll { flex: 1; overflow-y: auto; min-height: 0; }
+.cal-grid-body { position: relative; display: grid; grid-template-columns: 48px minmax(0, 1fr);
+  background-image: linear-gradient(var(--line) 1px, transparent 1px); background-size: 100% 48px; background-position: 0 -1px; }
+.cal-hours { position: relative; background: var(--surface); }
+.cal-hours span { position: absolute; right: 6px; transform: translateY(-50%); font-family: var(--mono); font-size: 10px; color: var(--muted); }
+.cal-cols { position: relative; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+  /* Пунктир на половине часа */
+  background-image: linear-gradient(color-mix(in srgb, var(--line) 50%, transparent) 1px, transparent 1px); background-size: 100% 48px; background-position: 0 23px; }
+.cal-col { position: relative; border-left: 1px solid var(--line); min-width: 0; }
+.cal-col.today { background: color-mix(in srgb, var(--stand) 4%, transparent); }
+.cal-now { position: absolute; left: -1px; right: 0; height: 2px; background: var(--stand); z-index: 3; pointer-events: none; }
+.cal-now::before { content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--stand); }
+
+/* Плашка со временем */
+.cal-ev { --c: var(--stand); position: absolute; z-index: var(--z, 1); display: flex; flex-direction: column; gap: 1px; padding: 3px 6px 3px 7px; overflow: hidden;
+  border-radius: 7px; cursor: grab; font-size: 11.5px; line-height: 15px;
+  background: color-mix(in srgb, var(--c) 15%, var(--surface)); border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
+  box-shadow: inset 3px 0 0 var(--c); }
+.cal-ev:hover { z-index: 9; border-color: color-mix(in srgb, var(--c) 60%, transparent); }
+.cal-ev.short { padding-top: 0; padding-bottom: 0; justify-content: center; }
+.cal-ev.done { box-shadow: inset 3px 0 0 var(--line); }
+.cal-ev.sel { box-shadow: inset 3px 0 0 var(--c), 0 0 0 1.5px var(--stand); z-index: 8; }
+.cal-ev-head { display: flex; align-items: center; gap: 5px; min-width: 0; font-weight: 600; }
+.cal-ev-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-ev:not(.short):not(.compact) .cal-ev-t { white-space: normal; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.cal-ev-time { font-family: var(--mono); font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Ручки растягивания сверху и снизу */
+.cal-grip { position: absolute; left: 0; right: 0; height: 7px; cursor: ns-resize; z-index: 1; }
+.cal-grip.top { top: -1px; }
+.cal-grip.bottom { bottom: -1px; }
+.cal-ev.short .cal-grip { height: 5px; }
+.cal-grip.bottom::after { content: ""; position: absolute; left: 50%; bottom: 2px; width: 18px; height: 3px; margin-left: -9px; border-radius: 2px;
+  background: var(--c); opacity: 0; transition: opacity .12s; }
+.cal-ev:hover .cal-grip.bottom::after { opacity: .6; }
+
+/* Перетаскивание: исходное место бледнеет, плашка «поднята» и плавно скользит между 15-минутными шагами */
+.cal-ev.origin, .cal-chip.origin { opacity: .35; border-style: dashed; }
+.cal-drag-layer { position: absolute; top: 0; bottom: 0; z-index: 10; pointer-events: none; }
+.cal-ev.dragging, .cal-chip.dragging { z-index: 10; pointer-events: none; transform: scale(1.03); opacity: .96;
+  background: color-mix(in srgb, var(--c) 24%, var(--surface)); border-color: var(--c);
+  box-shadow: inset 3px 0 0 var(--c), 0 14px 28px -14px var(--c), 0 4px 10px -6px rgba(0, 0, 0, .3); }
+.cal-drag-label { position: absolute; right: calc(100% + 4px); transform: translateY(-50%); padding: 1px 5px; border-radius: 5px; white-space: nowrap;
+  font-family: var(--mono); font-size: 10px; font-weight: 700; background: var(--stand); color: var(--on-acc); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .cal-drag-layer { transition: left .16s cubic-bezier(.2, .8, .2, 1), width .16s; }
+  .cal-ev.dragging { transition: top .12s cubic-bezier(.2, .8, .2, 1), height .12s cubic-bezier(.2, .8, .2, 1), transform .15s; }
+  .cal-drag-label { transition: top .12s cubic-bezier(.2, .8, .2, 1); }
+  .cal-ev:not(.dragging):not(.landed) { transition: top .2s ease, height .2s ease, left .2s ease, width .2s ease, border-color .12s; }
+  .cal-ev.landed, .cal-chip.landed { animation: cal-land .32s cubic-bezier(.2, .9, .3, 1.3); }
+  .cal-chip.floating { animation: cal-lift .15s ease-out; }
+}
+@keyframes cal-land {
+  0% { transform: scale(1.05); box-shadow: 0 14px 28px -14px var(--c); }
+  100% { transform: scale(1); }
+}
+@keyframes cal-lift {
+  from { transform: translate(-30%, -50%) scale(1); }
+}

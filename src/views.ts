@@ -1,13 +1,14 @@
 import type { Task } from "./db";
 import { fmtDay, today } from "./dates";
 
-export type ViewId = "inbox" | "today" | "soon" | "archive" | `p:${number}`;
+export type ViewId = "inbox" | "today" | "soon" | "archive" | "calendar" | `p:${number}`;
 
 export const VIEWS: { id: ViewId; name: string; accent: string; icon: string }[] = [
   { id: "inbox", name: "На разбор", accent: "move", icon: "inbox" },
   { id: "today", name: "Сегодня", accent: "exercise", icon: "sun" },
   { id: "soon", name: "Скоро", accent: "stand", icon: "calendar" },
   { id: "archive", name: "Архив", accent: "muted", icon: "archive" },
+  { id: "calendar", name: "Календарь", accent: "stand", icon: "schedule" },
 ];
 
 export interface ListItem {
@@ -54,6 +55,7 @@ export function listFor(view: ViewId, tasks: Task[]): ListItem[] {
     undated.forEach((task, i) => out.push(i === 0 ? { task, group: "Без даты" } : { task }));
     return out;
   }
+  if (view === "calendar") return []; // у календаря своя сетка, см. CalendarView
   const pid = Number(view.slice(2));
   return tasks
     .filter((x) => x.project_id === pid && (x.status === "active" || doneToday(x, t)))
@@ -62,7 +64,7 @@ export function listFor(view: ViewId, tasks: Task[]): ListItem[] {
 }
 
 export function countFor(view: ViewId, tasks: Task[]): number {
-  if (view === "archive") return 0;
+  if (view === "archive" || view === "calendar") return 0;
   return listFor(view, tasks).filter((i) => i.task.status !== "done").length;
 }
 
