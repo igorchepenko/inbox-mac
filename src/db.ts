@@ -5,7 +5,8 @@ import { nextOccurrence, parseRule } from "./recurrence";
 
 export type Status = "inbox" | "active" | "done" | "archived";
 /** Цвета проектов. Системные move, exercise и stand проектам не достаются */
-export type ProjectColor = "violet" | "orange" | "blue" | "graphite";
+// id цвета из палитры проектов, см. src/palette.ts
+export type ProjectColor = string;
 
 export interface Task {
   id: number;

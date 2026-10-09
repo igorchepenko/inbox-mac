@@ -6,6 +6,7 @@ import { VIEWS, type ViewId } from "./views";
 import { IconGrid, Popover, ThemeSwitch, TimeInput } from "./widgets";
 import { HomeSettings } from "./HomeSettings";
 import { HomeIcon } from "./home/Home";
+import { QuickKeyTest } from "./QuickKeyCheck";
 import { ensurePermission, notify } from "./reminders";
 import {
   accelFromEvent, DEFAULTS, FONTS, labelFromAccel, pref, savedAppearance, setAppearance, SIZES, SOUNDS, type Appearance,
@@ -196,6 +197,7 @@ function Quick(p: SettingsProps) {
         </button>
       </Row>
       {shownError && <div className="error">{shownError}</div>}
+      <QuickKeyTest />
       {current !== DEFAULTS["quick.shortcut"] && (
         <Row name="Вернуть как было" hint={`Стандартное сочетание ${labelFromAccel(DEFAULTS["quick.shortcut"])}`}>
           <button type="button" className="btn" onClick={() => apply(DEFAULTS["quick.shortcut"])}>Сбросить</button>
