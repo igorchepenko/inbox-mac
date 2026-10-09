@@ -12,7 +12,7 @@ export interface Task {
   title: string;
   note: string;
   status: Status;
-  priority: number; // 0 не задана, 1 низкая, 2 средняя, 3 высокая
+  priority: number; // 0 не задана, 1 минимальная, 2 низкая, 3 средняя, 4 высокая, 5 максимальная (миграция 005)
   project_id: number | null;
   due_date: string | null;
   remind_at: string | null;
@@ -201,8 +201,12 @@ export async function reorderSubtasks(ids: number[]): Promise<void> {
 
 // Ссылки
 
-export async function addLink(taskId: number, url: string, position: number): Promise<void> {
-  await (await db()).execute("INSERT INTO links (task_id, url, position) VALUES ($1, $2, $3)", [taskId, url, position]);
+export async function addLink(taskId: number, url: string, title: string, position: number): Promise<void> {
+  await (await db()).execute("INSERT INTO links (task_id, url, title, position) VALUES ($1, $2, $3, $4)", [taskId, url, title, position]);
+}
+
+export async function renameLink(id: number, title: string): Promise<void> {
+  await (await db()).execute("UPDATE links SET title = $1 WHERE id = $2", [title, id]);
 }
 
 export async function deleteLink(id: number): Promise<void> {

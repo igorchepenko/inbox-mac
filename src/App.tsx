@@ -19,6 +19,7 @@ import { labelFromAccel, pref, quickKeyLabel, setQuickKeyLabel } from "./prefs";
 import Home, { HomeIcon } from "./home/Home";
 import { KEY_HIDDEN, KEY_ORDER } from "./home/data";
 import CalendarView from "./CalendarView";
+import { PriorityIcon } from "./priority";
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -281,6 +282,8 @@ export default function App() {
         case "Digit1":
         case "Digit2":
         case "Digit3":
+        case "Digit4":
+        case "Digit5":
           if (task && task.status !== "archived") patch(task.id, { priority: Number(e.code.slice(5)) });
           break;
         case "KeyT":
@@ -539,7 +542,7 @@ function TaskRow(props: {
       {x.quadrant && !done && <QuadrantGlyph q={x.quadrant} />}
       {x.start_time && <span className="meta" title="Время">{fmtRange(x.start_time, x.end_time)}</span>}
       {x.remind_at && !x.reminded && !done && <span className="meta" title="Напоминание">⏰ {x.remind_at.slice(11, 16)}</span>}
-      {x.priority === 3 && !done && <span className="tag" style={{ background: "var(--move)" }}>!</span>}
+      {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
       {project && <span className="tag" style={{ background: `var(--${project.color})` }}>{project.name}</span>}
       {x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`}>{fmtDay(x.due_date)}</span>}
     </div>

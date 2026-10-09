@@ -1,13 +1,14 @@
 // Расширенные поля задачи: время «от–до», повтор, матрица Эйзенхауэра, чеклист, ссылки и файлы.
 // Используются и в правой панели, и в форме записи задачи (⌥Space и N)
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { CalendarDays, FileText, FolderSearch, GripVertical, Link2, Paperclip, Repeat, X } from "lucide-react";
+import { Check, Copy, CalendarDays, FileText, FolderSearch, GripVertical, Link2, Paperclip, Pencil, Repeat, X } from "lucide-react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import * as db from "./db";
 import type { Task } from "./db";
 import { addDays, fmtDay, nextMonday, parseDay, today } from "./dates";
 import { anchorRule, describe, isoWeekday, nthLabel, parseRule, PRESETS, WD_SHORT, type Freq, type Rule } from "./recurrence";
-import { Calendar, Popover, TimeInput } from "./widgets";
+import { Calendar, Popover, TimeInput, useAutosize } from "./widgets";
+import { PRIORITY, PriorityIcon } from "./priority";
 
 export type RunDb = (fn: () => Promise<unknown>) => void;
 
@@ -114,13 +115,39 @@ export function TimeRange(props: { start: string | null; end: string | null; dis
   );
 }
 
+// Важность
+
+/** Пять ступеней со значками, повторный клик снимает важность. Подпись справа: выбранная или та, что под курсором */
+export function PriorityPicker(props: { value: number | null | undefined; onChange: (p: number | null) => void }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const shown = hover ?? props.value ?? 0;
+  return (
+    <div className="prio-box">
+      <div className="prio-pick" role="radiogroup" aria-label="Важность" onMouseLeave={() => setHover(null)}>
+        {PRIORITY.map((p) => {
+          const on = props.value === p.value;
+          return (
+            <button type="button" key={p.value} role="radio" aria-checked={on} aria-label={p.name} title={p.name}
+              className={`prio-opt ${on ? "on" : ""}`} style={{ "--c": `var(--${p.accent})` } as React.CSSProperties}
+              onMouseEnter={() => setHover(p.value)} onClick={() => props.onChange(on ? null : p.value)}>
+              <PriorityIcon p={p.value} size={16} />
+            </button>
+          );
+        })}
+      </div>
+      <span className={`prio-cap ${hover && hover !== props.value ? "preview" : ""}`}>{shown ? PRIORITY[shown - 1].name : "Не задана"}</span>
+    </div>
+  );
+}
+
 // Матрица Эйзенхауэра
 
 export const QUADRANTS = [
-  { value: 1, name: "Срочно и важно", hint: "сделать сейчас", accent: "move" },
-  { value: 2, name: "Важно, не срочно", hint: "запланировать", accent: "amber" },
-  { value: 3, name: "Срочно, не важно", hint: "делегировать", accent: "muted" },
-  { value: 4, name: "Не срочно, не важно", hint: "отложить", accent: "muted" },
+  // Свои чистые цвета (task.css): красный, синий, оранжевый, фиолетовый, без серого
+  { value: 1, name: "Срочно и важно", hint: "сделать сейчас", accent: "q1" },
+  { value: 2, name: "Важно, не срочно", hint: "запланировать", accent: "q2" },
+  { value: 3, name: "Срочно, не важно", hint: "делегировать", accent: "q3" },
+  { value: 4, name: "Не срочно, не важно", hint: "отложить", accent: "q4" },
 ];
 
 /** Необязательный квадрант: 2×2, повторный клик снимает выбор */
@@ -384,12 +411,15 @@ export function Checklist(props: { task: Task; locked?: boolean; run: RunDb }) {
   );
 }
 
+/** Текст пункта переносится по строкам, поле растёт по высоте. Enter не делает новую строку, а сохраняет */
 function SubTitle(props: { value: string; disabled?: boolean; onCommit: (v: string) => void; onEnter: () => void }) {
   const [v, setV] = useState(props.value);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useAutosize(ref, v, 2000);
   useEffect(() => setV(props.value), [props.value]);
   const commit = () => v.trim() !== props.value && props.onCommit(v.trim());
   return (
-    <input className="sub-t" value={v} disabled={props.disabled} onChange={(e) => setV(e.target.value)} onBlur={commit}
+    <textarea ref={ref} rows={1} className="sub-t" value={v} disabled={props.disabled} onChange={(e) => setV(e.target.value.replace(/\n/g, " "))} onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === "Enter") (e.preventDefault(), e.stopPropagation(), commit(), props.onEnter());
         if (e.key === "Escape") setV(props.value);
@@ -430,18 +460,107 @@ export function fmtSize(b: number): string {
   return `${(b / 1024 / 1024).toFixed(1).replace(".", ",")} МБ`;
 }
 
-export function LinksAndFiles(props: { task: Task; locked?: boolean; run: RunDb; onError: (e: string) => void }) {
+/** Ссылки: адрес, потом необязательное название. С названием показываем гиперссылку, без него сам адрес */
+export function Links(props: { task: Task; locked?: boolean; run: RunDb; onError: (e: string) => void }) {
   const { task, run } = props;
   const [url, setUrl] = useState("");
   const [bad, setBad] = useState(false);
-  const addLink = () => {
+  const [pending, setPending] = useState<string | null>(null); // адрес принят, ждём название
+  const [title, setTitle] = useState("");
+  const [copied, setCopied] = useState<number | null>(null);
+  const [renaming, setRenaming] = useState<number | null>(null);
+  const titleRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (pending) titleRef.current?.focus();
+  }, [pending]);
+
+  const takeUrl = () => {
     if (!url.trim()) return setBad(false);
     const u = normalizeUrl(url);
     if (!u) return setBad(true);
     setUrl("");
     setBad(false);
-    run(() => db.addLink(task.id, u, (task.links[task.links.length - 1]?.position ?? 0) + 1));
+    setTitle("");
+    setPending(u);
   };
+  const save = (name: string) => {
+    if (!pending) return;
+    const u = pending;
+    setPending(null);
+    run(() => db.addLink(task.id, u, name.trim(), (task.links[task.links.length - 1]?.position ?? 0) + 1));
+  };
+  const copy = (id: number, u: string) => {
+    navigator.clipboard.writeText(u).then(
+      () => (setCopied(id), setTimeout(() => setCopied((c) => (c === id ? null : c)), 1400)),
+      (e) => props.onError(String(e)),
+    );
+  };
+  const stop = (e: React.KeyboardEvent) => e.stopPropagation();
+
+  return (
+    <div className="attach">
+      {task.links.map((l) => (
+        <div key={l.id} className="att">
+          <Link2 size={14} className="att-ic" />
+          {renaming === l.id ? (
+            <input autoFocus className="field att-ren" defaultValue={l.title} placeholder="Название, пусто — показывать адрес"
+              onKeyDown={(e) => {
+                stop(e);
+                if (e.key === "Enter") (e.preventDefault(), (e.target as HTMLInputElement).blur());
+                if (e.key === "Escape") setRenaming(null);
+              }}
+              onBlur={(e) => {
+                const v = e.target.value.trim();
+                setRenaming(null);
+                if (v !== l.title) run(() => db.renameLink(l.id, v));
+              }} />
+          ) : (
+            <a href={l.url} className={`att-link ${l.title ? "" : "raw"}`} title={l.url}
+              onClick={(e) => (e.preventDefault(), db.openUrl(l.url).catch((err) => props.onError(String(err))))}>
+              {l.title || prettyUrl(l.url)}
+            </a>
+          )}
+          <button type="button" className={`x show ${copied === l.id ? "ok" : ""}`} title={copied === l.id ? "Скопировано" : "Скопировать ссылку"}
+            onClick={() => copy(l.id, l.url)}>{copied === l.id ? <Check size={12} /> : <Copy size={12} />}</button>
+          {!props.locked && renaming !== l.id && (
+            <button type="button" className="x" title="Переименовать" onClick={() => setRenaming(l.id)}><Pencil size={12} /></button>
+          )}
+          {!props.locked && <button type="button" className="x" title="Убрать ссылку" onClick={() => run(() => db.deleteLink(l.id))}><X size={12} /></button>}
+        </div>
+      ))}
+      {!props.locked && (pending ? (
+        <div className="link-new">
+          <div className="link-new-head">
+            <span className="url">{prettyUrl(pending)}</span>
+            <button type="button" className="x show" title="Отмена" onClick={() => setPending(null)}><X size={12} /></button>
+          </div>
+          <input ref={titleRef} className="field" placeholder="Название, необязательно" value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => {
+              stop(e);
+              if (e.key === "Enter") (e.preventDefault(), save(title));
+              if (e.key === "Escape") (e.preventDefault(), save(""));
+            }} />
+          <div className="link-btns">
+            <button type="button" className="btn small" onClick={() => save("")}>Без названия</button>
+            <button type="button" className="btn small primary" onClick={() => save(title)}>Добавить ⏎</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <input className={`field link-in ${bad ? "bad" : ""}`} placeholder="Вставь ссылку и нажми Enter" value={url}
+            onChange={(e) => (setUrl(e.target.value), setBad(false))} onBlur={takeUrl}
+            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.stopPropagation(), takeUrl())} />
+          {bad && <div className="hint">Не похоже на ссылку</div>}
+        </>
+      ))}
+    </div>
+  );
+}
+
+/** Прикреплённые файлы: копии лежат в папке приложения */
+export function Files(props: { task: Task; locked?: boolean; run: RunDb; onError: (e: string) => void }) {
+  const { task, run } = props;
   const pickFiles = async () => {
     try {
       const paths = await openDialog({ multiple: true, directory: false, title: "Прикрепить к задаче" });
@@ -453,13 +572,6 @@ export function LinksAndFiles(props: { task: Task; locked?: boolean; run: RunDb;
   const safe = (p: Promise<unknown>) => p.catch((e) => props.onError(String(e)));
   return (
     <div className="attach">
-      {task.links.map((l) => (
-        <div key={l.id} className="att">
-          <Link2 size={14} className="att-ic" />
-          <button type="button" className="att-name" title={l.url} onClick={() => safe(db.openUrl(l.url))}>{l.title || prettyUrl(l.url)}</button>
-          {!props.locked && <button type="button" className="x" title="Убрать ссылку" onClick={() => run(() => db.deleteLink(l.id))}><X size={12} /></button>}
-        </div>
-      ))}
       {task.files.map((f) => (
         <div key={f.id} className="att">
           <FileText size={14} className="att-ic" />
@@ -470,15 +582,10 @@ export function LinksAndFiles(props: { task: Task; locked?: boolean; run: RunDb;
         </div>
       ))}
       {!props.locked && (
-        <>
-          <div className="att-add">
-            <input className={`field ${bad ? "bad" : ""}`} placeholder="Вставь ссылку и нажми Enter" value={url}
-              onChange={(e) => (setUrl(e.target.value), setBad(false))} onBlur={addLink}
-              onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.stopPropagation(), addLink())} />
-            <button type="button" className="btn small" onClick={pickFiles} title="Выбрать файлы в Finder"><Paperclip size={13} /> Файл</button>
-          </div>
-          <div className="hint">{bad ? "Не похоже на ссылку" : "Файлы можно перетащить из Finder прямо на окно"}</div>
-        </>
+        <div className="files-add">
+          <button type="button" className="btn small" onClick={pickFiles} title="Выбрать файлы в Finder"><Paperclip size={13} /> Файл</button>
+          <span className="hint">или перетащи из Finder на задачу</span>
+        </div>
       )}
     </div>
   );

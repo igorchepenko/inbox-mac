@@ -9,6 +9,7 @@ import {
   type CalMode, type Item, type Placed,
 } from "./calendar";
 import "./calendar.css";
+import { PriorityIcon } from "./priority";
 
 type Patch = Parameters<typeof db.updateTask>[1];
 
@@ -245,6 +246,7 @@ export default function CalendarView(props: {
         onPointerDown={(e) => begin(e, it, "move")} onDoubleClick={(e) => e.stopPropagation()}>
         <Check it={it} onToggle={props.onToggle} />
         {it.start != null && <span className="cal-chip-time">{label(it.start)}</span>}
+        {it.task.priority > 0 && !it.done && <PriorityIcon p={it.task.priority} size={12} />}
         <span className="cal-chip-t">{it.task.title}</span>
         {it.virtual && <Repeat size={11} className="cal-rep" />}
       </div>
@@ -274,6 +276,7 @@ export default function CalendarView(props: {
         {canResize && h >= 30 && <div className="cal-grip top" onPointerDown={(e) => begin(e, it, "start")} />}
         <div className="cal-ev-head">
           <Check it={it} onToggle={props.onToggle} />
+          {it.task.priority > 0 && !it.done && <PriorityIcon p={it.task.priority} size={12} />}
           <span className="cal-ev-t">{it.task.title}</span>
           {it.virtual && <Repeat size={11} className="cal-rep" />}
         </div>
@@ -449,7 +452,7 @@ function chipClass(it: Item, selected: number | null): string {
     it.virtual && "virtual",
     !movable(it) && "locked",
     !it.virtual && it.task.id === selected && "sel",
-    it.task.priority === 3 && !it.done && "high",
+    it.task.priority >= 4 && !it.done && "high",
     !it.done && !it.virtual && it.day < today() && "overdue",
   ].filter(Boolean).join(" ");
 }

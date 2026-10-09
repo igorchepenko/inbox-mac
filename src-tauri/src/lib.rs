@@ -50,6 +50,12 @@ fn migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/004_task_extras.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 5,
+            description: "five priority levels",
+            sql: include_str!("../migrations/005_priority_levels.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 

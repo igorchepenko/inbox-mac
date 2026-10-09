@@ -200,10 +200,11 @@ export const loadColor = (f: number) => (f < 0.4 ? "exercise" : f < 0.8 ? "stand
 // Матрица Эйзенхауэра
 
 export const QUADRANTS = [
-  { q: 1, name: "Сделать сейчас", color: "move" },
-  { q: 2, name: "Запланировать", color: "stand" },
-  { q: 3, name: "Делегировать", color: "graphite" },
-  { q: 4, name: "Убрать", color: "muted" },
+  // Те же чистые цвета, что у квадрантов в задаче (task.css)
+  { q: 1, name: "Сделать сейчас", color: "q1" },
+  { q: 2, name: "Запланировать", color: "q2" },
+  { q: 3, name: "Делегировать", color: "q3" },
+  { q: 4, name: "Убрать", color: "q4" },
 ] as const;
 
 /** Открытые задачи на ближайшие 7 дней (и просроченные) с заданным квадрантом */

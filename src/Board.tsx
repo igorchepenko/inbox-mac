@@ -11,6 +11,7 @@ import { Icon } from "./icons";
 import { Calendar, Popover } from "./widgets";
 import { fmtRange, QuadrantGlyph } from "./extras";
 import "./board.css";
+import { PriorityIcon } from "./priority";
 
 const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const EASE = "cubic-bezier(.2, .8, .2, 1)";
@@ -232,7 +233,7 @@ export function BoardView(props: {
                         <button className="chk" title={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
                           onClick={(e) => (e.stopPropagation(), props.onToggle(x))} />
                         <span className="t">{x.title}</span>
-                        {x.priority === 3 && !done && <span className="tag" style={{ background: "var(--move)" }}>!</span>}
+                        {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
                       </div>
                       {hasMeta(x, project) && <Meta task={x} project={project} />}
                     </article>
@@ -284,7 +285,7 @@ export function StackView(props: {
               <button className="chk" title={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
                 onMouseDown={(e) => e.stopPropagation()} onClick={() => props.onToggle(x)} />
               <span className="t">{x.title}</span>
-              {x.priority === 3 && !done && <span className="tag" style={{ background: "var(--move)" }}>!</span>}
+              {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
             </div>
             {note && <p className="scard-note">{note}</p>}
             {hasMeta(x, project) && <Meta task={x} project={project} />}
@@ -359,7 +360,7 @@ export function BulkPanel(props: {
       <fieldset className="det-sec" disabled={!editable}>
         <div className="lbl">Важность</div>
         <div className="seg">
-          {PRIORITY.map((p) => chip(priority === p.value, p.accent, () => go((xs) => board.bulkPriority(xs, priority === p.value ? 0 : p.value)), p.name, p.value))}
+          {PRIORITY.map((p) => chip(priority === p.value, p.accent, () => go((xs) => board.bulkPriority(xs, priority === p.value ? 0 : p.value)), <><PriorityIcon p={p.value} size={13} color={priority === p.value ? "currentColor" : undefined} /> {p.name}</>, p.value))}
         </div>
       </fieldset>
 
