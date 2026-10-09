@@ -2,8 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { Bell, CalendarDays, Clock, Columns3, Layers, Link2, List, ListChecks, Paperclip, Repeat } from "lucide-react";
 import type { Project, Task } from "./db";
 import { addDays, fmtDay, nextMonday, today } from "./dates";
-import { COLUMNS, dropHint, type Column, type Layout } from "./board";
-import * as board from "./board";
+import { COLUMNS, dropHint, type Column, type Layout } from "./boardOps";
+import * as board from "./boardOps";
 import type { ListItem } from "./views";
 import { plural } from "./views";
 import { PRIORITY } from "./components";

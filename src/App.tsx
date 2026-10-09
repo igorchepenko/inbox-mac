@@ -10,7 +10,7 @@ import { Icon } from "./icons";
 import { IconGrid, Popover, ProjectDialog, ThemeSwitch } from "./widgets";
 import { CheckCheck, Link2, ListChecks, Paperclip, Pencil, Repeat } from "lucide-react";
 import { fmtRange, QuadrantGlyph } from "./extras";
-import { boardFor, bulkMove, layoutOf, type Layout } from "./board";
+import { boardFor, bulkMove, layoutOf, type Layout } from "./boardOps";
 import { BoardView, BulkPanel, LayoutSwitch, StackView, type Pick } from "./Board";
 import { ensurePermission, fireDueReminders } from "./reminders";
 
