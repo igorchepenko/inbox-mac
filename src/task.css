@@ -1,0 +1,74 @@
+/* Поля задачи: важность в 5 градаций, квадранты матрицы, чеклист, ссылки, зона сброса файлов.
+   Свои переменные, чтобы не зависеть от палитры проектов */
+:root {
+  --p1: #5A9BE6; --p2: #2E62E8; --p3: #D99100; --p4: #F2600C; --p5: #E0102F;
+  --q1: #E0104F; --q2: #2E62E8; --q3: #E2640F; --q4: #7046E0;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --p1: #9CC4FF; --p2: #6E9BFF; --p3: #FFC23D; --p4: #FF8A3D; --p5: #FF4D5E;
+    --q1: #FA114F; --q2: #6E9BFF; --q3: #FF8A3D; --q4: #A688FF;
+  }
+}
+:root[data-theme="dark"] {
+  --p1: #9CC4FF; --p2: #6E9BFF; --p3: #FFC23D; --p4: #FF8A3D; --p5: #FF4D5E;
+  --q1: #FA114F; --q2: #6E9BFF; --q3: #FF8A3D; --q4: #A688FF;
+}
+
+/* Важность */
+.prio { flex: none; display: block; }
+.prio-box { display: flex; align-items: center; gap: 10px; width: 100%; }
+.prio-pick { display: flex; gap: 4px; }
+.prio-opt { display: grid; place-items: center; width: 34px; height: 30px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface); }
+.prio-opt:hover:not(:disabled) { border-color: var(--c); }
+.prio-opt.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 16%, var(--surface)); box-shadow: inset 0 0 0 1px var(--c); }
+.prio-cap { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.prio-cap.preview { color: var(--muted); }
+
+/* Чеклист: длинный пункт переносится и виден целиком */
+.sub { align-items: flex-start; }
+.sub .grip, .sub .chk, .sub .x { margin-top: 4px; }
+.sub-t { resize: none; overflow: hidden; line-height: 1.4; font: inherit; color: inherit; white-space: pre-wrap; overflow-wrap: anywhere; display: block; }
+
+/* Ссылки */
+.att-link { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--stand); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--stand) 45%, transparent); text-underline-offset: 2px; font-weight: 500; }
+.att-link.raw { font-family: var(--mono); font-size: 12px; }
+.att-link:hover { text-decoration-color: currentColor; }
+.att .x.ok { opacity: 1; color: var(--exercise); }
+.att-ren { flex: 1; min-width: 0; padding: 4px 8px; }
+.link-new { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--field); }
+.link-new .url { font-family: var(--mono); font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+.link-btns { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; }
+.link-new-head { display: flex; align-items: flex-start; gap: 6px; }
+.link-new-head .url { flex: 1; min-width: 0; padding-top: 2px; }
+.link-new-head .x { opacity: .7; }
+.link-in { padding: 7px 10px; }
+.files-add { display: flex; gap: 6px; align-items: center; }
+
+/* Перетаскивание файлов из Finder: рамка рисуется поверх содержимого и внутри границ, поэтому видна со всех сторон */
+.row.drop, .kcard.filedrop, .scard.filedrop {
+  outline: 2px dashed var(--stand); outline-offset: -2px; box-shadow: none;
+  background: color-mix(in srgb, var(--stand) 12%, var(--surface));
+}
+.det.dropping { box-shadow: none; }
+.drop-zone {
+  position: fixed; z-index: 4; pointer-events: none; border-radius: 14px;
+  border: 2px dashed var(--stand); background: color-mix(in srgb, var(--stand) 10%, transparent);
+  backdrop-filter: blur(2px); display: grid; place-items: center; text-align: center;
+}
+.drop-zone div { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 20px; border-radius: 14px; background: var(--surface); box-shadow: 0 10px 30px -14px rgba(0, 0, 0, .45); max-width: 85%; }
+.drop-zone svg { color: var(--stand); }
+.drop-zone b { font-size: 14px; }
+.drop-zone span { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+
+/* Календарь: быстрый выбор месяца и года */
+.cal-title { font-weight: 700; padding: 3px 8px; border-radius: 7px; display: inline-flex; align-items: center; gap: 4px; }
+.cal-title:hover { background: var(--field); }
+.cal-pick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px 0; }
+.cal-pick button { padding: 9px 4px; border-radius: 8px; font-weight: 600; font-size: 12.5px; }
+.cal-pick button:hover { background: var(--field); }
+.cal-pick button.now { color: var(--stand); }
+.cal-pick button.on { background: var(--stand); color: var(--on-acc); }
+.att .x.show { opacity: .65; }
+.att .x.show:hover { opacity: 1; }
+.btn.small.primary { background: var(--stand); border-color: transparent; color: var(--on-acc); }

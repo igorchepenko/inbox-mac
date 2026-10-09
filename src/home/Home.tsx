@@ -5,6 +5,7 @@ import { plural } from "../views";
 import * as H from "./data";
 import type { BlockId, DayConfig, Period } from "./data";
 import "./home.css";
+import { PriorityIcon } from "../priority";
 
 export interface HomeProps {
   tasks: Task[];
@@ -126,7 +127,7 @@ function TaskLine({ x, row, time = true, extra }: { x: Task; row: RowCtx; time?:
         title={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"} onClick={() => row.onToggle(x)} />
       {time && <span className={`h-tm ${x.start_time ? "" : "none"}`}>{x.start_time ? H.timeRange(x) : "без времени"}</span>}
       <button className="t" title={x.title} onClick={() => row.onOpen(x)}>{x.title}</button>
-      {x.priority === 3 && !done && <span className="tag" style={{ background: "var(--move)" }}>!</span>}
+      {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
       {p && <span className="tag" style={{ background: `var(--${p.color})` }}>{p.name}</span>}
       {extra}
     </div>
@@ -325,7 +326,7 @@ function MatrixBlock(props: { tasks: Task[]; row: RowCtx }) {
   const [q, setQ] = useState<number | null>(null);
   const cell = ({ q: n, name, color }: (typeof H.QUADRANTS)[number]) => (
     <button key={n} className={`h-q ${q === n ? "on" : ""}`} aria-pressed={q === n} onClick={() => setQ(q === n ? null : n)}
-      style={{ background: `color-mix(in srgb, var(--${color}) 10%, var(--surface))` }}>
+      style={{ boxShadow: `inset 3px 0 0 var(--${color})` }}>
       <b style={{ color: `var(--${color})` }}>{open.filter((x) => x.quadrant === n).length}</b>
       <span>{name}</span>
     </button>

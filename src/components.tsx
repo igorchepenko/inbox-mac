@@ -4,15 +4,11 @@ import { fmtDay, today } from "./dates";
 import { Icon } from "./icons";
 import { TimeInput, useAutosize } from "./widgets";
 import { firstOccurrence, parseRule } from "./recurrence";
-import { Checklist, Chip, DateField, LinksAndFiles, Line, QuadrantPicker, RepeatField, TimeRange, type RunDb } from "./extras";
+import { Paperclip } from "lucide-react";
+import { Checklist, Chip, DateField, Files, Line, Links, PriorityPicker, QuadrantPicker, RepeatField, TimeRange, type RunDb } from "./extras";
 import { quickKeyLabel } from "./prefs";
 
-export const PRIORITY = [
-  // Зелёный и бирюзовый заняты под «сделано» и время, поэтому важность берёт нейтральный и янтарный
-  { value: 1, name: "Низкая", accent: "muted" },
-  { value: 2, name: "Средняя", accent: "amber" },
-  { value: 3, name: "Высокая", accent: "move" },
-];
+export { PRIORITY } from "./priority";
 
 /** Карточка записи задачи. Используется и в отдельном окне ⌥Space, и внутри приложения по N.
  * Дата, время, проект и остальное по желанию: блок свёрнут, открывается кнопкой или ⌘E */
@@ -79,11 +75,7 @@ export function QuickForm(props: { projects: Project[]; onSave: (title: string, 
               ))}
             </Line>
           )}
-          <Line label="Важность">
-            {PRIORITY.map((p) => (
-              <Chip key={p.value} on={d.priority === p.value} accent={p.accent} onClick={() => set({ priority: d.priority === p.value ? undefined : p.value })}>{p.name}</Chip>
-            ))}
-          </Line>
+          <Line label="Важность"><PriorityPicker value={d.priority} onChange={(p) => set({ priority: p ?? undefined })} /></Line>
           <Line label="Матрица"><QuadrantPicker value={d.quadrant ?? null} onChange={(q) => set({ quadrant: q })} /></Line>
         </div>
       )}
@@ -167,8 +159,9 @@ export function Details(props: {
     onPatch(rule && !x.due_date ? { recurrence: json, due_date: firstOccurrence(rule, t) } : { recurrence: json });
   };
 
+  const asideRef = useRef<HTMLElement>(null);
   return (
-    <aside className={`det ${props.dropping ? "dropping" : ""}`}>
+    <aside ref={asideRef} className={`det ${props.dropping ? "dropping" : ""}`}>
       <div>
         <div className="lbl">{isInbox ? "Разбор" : locked ? "В архиве" : "Задача"}</div>
         <textarea className="det-title" rows={1} value={title} disabled={locked}
@@ -179,12 +172,7 @@ export function Details(props: {
 
       <fieldset className="det-sec" disabled={locked}>
         <div className="lbl">Важность</div>
-        <div className="seg">
-          {PRIORITY.map((p) => (
-            <Chip key={p.value} on={x.priority === p.value} accent={p.accent}
-              onClick={() => onPatch({ priority: x.priority === p.value ? 0 : p.value })}>{p.name}</Chip>
-          ))}
-        </div>
+        <PriorityPicker value={x.priority} onChange={(p) => onPatch({ priority: p ?? 0 })} />
         <div className="lbl sub-lbl">Матрица Эйзенхауэра <span className="opt">необязательно</span></div>
         <QuadrantPicker value={x.quadrant} onChange={(q) => onPatch({ quadrant: q })} />
       </fieldset>
@@ -234,8 +222,13 @@ export function Details(props: {
       </div>
 
       <div className="det-sec">
-        <div className="lbl">Ссылки и файлы</div>
-        <LinksAndFiles task={x} locked={locked} run={props.run} onError={props.onError} />
+        <div className="lbl">Ссылки{x.links.length ? <span className="opt"> {x.links.length}</span> : null}</div>
+        <Links task={x} locked={locked} run={props.run} onError={props.onError} />
+      </div>
+
+      <div className="det-sec">
+        <div className="lbl">Файлы{x.files.length ? <span className="opt"> {x.files.length}</span> : null}</div>
+        <Files task={x} locked={locked} run={props.run} onError={props.onError} />
       </div>
 
       <div className="det-actions">
@@ -263,8 +256,25 @@ export function Details(props: {
           {confirmDelete ? "Точно удалить? Нажми ещё раз" : "Удалить задачу"}
         </button>
       </div>
-      {props.dropping && <div className="drop-hint">Отпусти, чтобы прикрепить к задаче</div>}
+      {props.dropping && <DropZone over={asideRef.current} title={x.title} />}
     </aside>
+  );
+}
+
+/** Зона «отпусти здесь» поверх панели задачи, пока над ней держат файлы из Finder.
+ * Фиксированная по видимой области панели: рамка целиком на экране, даже если панель прокручена */
+function DropZone({ over, title }: { over: HTMLElement | null; title: string }) {
+  const r = over?.getBoundingClientRect();
+  if (!r) return null;
+  const pad = 8;
+  return (
+    <div className="drop-zone" style={{ top: r.top + pad, left: r.left + pad, width: r.width - pad * 2, height: r.height - pad * 2 }}>
+      <div>
+        <Paperclip size={26} />
+        <b>Отпусти, чтобы прикрепить</b>
+        <span>к задаче «{title}»</span>
+      </div>
+    </div>
   );
 }
 
@@ -275,7 +285,7 @@ export const SHORTCUTS: [string, string][] = [
   ["↑ ↓", "Выбрать задачу"],
   ["Enter", "Разобрано (в «На разбор»)"],
   ["Space", "Сделано / вернуть"],
-  ["1 2 3", "Важность: низкая, средняя, высокая"],
+  ["1 … 5", "Важность: от минимальной до максимальной"],
   ["T", "Дата: сегодня"],
   ["⌘0", "Главная"],
   ["⌘1 … ⌘5", "На разбор, Сегодня, Скоро, Архив, Календарь"],

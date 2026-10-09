@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import QuickApp from "./Quick";
 import "./styles.css";
+import "./task.css";
 import { applyTheme, followThemeChanges, savedTheme } from "./theme";
 import { applyAppearance, followAppearanceChanges, savedAppearance } from "./prefs";
 

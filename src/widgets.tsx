@@ -62,11 +62,17 @@ export function Popover(props: { anchor: HTMLElement | null; onClose: () => void
 const MONTHS = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
 const WEEK = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
-/** Календарь месяца в стиле приложения, неделя с понедельника */
+/**
+ * Календарь месяца в стиле приложения, неделя с понедельника.
+ * Клик по названию месяца открывает выбор месяца, второй клик — выбор года: дата через пару лет в три клика
+ */
 export function Calendar(props: { value: string | null; onPick: (day: string | null) => void }) {
   const t = today();
   const start = parseDay(props.value ?? t);
+  const now = parseDay(t);
   const [month, setMonth] = useState(new Date(start.getFullYear(), start.getMonth(), 1));
+  const [mode, setMode] = useState<"days" | "months" | "years">("days");
+  const y = month.getFullYear();
   const first = new Date(month);
   first.setDate(1 - ((month.getDay() + 6) % 7));
   const days = Array.from({ length: 42 }, (_, i) => {
@@ -74,26 +80,60 @@ export function Calendar(props: { value: string | null; onPick: (day: string | n
     d.setDate(first.getDate() + i);
     return d;
   });
-  const shift = (n: number) => setMonth(new Date(month.getFullYear(), month.getMonth() + n, 1));
+  const decade = y - ((y - now.getFullYear()) % 12 + 12) % 12; // 12 лет на экране, текущий год в первой ячейке
+  const shift = (n: number) => {
+    if (mode === "days") setMonth(new Date(y, month.getMonth() + n, 1));
+    else setMonth(new Date(y + n * (mode === "months" ? 1 : 12), month.getMonth(), 1));
+  };
+  const title = mode === "days" ? `${MONTHS[month.getMonth()]} ${y}` : mode === "months" ? String(y) : `${decade}–${decade + 11}`;
+  const unit = mode === "days" ? "месяц" : mode === "months" ? "год" : "12 лет";
   return (
     <div className="cal">
       <div className="cal-head">
-        <button type="button" className="cal-nav" onClick={() => shift(-1)} aria-label="Предыдущий месяц"><ChevronLeft size={16} /></button>
-        <span>{MONTHS[month.getMonth()]} {month.getFullYear()}</span>
-        <button type="button" className="cal-nav" onClick={() => shift(1)} aria-label="Следующий месяц"><ChevronRight size={16} /></button>
+        <button type="button" className="cal-nav" onClick={() => shift(-1)} aria-label={`Назад на ${unit}`}><ChevronLeft size={16} /></button>
+        <button type="button" className="cal-title" disabled={mode === "years"}
+          title={mode === "days" ? "Выбрать месяц и год" : mode === "months" ? "Выбрать год" : undefined}
+          onClick={() => setMode(mode === "days" ? "months" : "years")}>{title}</button>
+        <button type="button" className="cal-nav" onClick={() => shift(1)} aria-label={`Вперёд на ${unit}`}><ChevronRight size={16} /></button>
       </div>
-      <div className="cal-grid">
-        {WEEK.map((w) => <span key={w} className="cal-wd">{w}</span>)}
-        {days.map((d) => {
-          const k = dayKey(d);
-          const cls = ["cal-day", d.getMonth() !== month.getMonth() && "other", k === t && "today", k === props.value && "on", k < t && "past"]
-            .filter(Boolean).join(" ");
-          return <button type="button" key={k} className={cls} onClick={() => props.onPick(k)}>{d.getDate()}</button>;
-        })}
-      </div>
+      {mode === "days" && (
+        <div className="cal-grid">
+          {WEEK.map((w) => <span key={w} className="cal-wd">{w}</span>)}
+          {days.map((d) => {
+            const k = dayKey(d);
+            const cls = ["cal-day", d.getMonth() !== month.getMonth() && "other", k === t && "today", k === props.value && "on", k < t && "past"]
+              .filter(Boolean).join(" ");
+            return <button type="button" key={k} className={cls} onClick={() => props.onPick(k)}>{d.getDate()}</button>;
+          })}
+        </div>
+      )}
+      {mode === "months" && (
+        <div className="cal-pick">
+          {MONTHS.map((m, i) => {
+            const cls = [y === start.getFullYear() && i === start.getMonth() && props.value && "on", y === now.getFullYear() && i === now.getMonth() && "now"];
+            return (
+              <button type="button" key={m} className={cls.filter(Boolean).join(" ")}
+                onClick={() => (setMonth(new Date(y, i, 1)), setMode("days"))}>{m}</button>
+            );
+          })}
+        </div>
+      )}
+      {mode === "years" && (
+        <div className="cal-pick">
+          {Array.from({ length: 12 }, (_, i) => decade + i).map((yy) => {
+            const cls = [yy === start.getFullYear() && props.value && "on", yy === now.getFullYear() && "now"];
+            return (
+              <button type="button" key={yy} className={cls.filter(Boolean).join(" ")}
+                onClick={() => (setMonth(new Date(yy, month.getMonth(), 1)), setMode("months"))}>{yy}</button>
+            );
+          })}
+        </div>
+      )}
       <div className="cal-foot">
         <button type="button" className="link" onClick={() => props.onPick(t)}>Сегодня</button>
-        {props.value && <button type="button" className="link" onClick={() => props.onPick(null)}>Убрать дату</button>}
+        {mode !== "days" ? (
+          <button type="button" className="link" onClick={() => setMode("days")}>К дням</button>
+        ) : props.value && <button type="button" className="link" onClick={() => props.onPick(null)}>Убрать дату</button>}
       </div>
     </div>
   );

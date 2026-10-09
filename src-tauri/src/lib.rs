@@ -51,6 +51,12 @@ fn migrations() -> Vec<Migration> {
             kind: MigrationKind::Up,
         },
         Migration {
+            version: 5,
+            description: "five priority levels",
+            sql: include_str!("../migrations/005_priority_levels.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
             version: 7,
             description: "kanban stage: started_at",
             sql: include_str!("../migrations/007_task_started.sql"),
