@@ -14,6 +14,8 @@ import { fmtRange, QuadrantGlyph } from "./extras";
 import { ensurePermission, fireDueReminders, maybeSendDigest } from "./reminders";
 import { Settings } from "./Settings";
 import { labelFromAccel, pref, quickKeyLabel, setQuickKeyLabel } from "./prefs";
+import Home, { HomeIcon } from "./home/Home";
+import { KEY_HIDDEN, KEY_ORDER } from "./home/data";
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -21,7 +23,7 @@ export default function App() {
   const [settings, setSettings] = useState<Record<string, string>>({});
   // null закрыто, "new" новый проект, иначе редактируемый
   const [projectDlg, setProjectDlg] = useState<Project | "new" | null>(null);
-  const [view, setView] = useState<ViewId>("inbox");
+  const [view, setView] = useState<ViewId>("home");
   const [sel, setSel] = useState<number | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -135,6 +137,24 @@ export default function App() {
   const archive = (x: Task) => run(() => db.updateTask(x.id, { status: "archived", done_at: x.done_at ?? nowStamp() }));
   const restore = (x: Task) => run(() => db.updateTask(x.id, { status: "active", done_at: null }));
 
+  // С главной: отметка учитывает повторы, перенос просроченного сохраняет время напоминания
+  const toggleFromHome = (x: Task) => run(() => (x.status === "done" ? db.reopenTask(x) : db.completeTask(x)));
+  const moveToToday = (xs: Task[]) =>
+    run(async () => {
+      for (const x of xs) {
+        const rt = x.remind_at?.slice(11, 16);
+        await db.updateTask(x.id, rt ? { due_date: today(), remind_at: `${today()}T${rt}`, reminded: 0 } : { due_date: today() });
+      }
+    });
+  // Задача с главной открывается в своём списке
+  const openTask = (x: Task) => {
+    const t = today();
+    const v: ViewId = x.status === "inbox" ? "inbox" : x.status === "archived" ? "archive"
+      : x.due_date && x.due_date <= t ? "today" : x.status === "done" ? "today" : "soon";
+    setView(v);
+    setSel(x.id);
+  };
+
   const saveNew = (title: string, note: string, draft: db.Draft) => {
     setNewOpen(false);
     if (draft.remind_at) ensurePermission();
@@ -190,6 +210,7 @@ export default function App() {
         return;
       }
       if (e.metaKey && e.code === "Slash") return e.preventDefault(), setHelpOpen(true);
+      if (e.metaKey && e.code === "Digit0") return e.preventDefault(), openView("home");
       if (e.metaKey && /^Digit[1-4]$/.test(e.code)) {
         e.preventDefault();
         const v = VIEWS[Number(e.code.slice(5)) - 1].id;
@@ -248,11 +269,11 @@ export default function App() {
 
   const current = VIEWS.find((v) => v.id === view);
   const project = view.startsWith("p:") ? projects.find((p) => `p:${p.id}` === view) : undefined;
-  if ((!current && !project && projects.length) || hidden(view)) queueMicrotask(() => openView("inbox"));
+  if (view !== "home" && ((!current && !project && projects.length) || hidden(view))) queueMicrotask(() => openView("inbox"));
   const progress = progressFor(view, tasks);
 
   return (
-    <div className="app">
+    <div className={`app ${view === "home" ? "app-home" : ""}`}>
       <div className="titlebar" data-tauri-drag-region />
       <Sidebar view={view} tasks={tasks} projects={projects} settings={settings} onOpen={openView}
         onNewProject={() => setProjectDlg("new")} onEditProject={(p) => setProjectDlg(p)}
@@ -260,6 +281,19 @@ export default function App() {
         onViewIcon={(id, icon) => run(() => db.setSetting(`icon:${id}`, icon))} />
 
       <main className="main">
+        {view === "home" ? (
+          <Home tasks={tasks} projects={projects} settings={settings}
+            onOpenInbox={() => openView("inbox")} onOpenToday={() => openView("today")}
+            onOpenTask={openTask} onToggle={toggleFromHome} onMoveToToday={moveToToday}
+            onNewProject={() => setProjectDlg("new")}
+            onSaveLayout={(order, hidden) => {
+              setSettings((s) => ({ ...s, [KEY_ORDER]: JSON.stringify(order), [KEY_HIDDEN]: JSON.stringify(hidden) }));
+              run(async () => {
+                await db.setSetting(KEY_ORDER, JSON.stringify(order));
+                await db.setSetting(KEY_HIDDEN, JSON.stringify(hidden));
+              });
+            }} />
+        ) : (<>
         <header className="head" data-tauri-drag-region>
           {progress ? <Ring fraction={progress.fraction} accent={progress.accent} count={progress.count} /> : (
             <span className="head-icon" style={{ color: `var(--${project?.color ?? current?.accent ?? "muted"})` }}>
@@ -297,9 +331,10 @@ export default function App() {
           ))}
           {!list.length && <div className="empty">{emptyText(view)}</div>}
         </div>
+        </>)}
       </main>
 
-      {task ? (
+      {view === "home" ? null : task ? (
         <Details key={task.id} task={task} projects={projects}
           onPatch={(p) => patch(task.id, p)} run={run} onError={setError}
           dropping={dropTarget === task.id && dropOnDetails}
@@ -391,6 +426,10 @@ function Sidebar(props: {
   const pickerView = picker && VIEWS.find((v) => v.id === picker.id);
   return (
     <nav className="side">
+      <div className={`nav ${props.view === "home" ? "on" : ""}`} onClick={() => props.onOpen("home")} role="button">
+        <span className="nav-icon"><HomeIcon /></span>
+        <span className="nav-name">Главная</span>
+      </div>
       {VIEWS.filter((v) => v.id === "inbox" || props.settings[`hidden:${v.id}`] !== "1").map((v) => item(v.id, v.name, v.accent, viewIcon(v.id, props.settings), (el) => setPicker({ id: v.id, el })))}
       <div className="sec">Проекты</div>
       {props.projects.map((p) => item(`p:${p.id}`, p.name, p.color, p.icon, () => props.onEditProject(p)))}
