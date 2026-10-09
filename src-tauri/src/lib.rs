@@ -18,6 +18,22 @@ const DB_URL: &str = "sqlite:inbox.db";
 /// возвращаем фокус в приложение, из которого нажали ⌥Space.
 static MAIN_WAS_FOCUSED: AtomicBool = AtomicBool::new(false);
 
+/// Ошибка, с которой не удалось занять сочетание быстрого ввода. Главное окно показывает её плашкой
+static QUICK_ERROR: Mutex<Option<String>> = Mutex::new(None);
+
+/// Идёт проверка сочетания в настройках: нажатие не открывает карточку, а сообщает главному окну, что дошло
+static TESTING_QUICK: AtomicBool = AtomicBool::new(false);
+
+/// Приложения, которые по умолчанию тоже слушают ⌥Space. macOS разрешает нескольким приложениям
+/// занять одно сочетание без ошибки, и нажатие получает только одно из них
+const ALT_SPACE_APPS: &[(&str, &str)] = &[
+    ("/ChatGPT.app/", "ChatGPT"),
+    ("/Claude.app/", "Claude"),
+    ("/Raycast.app/", "Raycast"),
+    ("/Alfred", "Alfred"),
+    ("/Perplexity.app/", "Perplexity"),
+];
+
 /// Текущее сочетание быстрого ввода. Меняется в настройках, по умолчанию ⌥Space
 struct QuickKey(Mutex<Shortcut>);
 
@@ -54,6 +70,12 @@ fn migrations() -> Vec<Migration> {
             version: 5,
             description: "five priority levels",
             sql: include_str!("../migrations/005_priority_levels.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 6,
+            description: "32-color project palette",
+            sql: include_str!("../migrations/006_project_palette_32.sql"),
             kind: MigrationKind::Up,
         },
         Migration {
@@ -207,6 +229,45 @@ fn open_url(app: AppHandle, url: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+#[derive(serde::Serialize)]
+struct QuickStatus {
+    registered: bool,
+    error: Option<String>,
+    /// Запущенные приложения, которые тоже могут слушать ⌥Space
+    conflicts: Vec<String>,
+}
+
+fn alt_space_apps() -> Vec<String> {
+    let Ok(out) = std::process::Command::new("/bin/ps").args(["-axo", "comm="]).output() else {
+        return vec![];
+    };
+    let list = String::from_utf8_lossy(&out.stdout);
+    ALT_SPACE_APPS
+        .iter()
+        .filter(|(needle, _)| list.lines().any(|l| l.contains(needle)))
+        .map(|(_, name)| name.to_string())
+        .collect()
+}
+
+/// Состояние сочетания быстрого ввода для настроек и плашки об ошибке
+#[tauri::command]
+fn quick_shortcut_status(app: AppHandle, key: State<'_, QuickKey>) -> QuickStatus {
+    let cur = key.0.lock().map(|k| *k).ok();
+    let registered = cur.is_some_and(|k| app.global_shortcut().is_registered(k));
+    let alt_space = cur == Some(Shortcut::new(Some(Modifiers::ALT), Code::Space));
+    QuickStatus {
+        registered,
+        error: QUICK_ERROR.lock().ok().and_then(|e| e.clone()),
+        conflicts: if alt_space { alt_space_apps() } else { vec![] },
+    }
+}
+
+/// Включить или выключить проверку: следующее нажатие сочетания придёт событием quick-shortcut-hit
+#[tauri::command]
+fn test_quick_shortcut(on: bool) {
+    TESTING_QUICK.store(on, Ordering::Relaxed);
+}
+
 /// Сменить сочетание быстрого ввода. accel в формате «Alt+Shift+KeyN», label для меню вида «⌥⇧N».
 /// Если сочетание занято системой или другим приложением, оставляем прежнее и возвращаем ошибку
 #[tauri::command]
@@ -229,6 +290,9 @@ fn set_quick_shortcut(
             return Err(format!("Сочетание занято системой или другим приложением ({e})"));
         }
         *cur = next;
+    }
+    if let Ok(mut e) = QUICK_ERROR.lock() {
+        *e = None;
     }
     let _ = tray.0.set_text(format!("Записать задачу    {label}"));
     Ok(())
@@ -269,9 +333,14 @@ pub fn run() {
             // Зарегистрировано всегда одно сочетание, быстрого ввода, поэтому сверять, какое нажато, не нужно
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        toggle_quick(app);
+                    if event.state() != ShortcutState::Pressed {
+                        return;
                     }
+                    if TESTING_QUICK.swap(false, Ordering::Relaxed) {
+                        let _ = app.emit_to("main", "quick-shortcut-hit", ());
+                        return;
+                    }
+                    toggle_quick(app);
                 })
                 .build(),
         )
@@ -279,6 +348,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             hide_quick,
             set_quick_shortcut,
+            quick_shortcut_status,
+            test_quick_shortcut,
             attach_file,
             remove_attachment,
             open_path,
@@ -292,9 +363,15 @@ pub fn run() {
             }
         })
         .setup(move |app| {
-            // ⌥Space может быть занят другим приложением: тогда работаем без него, через иконку в строке меню
+            // ⌥Space может не достаться: тогда работаем через иконку в строке меню, а главное окно
+            // показывает плашку с причиной и кнопкой «Сменить сочетание»
             if let Err(e) = app.global_shortcut().register(quick_shortcut) {
                 eprintln!("Не удалось занять ⌥Space: {e}");
+                if let Ok(mut slot) = QUICK_ERROR.lock() {
+                    *slot = Some(format!(
+                        "macOS не дала занять ⌥Space ({e}). Так бывает на macOS 15.0 и 15.1, где запрещены сочетания только с ⌥, или если сочетание занято системой"
+                    ));
+                }
             }
 
             let quick_i = MenuItem::with_id(

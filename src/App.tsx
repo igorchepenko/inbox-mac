@@ -5,22 +5,26 @@ import { invoke } from "@tauri-apps/api/core";
 import * as db from "./db";
 import type { Project, ProjectFields, Task } from "./db";
 import { fmtDay, nowStamp, today } from "./dates";
-import { countFor, listFor, progressFor, VIEWS, type ViewId } from "./views";
+import { listFor, progressFor, VIEWS, type ViewId } from "./views";
 import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
 import { Icon } from "./icons";
-import { IconGrid, Popover, ProjectDialog, ThemeSwitch } from "./widgets";
-import { CheckCheck, Link2, ListChecks, Paperclip, Pencil, Repeat, Settings as Gear } from "lucide-react";
+import { ProjectDialog } from "./widgets";
+import { CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat } from "lucide-react";
 import { fmtRange, QuadrantGlyph } from "./extras";
 import { boardFor, dropTo, groupOf, layoutOf, type Group, type Layout } from "./boardOps";
 import { BoardView, BulkPanel, GroupSwitch, LayoutSwitch, type Pick } from "./Board";
 import { ensurePermission, fireDueReminders, maybeSendDigest } from "./reminders";
 import { Settings } from "./Settings";
 import { labelFromAccel, pref, quickKeyLabel, setQuickKeyLabel } from "./prefs";
-import Home, { HomeIcon } from "./home/Home";
+import Home from "./home/Home";
 import { KEY_HIDDEN, KEY_ORDER } from "./home/data";
 import CalendarView from "./CalendarView";
 import { toHHMM } from "./calendar";
 import { PriorityIcon } from "./priority";
+import { FIND_PROJECT_EVENT, Sidebar, viewIcon } from "./Sidebar";
+import ProjectsPage from "./ProjectsPage";
+import { Tooltips } from "./Tooltips";
+import { QuickKeyBanner } from "./QuickKeyCheck";
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -264,6 +268,8 @@ export default function App() {
       }
       if (e.metaKey && e.code === "Slash") return e.preventDefault(), setHelpOpen(true);
       if (e.metaKey && e.code === "Digit0") return e.preventDefault(), openView("home");
+      if (e.metaKey && e.code === "Digit6") return e.preventDefault(), openView("projects");
+      if (e.metaKey && e.code === "KeyP") return e.preventDefault(), window.dispatchEvent(new Event(FIND_PROJECT_EVENT));
       if (e.metaKey && /^Digit[1-5]$/.test(e.code)) {
         e.preventDefault();
         const v = VIEWS[Number(e.code.slice(5)) - 1].id;
@@ -324,17 +330,23 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
+  // Главная и страница проектов занимают всё место справа от меню, без панели деталей
+  const wide = view === "home" || view === "projects";
   const current = VIEWS.find((v) => v.id === view);
   const project = view.startsWith("p:") ? projects.find((p) => `p:${p.id}` === view) : undefined;
-  if (view !== "home" && ((!current && !project && projects.length) || hidden(view))) queueMicrotask(() => openView("inbox"));
+  if (!wide && ((!current && !project && projects.length) || hidden(view))) queueMicrotask(() => openView("inbox"));
   const progress = progressFor(view, tasks);
 
   return (
-    <div className={`app ${view === "home" ? "app-home" : ""}`}>
+    <div className={`app ${view === "home" ? "app-home" : view === "projects" ? "app-wide" : ""}`}>
       <div className="titlebar" data-tauri-drag-region />
       <Sidebar view={view} tasks={tasks} projects={projects} settings={settings} onOpen={openView}
         onNewProject={() => setProjectDlg("new")} onEditProject={(p) => setProjectDlg(p)}
-        onSettings={() => setSettingsOpen(true)}
+        onSettings={() => setSettingsOpen(true)} onShortcuts={() => setHelpOpen(true)}
+        onSetting={(key, value) => {
+          setSettings((st) => ({ ...st, [key]: value }));
+          run(() => db.setSetting(key, value));
+        }}
         onViewIcon={(id, icon) => run(() => db.setSetting(`icon:${id}`, icon))} />
 
       {view === "calendar" ? (
@@ -347,7 +359,10 @@ export default function App() {
           onCreate={createAt} />
       ) : (
       <main className="main">
-        {view === "home" ? (
+        {view === "projects" ? (
+          <ProjectsPage projects={projects} tasks={tasks} onOpen={openView}
+            onEdit={(p) => setProjectDlg(p)} onNew={() => setProjectDlg("new")} />
+        ) : view === "home" ? (
           <Home tasks={tasks} projects={projects} settings={settings}
             onOpenInbox={() => openView("inbox")} onOpenToday={() => openView("today")}
             onOpenTask={openTask} onToggle={toggleFromHome} onMoveToToday={moveToToday}
@@ -368,20 +383,20 @@ export default function App() {
           )}
           <div className="head-text">
             <h2>{project?.name ?? current?.name ?? ""}</h2>
-            <p>{project?.description || progress?.subtitle || subtitleFor(view, list.length)}</p>
+            <p className="head-sub" title={project?.description || undefined}>{project?.description || progress?.subtitle || subtitleFor(view, list.length)}</p>
           </div>
           {project && (
-            <button className="icon-btn" title="Изменить проект" onClick={() => setProjectDlg(project)}>
+            <button className="icon-btn" data-tip="Изменить проект" onClick={() => setProjectDlg(project)}>
               <Pencil size={13} /> Изменить
             </button>
           )}
           {columns && <GroupSwitch value={group} onChange={setGroup} />}
           <LayoutSwitch value={layout} onChange={setLayout} />
-          <button className={`icon-btn ${selecting ? "on" : ""}`} title="Выбрать несколько задач (⌘-клик, ⌘A)"
+          <button className={`icon-btn ${selecting ? "on" : ""}`} data-tip="Выбрать несколько задач, ⌘-клик по строке" data-key="⌘A"
             onClick={() => (selecting ? clearPick() : (setSelecting(true), setPicked(sel != null ? [sel] : [])))}>
             <CheckCheck size={13} /> Выбрать
           </button>
-          <button className="icon-btn" title="Клавиши (⌘/)" onClick={() => setHelpOpen(true)}>⌘/</button>
+          <button className="icon-btn" data-tip="Сочетания клавиш" data-key="⌘/" aria-label="Сочетания клавиш" onClick={() => setHelpOpen(true)}><Keyboard size={14} /></button>
         </header>
 
         {view !== "archive" && (
@@ -414,7 +429,7 @@ export default function App() {
       </main>
       )}
 
-      {view === "home" ? null : bulk ? (
+      {wide ? null : bulk ? (
         <BulkPanel tasks={pickedTasks} total={ids.length} projects={projects} selecting={selecting} run={run}
           onSelectAll={() => setPicked(ids)} onClear={clearPick} />
       ) : task ? (
@@ -434,6 +449,8 @@ export default function App() {
         </div>
       )}
       {helpOpen && <Help onClose={() => setHelpOpen(false)} />}
+      <Tooltips />
+      {!settingsOpen && <QuickKeyBanner error={shortcutError} onSettings={() => setSettingsOpen(true)} />}
       {settingsOpen && (
         <Settings settings={settings} shortcutError={shortcutError} onClose={() => setSettingsOpen(false)}
           onSet={(key, value) => run(() => db.setSetting(key, value))}
@@ -474,62 +491,6 @@ function emptyText(view: ViewId): string {
   if (view === "today") return "На сегодня ничего. Поставь дату «Сегодня» при разборе.";
   if (view === "archive") return "Сделанные задачи попадают сюда на следующий день.";
   return "Здесь пока ничего нет.";
-}
-
-function viewIcon(id: ViewId, settings: Record<string, string>): string {
-  return settings[`icon:${id}`] ?? VIEWS.find((v) => v.id === id)?.icon ?? "folder";
-}
-
-function Sidebar(props: {
-  view: ViewId;
-  tasks: Task[];
-  projects: Project[];
-  settings: Record<string, string>;
-  onOpen: (v: ViewId) => void;
-  onNewProject: () => void;
-  onEditProject: (p: Project) => void;
-  onViewIcon: (id: ViewId, icon: string) => void;
-  onSettings: () => void;
-}) {
-  // Пункт меню, у которого сейчас открыт выбор иконки
-  const [picker, setPicker] = useState<{ id: ViewId; el: HTMLElement } | null>(null);
-  const item = (id: ViewId, label: string, accent: string, icon: string, onIcon: (el: HTMLElement) => void) => {
-    const n = countFor(id, props.tasks);
-    return (
-      <div key={id} className={`nav ${props.view === id ? "on" : ""}`} onClick={() => props.onOpen(id)} role="button">
-        <button className="nav-icon" title="Сменить иконку" style={{ color: `var(--${accent})` }}
-          onClick={(e) => (e.stopPropagation(), onIcon(e.currentTarget))}>
-          <Icon name={icon} size={15} />
-        </button>
-        <span className="nav-name">{label}</span>
-        <span className="n">{n || ""}</span>
-      </div>
-    );
-  };
-  const pickerView = picker && VIEWS.find((v) => v.id === picker.id);
-  return (
-    <nav className="side">
-      <div className={`nav ${props.view === "home" ? "on" : ""}`} onClick={() => props.onOpen("home")} role="button">
-        <span className="nav-icon"><HomeIcon /></span>
-        <span className="nav-name">Главная</span>
-      </div>
-      {VIEWS.filter((v) => v.id === "inbox" || props.settings[`hidden:${v.id}`] !== "1").map((v) => item(v.id, v.name, v.accent, viewIcon(v.id, props.settings), (el) => setPicker({ id: v.id, el })))}
-      <div className="sec">Проекты</div>
-      {props.projects.map((p) => item(`p:${p.id}`, p.name, p.color, p.icon, () => props.onEditProject(p)))}
-      <button className="nav add-project" onClick={props.onNewProject}>+ Новый проект</button>
-      <div className="side-foot">
-        <ThemeSwitch />
-        <button className="gear" title="Настройки (⌘,)" onClick={props.onSettings}><Gear size={15} /></button>
-      </div>
-      {picker && pickerView && (
-        <Popover anchor={picker.el} onClose={() => setPicker(null)} width={232}>
-          <div className="lbl">Иконка для «{pickerView.name}»</div>
-          <IconGrid value={viewIcon(picker.id, props.settings)} accent={pickerView.accent}
-            onPick={(icon) => (props.onViewIcon(picker.id, icon), setPicker(null))} />
-        </Popover>
-      )}
-    </nav>
-  );
 }
 
 function TaskRow(props: {

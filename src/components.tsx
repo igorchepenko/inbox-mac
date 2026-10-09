@@ -292,19 +292,28 @@ export const SHORTCUTS: [string, string][] = [
   ["D W M  ← →", "Календарь: день, неделя, месяц, листать"],
   ["⌘-клик", "Выбрать несколько, ⇧-клик выделяет подряд"],
   ["⌘A", "Выбрать все в списке"],
+  ["⌘6", "Все проекты карточками"],
+  ["⌘P", "Найти проект и перейти"],
   ["⌘/", "Эта шпаргалка"],
   ["⌘,", "Настройки"],
   ["Esc", "Закрыть"],
 ];
 
+/** Все сочетания клавиш: открывается кнопкой с клавиатурой внизу меню или по ⌘/ */
 export function Help({ onClose }: { onClose: () => void }) {
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="help">
-        <h3>Клавиши</h3>
-        {SHORTCUTS.map(([k, v]) => (
-          <div className="help-row" key={k}><kbd>{k === "⌥ Space" ? quickKeyLabel() : k}</kbd><span>{v}</span></div>
-        ))}
+      <div className="help" role="dialog" aria-label="Сочетания клавиш">
+        <div className="help-head">
+          <h3>Сочетания клавиш</h3>
+          <button className="help-x" aria-label="Закрыть" data-tip="Закрыть" data-key="Esc" onClick={onClose}>×</button>
+        </div>
+        <div className="help-grid">
+          {SHORTCUTS.map(([k, v]) => (
+            <div className="help-row" key={k}><kbd>{k === "⌥ Space" ? quickKeyLabel() : k}</kbd><span>{v}</span></div>
+          ))}
+        </div>
+        <p className="hint help-foot">Подсказка с сочетанием появляется и при наведении на кнопку.</p>
       </div>
     </div>
   );

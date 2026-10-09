@@ -93,12 +93,13 @@ function MiniRing({ fraction, color, size = 46 }: { fraction: number; color: str
 }
 
 /** Иконка пункта «Главная» в боковом меню: три вложенных мини-кольца */
-export function HomeIcon() {
+/** Знак приложения «Молния»: тот же, что в Dock (src-tauri/icons/source/app-icon.svg) */
+export function HomeIcon({ size = 16 }: { size?: number }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 20 20" aria-hidden="true">
-      <circle cx="10" cy="10" r="8" fill="none" stroke="var(--move)" strokeWidth="2.4" />
-      <circle cx="10" cy="10" r="4.6" fill="none" stroke="var(--exercise)" strokeWidth="2.4" />
-      <circle cx="10" cy="10" r="1.6" fill="var(--stand)" />
+    <svg width={size} height={size} viewBox="100 100 824 824" aria-hidden="true">
+      <rect x="100" y="100" width="824" height="824" rx="185" fill="#FA114F" />
+      <path d="M270 520 L420 700 L560 470 L520 470 L640 290 L760 290 L640 450 L690 450 L440 760 Q420 785 395 760 L250 590 Q230 560 255 540 Z"
+        fill="#FFFFFF" stroke="#FFFFFF" strokeWidth="24" strokeLinejoin="round" />
     </svg>
   );
 }

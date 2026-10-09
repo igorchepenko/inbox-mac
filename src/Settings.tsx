@@ -7,6 +7,7 @@ import { IconGrid, Popover, ThemeSwitch, TimeInput } from "./widgets";
 import { savedTheme, setTheme } from "./theme";
 import { HomeSettings } from "./HomeSettings";
 import { HomeIcon } from "./home/Home";
+import { QuickKeyTest } from "./QuickKeyCheck";
 import { ensurePermission, notify } from "./reminders";
 import {
   accelFromEvent, DEFAULT_APPEARANCE, DEFAULTS, FONTS, labelFromAccel, pref, savedAppearance, setAppearance, SIZES, SOUNDS, type Appearance,
@@ -248,6 +249,7 @@ function Quick(p: SettingsProps) {
         </button>
       </Row>
       {shownError && <div className="error">{shownError}</div>}
+      <QuickKeyTest />
       <Row name="Без клавиатуры" hint="Карточка открывается и кликом по иконке Inbox в строке меню">
         <span />
       </Row>

@@ -2,7 +2,7 @@ import type { Task } from "./db";
 import { fmtDay, today } from "./dates";
 import { quickKeyLabel } from "./prefs";
 
-export type ViewId = "home" | "inbox" | "today" | "soon" | "archive" | "calendar" | `p:${number}`;
+export type ViewId = "home" | "projects" | "inbox" | "today" | "soon" | "archive" | "calendar" | `p:${number}`;
 
 export const VIEWS: { id: ViewId; name: string; accent: string; icon: string }[] = [
   { id: "inbox", name: "На разбор", accent: "move", icon: "inbox" },
@@ -31,7 +31,7 @@ function byWork(a: Task, b: Task): number {
 
 export function listFor(view: ViewId, tasks: Task[]): ListItem[] {
   const t = today();
-  if (view === "home") return [];
+  if (view === "home" || view === "projects") return [];
   if (view === "inbox") return tasks.filter((x) => x.status === "inbox").map((task) => ({ task }));
   if (view === "today")
     return tasks
@@ -66,7 +66,7 @@ export function listFor(view: ViewId, tasks: Task[]): ListItem[] {
 }
 
 export function countFor(view: ViewId, tasks: Task[]): number {
-  if (view === "archive" || view === "calendar") return 0;
+  if (view === "archive" || view === "calendar" || view === "projects") return 0;
   return listFor(view, tasks).filter((i) => i.task.status !== "done").length;
 }
 

@@ -1,8 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { ChevronLeft, ChevronRight, Monitor, Moon, Sun } from "lucide-react";
 import { dayKey, parseDay, today } from "./dates";
 import { Icon, ICONS } from "./icons";
-import type { ProjectColor, ProjectFields } from "./db";
+import type { ProjectFields } from "./db";
+import { PALETTE, swatchOf } from "./palette";
 import { setTheme, savedTheme, type Theme } from "./theme";
 
 /** Высота textarea растёт вместе с текстом. Пересчитывается и при смене ширины окна */
@@ -238,15 +239,29 @@ export function ThemeSwitch(props: { wide?: boolean }) {
   );
 }
 
-// Своя палитра проектов: не пересекается с системными красным, зелёным и бирюзовым
-const COLORS: { value: ProjectColor; name: string }[] = [
-  { value: "violet", name: "Фиолетовый" },
-  { value: "orange", name: "Оранжевый" },
-  { value: "blue", name: "Синий" },
-  { value: "graphite", name: "Графит" },
-];
-
 /** Создание и редактирование проекта: название, описание, цвет, иконка */
+/** Палитра проектов сеткой 8×4. Стрелки двигают выбор, имя цвета в подсказке и над сеткой */
+export function ColorGrid({ value, onPick }: { value: string; onPick: (id: string) => void }) {
+  const move = (e: ReactKeyboardEvent, i: number) => {
+    const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 8, ArrowUp: -8 }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    const next = PALETTE[(i + step + PALETTE.length) % PALETTE.length];
+    onPick(next.id);
+    (e.currentTarget.parentElement?.children[PALETTE.indexOf(next)] as HTMLElement | undefined)?.focus();
+  };
+  return (
+    <div className="color-grid" role="radiogroup" aria-label="Цвет проекта">
+      {PALETTE.map((c, i) => (
+        <button type="button" key={c.id} role="radio" aria-checked={value === c.id} aria-label={c.name} data-tip={c.name}
+          tabIndex={value === c.id || (!swatchOf(value) && i === 0) ? 0 : -1}
+          className={`color-dot ${value === c.id ? "on" : ""}`} style={{ "--c": `var(--${c.id})` } as CSSProperties}
+          onClick={() => onPick(c.id)} onKeyDown={(e) => move(e, i)} />
+      ))}
+    </div>
+  );
+}
+
 export function ProjectDialog(props: {
   initial?: ProjectFields;
   onSave: (p: ProjectFields) => void;
@@ -271,16 +286,8 @@ export function ProjectDialog(props: {
         <textarea ref={desc} className="field dlg-desc" placeholder="Описание: зачем этот проект, что в него попадает" rows={2}
           value={p.description} onChange={(e) => setP({ ...p, description: e.target.value })}
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && !e.metaKey && e.stopPropagation()} />
-        <div className="lbl">Цвет</div>
-        <div className="seg">
-          {COLORS.map((c) => (
-            <button type="button" key={c.value} className={`chip ${p.color === c.value ? "on" : ""}`}
-              style={p.color === c.value ? { background: `var(--${c.value})` } : undefined}
-              onClick={() => setP({ ...p, color: c.value })}>
-              <i className="swatch" style={{ background: `var(--${c.value})` }} />{c.name}
-            </button>
-          ))}
-        </div>
+        <div className="lbl">Цвет <span className="lbl-val">{swatchOf(p.color)?.name ?? ""}</span></div>
+        <ColorGrid value={p.color} onPick={(color) => setP({ ...p, color })} />
         <div className="lbl">Иконка</div>
         <IconGrid value={p.icon} accent={p.color} onPick={(icon) => setP({ ...p, icon })} />
         <div className="dlg-foot">
