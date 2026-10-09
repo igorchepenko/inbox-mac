@@ -1,7 +1,7 @@
 import type { Task } from "./db";
 import { fmtDay, today } from "./dates";
 
-export type ViewId = "inbox" | "today" | "soon" | "archive" | `p:${number}`;
+export type ViewId = "home" | "inbox" | "today" | "soon" | "archive" | `p:${number}`;
 
 export const VIEWS: { id: ViewId; name: string; accent: string; icon: string }[] = [
   { id: "inbox", name: "На разбор", accent: "move", icon: "inbox" },
@@ -29,6 +29,7 @@ function byWork(a: Task, b: Task): number {
 
 export function listFor(view: ViewId, tasks: Task[]): ListItem[] {
   const t = today();
+  if (view === "home") return [];
   if (view === "inbox") return tasks.filter((x) => x.status === "inbox").map((task) => ({ task }));
   if (view === "today")
     return tasks
