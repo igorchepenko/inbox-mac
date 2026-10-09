@@ -229,3 +229,20 @@ html.quick, html.quick body { background: transparent; }
 }
 .settings:focus { outline: none; }
 .set-select { padding: 7px 10px; min-width: 150px; font-weight: 600; color: var(--fg); }
+.set-select.narrow { min-width: 0; width: auto; }
+.set-input { width: 64px; padding: 7px 10px; font-weight: 600; text-align: center; }
+.set-input.wide { width: 180px; text-align: left; }
+/* Блоки главной: перетаскиваемый список */
+.block-list { display: flex; flex-direction: column; gap: 5px; }
+.block-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 6px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); cursor: grab; }
+.block-row:hover { border-color: var(--border); }
+.block-row.dragging { opacity: .55; border-style: dashed; border-color: var(--stand); }
+.block-row.off .block-name { color: var(--muted); }
+.block-row .grip { color: var(--muted); flex: none; }
+.block-name { flex: 1; font-weight: 600; }
+.block-row .cal-nav { width: 24px; height: 24px; }
+.block-row .cal-nav:disabled { opacity: .3; }
+.block-row .toggle { margin-left: 6px; }
+@media (prefers-reduced-motion: no-preference) {
+  .block-row { transition: transform .15s, opacity .15s, border-color .12s; }
+}
