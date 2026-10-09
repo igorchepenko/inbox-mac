@@ -33,7 +33,7 @@ export const SIZES: { id: SizeId; name: string; zoom: number }[] = [
 ];
 
 const APPEARANCE_KEY = "inbox.appearance";
-const DEFAULT_APPEARANCE: Appearance = { font: "system", size: "m" };
+export const DEFAULT_APPEARANCE: Appearance = { font: "system", size: "m" };
 
 export function savedAppearance(): Appearance {
   try {

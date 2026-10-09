@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BellRing, Keyboard, LayoutDashboard, PanelLeft, SlidersHorizontal, Type, X, type LucideIcon } from "lucide-react";
+import { BellRing, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, SlidersHorizontal, Type, X, type LucideIcon } from "lucide-react";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as autostartEnabled } from "@tauri-apps/plugin-autostart";
 import { Icon } from "./icons";
 import { VIEWS, type ViewId } from "./views";
 import { IconGrid, Popover, ThemeSwitch, TimeInput } from "./widgets";
+import { savedTheme, setTheme } from "./theme";
 import { HomeSettings } from "./HomeSettings";
 import { HomeIcon } from "./home/Home";
 import { ensurePermission, notify } from "./reminders";
 import {
-  accelFromEvent, DEFAULTS, FONTS, labelFromAccel, pref, savedAppearance, setAppearance, SIZES, SOUNDS, type Appearance,
+  accelFromEvent, DEFAULT_APPEARANCE, DEFAULTS, FONTS, labelFromAccel, pref, savedAppearance, setAppearance, SIZES, SOUNDS, type Appearance,
 } from "./prefs";
 
 export interface SettingsProps {
@@ -65,14 +66,44 @@ export function Settings(props: SettingsProps) {
 
 // ── Общие кусочки ──
 
-function Row(props: { name: string; hint?: ReactNode; children: ReactNode }) {
+/** Значение по умолчанию у параметра: подпись, что стоит изначально, и сброс, если значение другое */
+export interface Def {
+  /** Текст исходного значения, например «SF Pro» */
+  text: string;
+  changed: boolean;
+  reset: () => void;
+}
+
+export function Row(props: { name: string; hint?: ReactNode; def?: Def; children: ReactNode }) {
+  const d = props.def;
   return (
     <div className="set-row">
       <div className="set-text">
-        <div className="set-name">{props.name}</div>
+        <div className="set-name">
+          {props.name}
+          {d?.changed && <span className="set-dot" title="Отличается от значения по умолчанию" />}
+        </div>
         {props.hint && <div className="hint">{props.hint}</div>}
+        {d && (
+          <div className="set-def">
+            По умолчанию: <b>{d.text}</b>
+            {d.changed && <button type="button" className="link" onClick={d.reset}>Сбросить</button>}
+          </div>
+        )}
       </div>
       <div className="set-ctl">{props.children}</div>
+    </div>
+  );
+}
+
+/** Общий сброс раздела внизу: неактивен, пока всё стоит как по умолчанию */
+export function ResetSection(props: { name: string; changed: boolean; onReset: () => void }) {
+  return (
+    <div className="set-reset">
+      <button type="button" className="btn small" disabled={!props.changed} onClick={props.onReset}>
+        <RotateCcw size={13} /> Сбросить раздел «{props.name}»
+      </button>
+      <span className="hint">{props.changed ? "Все параметры раздела вернутся к значениям по умолчанию" : "В разделе всё как по умолчанию"}</span>
     </div>
   );
 }
@@ -112,9 +143,13 @@ function General(p: SettingsProps) {
     }
   };
   const visible = VIEWS.filter((v) => v.id === "inbox" || p.settings[`hidden:${v.id}`] !== "1");
+  const startView = pref(p.settings, "start.view");
+  const startName = (id: string) => (id === "home" ? "Главная" : id === "last" ? "Где остановился" : VIEWS.find((v) => v.id === id)?.name ?? id);
+  const resetStart = () => p.onSet("start.view", DEFAULTS["start.view"]);
   return (
     <div className="set-group">
-      <Row name="Начальный экран" hint="Что открыто при запуске">
+      <Row name="Начальный экран" hint="Что открыто при запуске"
+        def={{ text: startName(DEFAULTS["start.view"]), changed: startView !== DEFAULTS["start.view"], reset: resetStart }}>
         <Choice value={pref(p.settings, "start.view")} onPick={(v) => p.onSet("start.view", v)}
           options={[
             { id: "home", name: "Главная" },
@@ -123,34 +158,50 @@ function General(p: SettingsProps) {
           ]} />
       </Row>
       <Row name="Открывать при входе в систему"
-        hint="Inbox запустится сам после включения Мака, и быстрый ввод с напоминаниями будут работать сразу">
+        hint="Inbox запустится сам после включения Мака, и быстрый ввод с напоминаниями будут работать сразу"
+        def={{ text: "выключено", changed: !!autostart, reset: () => toggleAutostart(false) }}>
         <Toggle label="Открывать при входе" on={!!autostart} disabled={autostart === null} onChange={toggleAutostart} />
       </Row>
+      <ResetSection name="Основные" changed={startView !== DEFAULTS["start.view"] || !!autostart}
+        onReset={() => (resetStart(), autostart && toggleAutostart(false))} />
     </div>
   );
 }
 
 function Look() {
   const [a, setA] = useState<Appearance>(savedAppearance());
+  const [theme, setT] = useState(savedTheme());
   const set = (next: Appearance) => (setA(next), setAppearance(next));
+  const D = DEFAULT_APPEARANCE;
+  const resetTheme = () => (setTheme("system"), setT("system"));
+  // Тему может сменить и переключатель в меню слева
+  useEffect(() => {
+    const on = (e: Event) => setT((e as CustomEvent<typeof theme>).detail);
+    window.addEventListener("inbox-theme", on);
+    return () => window.removeEventListener("inbox-theme", on);
+  }, []);
+  const changed = theme !== "system" || a.font !== D.font || a.size !== D.size;
   return (
     <div className="set-group">
-      <Row name="Тема" hint="Быстрый переключатель остаётся и внизу меню слева">
+      <Row name="Тема" hint="Быстрый переключатель остаётся и внизу меню слева"
+        def={{ text: "как в системе", changed: theme !== "system", reset: resetTheme }}>
         <ThemeSwitch wide />
       </Row>
-      <Row name="Шрифт">
+      <Row name="Шрифт" def={{ text: FONTS.find((f) => f.id === D.font)!.name, changed: a.font !== D.font, reset: () => set({ ...a, font: D.font }) }}>
         <div className="seg">
           {FONTS.map((f) => (
             <button type="button" key={f.id} className={`font-card ${a.font === f.id ? "on" : ""}`} onClick={() => set({ ...a, font: f.id })}>
               <span className="font-sample" style={{ fontFamily: f.stack }}>Аа</span>
-              <span>{f.name}</span>
+              <span>{f.name}{f.id === D.font && <i className="def-mark" title="По умолчанию">●</i>}</span>
             </button>
           ))}
         </div>
       </Row>
-      <Row name="Размер" hint="Меняет масштаб всего окна: текст, отступы и иконки вместе">
+      <Row name="Размер" hint="Меняет масштаб всего окна: текст, отступы и иконки вместе"
+        def={{ text: SIZES.find((s) => s.id === D.size)!.name, changed: a.size !== D.size, reset: () => set({ ...a, size: D.size }) }}>
         <Choice value={a.size} onPick={(size) => set({ ...a, size })} options={SIZES.map((s) => ({ id: s.id, name: s.name }))} />
       </Row>
+      <ResetSection name="Внешний вид" changed={changed} onReset={() => (resetTheme(), set(D))} />
     </div>
   );
 }
@@ -189,21 +240,18 @@ function Quick(p: SettingsProps) {
   return (
     <div className="set-group">
       <Row name="Сочетание клавиш"
-        hint="Открывает карточку «Что нужно сделать?» поверх любого приложения. Нажми на поле и затем нужные клавиши">
+        hint="Открывает карточку «Что нужно сделать?» поверх любого приложения. Нажми на поле и затем нужные клавиши"
+        def={{ text: labelFromAccel(DEFAULTS["quick.shortcut"]), changed: current !== DEFAULTS["quick.shortcut"], reset: () => apply(DEFAULTS["quick.shortcut"]) }}>
         <button type="button" className={`key-rec ${recording ? "rec" : ""}`} disabled={busy}
           onClick={() => (setError(null), setRecording(!recording))}>
           {recording ? "Нажми сочетание…" : labelFromAccel(current)}
         </button>
       </Row>
       {shownError && <div className="error">{shownError}</div>}
-      {current !== DEFAULTS["quick.shortcut"] && (
-        <Row name="Вернуть как было" hint={`Стандартное сочетание ${labelFromAccel(DEFAULTS["quick.shortcut"])}`}>
-          <button type="button" className="btn" onClick={() => apply(DEFAULTS["quick.shortcut"])}>Сбросить</button>
-        </Row>
-      )}
       <Row name="Без клавиатуры" hint="Карточка открывается и кликом по иконке Inbox в строке меню">
         <span />
       </Row>
+      <ResetSection name="Быстрый ввод" changed={current !== DEFAULTS["quick.shortcut"]} onReset={() => apply(DEFAULTS["quick.shortcut"])} />
     </div>
   );
 }
@@ -212,6 +260,9 @@ function Notifications(p: SettingsProps) {
   const enabled = pref(p.settings, "remind.enabled") === "1";
   const sound = pref(p.settings, "remind.sound");
   const digest = pref(p.settings, "digest.enabled") === "1";
+  const digestChanged = digest !== (DEFAULTS["digest.enabled"] === "1") || pref(p.settings, "digest.time") !== DEFAULTS["digest.time"];
+  const notifChanged = enabled !== (DEFAULTS["remind.enabled"] === "1") || sound !== DEFAULTS["remind.sound"] || digestChanged;
+  const resetNotif = () => (["remind.enabled", "remind.sound", "digest.enabled", "digest.time"] as const).forEach((k) => p.onSet(k, DEFAULTS[k]));
   const [tested, setTested] = useState<string | null>(null);
   const test = async () => {
     if (!(await ensurePermission())) return setTested("macOS не дал разрешения. Включи уведомления для Inbox в Системных настройках → Уведомления");
@@ -220,11 +271,12 @@ function Notifications(p: SettingsProps) {
   };
   return (
     <div className="set-group">
-      <Row name="Уведомления" hint="Когда выключены, напоминания проходят молча, а задачи остаются на своих местах">
+      <Row name="Уведомления" hint="Когда выключены, напоминания проходят молча, а задачи остаются на своих местах"
+        def={{ text: DEFAULTS["remind.enabled"] === "1" ? "включены" : "выключены", changed: enabled !== (DEFAULTS["remind.enabled"] === "1"), reset: () => p.onSet("remind.enabled", DEFAULTS["remind.enabled"]) }}>
         <Toggle label="Уведомления" on={enabled} onChange={(on) => p.onSet("remind.enabled", on ? "1" : "0")} />
       </Row>
       <fieldset disabled={!enabled} className="set-group">
-        <Row name="Звук">
+        <Row name="Звук" def={{ text: DEFAULTS["remind.sound"], changed: sound !== DEFAULTS["remind.sound"], reset: () => p.onSet("remind.sound", DEFAULTS["remind.sound"]) }}>
           <select className="field set-select" value={sound} onChange={(e) => p.onSet("remind.sound", e.target.value)}>
             <option value="none">Без звука</option>
             {SOUNDS.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -234,13 +286,16 @@ function Notifications(p: SettingsProps) {
           <button type="button" className="btn" onClick={test}>Отправить</button>
         </Row>
         {tested && <div className="error">{tested}</div>}
-        <Row name="Утренняя сводка" hint="Раз в день: сколько задач на сегодня и сколько ждут разбора">
+        <Row name="Утренняя сводка" hint="Раз в день: сколько задач на сегодня и сколько ждут разбора"
+          def={{ text: `${DEFAULTS["digest.enabled"] === "1" ? "включена" : "выключена"}, ${DEFAULTS["digest.time"]}`, changed: digestChanged,
+            reset: () => (p.onSet("digest.enabled", DEFAULTS["digest.enabled"]), p.onSet("digest.time", DEFAULTS["digest.time"])) }}>
           <div className="seg">
             {digest && <TimeInput value={pref(p.settings, "digest.time")} onCommit={(t) => t && p.onSet("digest.time", t)} />}
             <Toggle label="Утренняя сводка" on={digest} onChange={(on) => p.onSet("digest.enabled", on ? "1" : "0")} />
           </div>
         </Row>
       </fieldset>
+      <ResetSection name="Уведомления" changed={notifChanged} onReset={resetNotif} />
     </div>
   );
 }
@@ -249,6 +304,11 @@ function MenuItems(p: SettingsProps) {
   const [picker, setPicker] = useState<{ id: ViewId; el: HTMLElement } | null>(null);
   const iconOf = (id: ViewId) => p.settings[`icon:${id}`] ?? VIEWS.find((v) => v.id === id)!.icon;
   const pickerView = picker && VIEWS.find((v) => v.id === picker.id);
+  const menuChanged = (id: ViewId) => p.settings[`hidden:${id}`] === "1" || iconOf(id) !== VIEWS.find((v) => v.id === id)!.icon;
+  const resetMenu = (id: ViewId) => {
+    if (p.settings[`hidden:${id}`] === "1") p.onSet(`hidden:${id}`, "0");
+    if (iconOf(id) !== VIEWS.find((v) => v.id === id)!.icon) p.onSet(`icon:${id}`, VIEWS.find((v) => v.id === id)!.icon);
+  };
   return (
     <div className="set-group">
       <div className="hint">Какие списки показывать в меню слева и с какой иконкой. Иконку можно сменить и кликом по ней прямо в меню.</div>
@@ -272,12 +332,17 @@ function MenuItems(p: SettingsProps) {
             <div className="set-text">
               <div className="set-name">{v.name}</div>
               {v.id === "inbox" && <div className="hint">Сюда падают все новые задачи, поэтому этот список всегда виден</div>}
+              <div className="set-def">
+                По умолчанию: <b>виден, иконка</b> <Icon name={v.icon} size={13} />
+                {menuChanged(v.id) && <button type="button" className="link" onClick={() => resetMenu(v.id)}>Сбросить</button>}
+              </div>
             </div>
             <Toggle label={`Показывать «${v.name}»`} on={!hidden} disabled={v.id === "inbox"}
               onChange={(on) => p.onSet(`hidden:${v.id}`, on ? "0" : "1")} />
           </div>
         );
       })}
+      <ResetSection name="Меню" changed={VIEWS.some((v) => menuChanged(v.id))} onReset={() => VIEWS.forEach((v) => resetMenu(v.id))} />
       {picker && pickerView && (
         <Popover anchor={picker.el} onClose={() => setPicker(null)} width={232}>
           <div className="lbl">Иконка для «{pickerView.name}»</div>
