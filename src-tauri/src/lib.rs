@@ -5,8 +5,10 @@ use tauri::{
     AppHandle, Emitter, Manager, WindowEvent,
 };
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_sql::{Migration, MigrationKind};
 
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 const DB_URL: &str = "sqlite:inbox.db";
@@ -33,6 +35,12 @@ fn migrations() -> Vec<Migration> {
             version: 3,
             description: "separate palette for projects",
             sql: include_str!("../migrations/003_project_palette.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "time range, eisenhower, recurrence, subtasks, links, attachments",
+            sql: include_str!("../migrations/004_task_extras.sql"),
             kind: MigrationKind::Up,
         },
     ]
@@ -72,6 +80,114 @@ fn hide_quick(app: AppHandle) {
     }
 }
 
+/// Папка с копиями прикреплённых файлов: ~/Library/Application Support/com.igorchepenko.inbox/attachments
+fn attachments_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map(|d| d.join("attachments"))
+        .map_err(|e| e.to_string())
+}
+
+#[derive(serde::Serialize)]
+struct StoredFile {
+    name: String,
+    path: String,
+    size: u64,
+}
+
+/// Копирует файл в папку задачи. Если имя занято, добавляет номер: «отчёт 2.pdf»
+#[tauri::command]
+fn attach_file(app: AppHandle, task_id: i64, src: String) -> Result<StoredFile, String> {
+    let src = PathBuf::from(src);
+    let meta = std::fs::metadata(&src).map_err(|e| format!("Файл не найден: {e}"))?;
+    if meta.is_dir() {
+        return Err("Папку прикрепить нельзя, только файлы".into());
+    }
+    let name = src
+        .file_name()
+        .ok_or("У файла нет имени")?
+        .to_string_lossy()
+        .to_string();
+    let dir = attachments_dir(&app)?.join(task_id.to_string());
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let stem = src
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| name.clone());
+    let ext = src
+        .extension()
+        .map(|e| format!(".{}", e.to_string_lossy()))
+        .unwrap_or_default();
+    let mut dest = dir.join(&name);
+    let mut n = 2;
+    while dest.exists() {
+        dest = dir.join(format!("{stem} {n}{ext}"));
+        n += 1;
+    }
+    std::fs::copy(&src, &dest).map_err(|e| e.to_string())?;
+    Ok(StoredFile {
+        name: dest
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or(name),
+        path: dest.to_string_lossy().to_string(),
+        size: meta.len(),
+    })
+}
+
+/// Путь лежит внутри папки вложений: удалять и открывать из интерфейса можно только свои копии
+fn inside_attachments(app: &AppHandle, path: &str) -> Result<PathBuf, String> {
+    let root = attachments_dir(app)?;
+    let p = Path::new(path);
+    if p.starts_with(&root) && !path.contains("..") {
+        Ok(p.to_path_buf())
+    } else {
+        Err("Файл вне папки вложений".into())
+    }
+}
+
+#[tauri::command]
+fn remove_attachment(app: AppHandle, path: String) -> Result<(), String> {
+    let p = inside_attachments(&app, &path)?;
+    let _ = std::fs::remove_file(&p);
+    // Пустая папка задачи больше не нужна
+    if let Some(dir) = p.parent() {
+        let _ = std::fs::remove_dir(dir);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn open_path(app: AppHandle, path: String) -> Result<(), String> {
+    let p = inside_attachments(&app, &path)?;
+    app.opener()
+        .open_path(p.to_string_lossy(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn reveal_path(app: AppHandle, path: String) -> Result<(), String> {
+    let p = inside_attachments(&app, &path)?;
+    app.opener()
+        .reveal_item_in_dir(p)
+        .map_err(|e| e.to_string())
+}
+
+/// Ссылки открываются в браузере по умолчанию. Только веб и почта, без file:// и прочего
+#[tauri::command]
+fn open_url(app: AppHandle, url: String) -> Result<(), String> {
+    let lower = url.to_lowercase();
+    if !(lower.starts_with("http://")
+        || lower.starts_with("https://")
+        || lower.starts_with("mailto:"))
+    {
+        return Err("Открываются только ссылки http, https и mailto".into());
+    }
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.unminimize();
@@ -91,6 +207,8 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
@@ -100,7 +218,14 @@ pub fn run() {
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![hide_quick])
+        .invoke_handler(tauri::generate_handler![
+            hide_quick,
+            attach_file,
+            remove_attachment,
+            open_path,
+            reveal_path,
+            open_url
+        ])
         .setup(move |app| {
             // ⌥Space может быть занят другим приложением: тогда работаем без него, через иконку в строке меню
             if let Err(e) = app.global_shortcut().register(quick_shortcut) {

@@ -13,6 +13,7 @@
     "core:window:allow-set-size",
     "sql:default",
     "sql:allow-execute",
-    "notification:default"
+    "notification:default",
+    "dialog:allow-open"
   ]
 }
