@@ -216,14 +216,14 @@ export function BoardView(props: {
 
   return (
     <div className="board" ref={root}>
-      {props.columns.map(({ key: col, name, accent, icon, hint, items }) => {
+      {props.columns.map(({ key: col, name, accent, icon, prio, hint, items }) => {
         const open = items.filter((i) => i.task.status === "inbox" || i.task.status === "active").length;
         const isOver = drag?.over === col && drag.from !== col;
         return (
           <section key={col} ref={(el) => void (el ? colRefs.current.set(col, el) : colRefs.current.delete(col))}
             className={`col ${isOver ? (hint ? "over" : "no-drop") : ""}`} style={{ "--c": `var(--${isOver && !hint ? "muted" : accent})` } as React.CSSProperties}>
             <header className="col-head">
-              <span className="col-icon">{icon ? <Icon name={icon} size={14} /> : <span className="col-dot" />}</span>
+              <span className="col-icon">{prio ? <PriorityIcon p={prio} /> : icon ? <Icon name={icon} size={14} /> : <span className="col-dot" />}</span>
               <span className="col-name">{name}</span>
               <span className="col-n">{open || items.length || ""}</span>
             </header>

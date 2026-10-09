@@ -34,6 +34,7 @@ export interface BoardColumn {
   name: string;
   accent: string;
   icon?: string;
+  prio?: number; // столбец важности: в шапке её иконка
   hint: string | null; // что станет с задачей при переносе сюда; null — сюда переносить нельзя
   items: ListItem[];
 }
@@ -104,7 +105,7 @@ function specs(group: Group): Spec[] {
     // Уровни берутся из PRIORITY: станет их больше — станет больше столбцов. Важные слева
     return [
       ...[...PRIORITY].reverse().map((p) => ({
-        key: String(p.value), name: p.name, accent: p.accent, hint: `Важность станет «${p.name.toLowerCase()}»`,
+        key: String(p.value), name: p.name, accent: p.accent, prio: p.value, hint: `Важность станет «${p.name.toLowerCase()}»`,
         has: (x: Task) => x.priority === p.value,
       })),
       { key: "0", name: "Не задана", accent: "muted", hint: "Важность снимется", has: (x) => !PRIORITY.some((p) => p.value === x.priority) },

@@ -60,9 +60,9 @@
 .pp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; overflow-y: auto; align-content: start;
   margin: 0 -6px; padding: 2px 6px 12px; }
 .pp-card { --c: var(--graphite); position: relative; display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 14px 14px 12px;
-  border-radius: 14px; background: var(--surface); border: 1px solid var(--line); text-align: left; cursor: pointer; }
+  border-radius: 14px; background: var(--surface); border: 1px solid var(--border); box-shadow: var(--card-shadow); text-align: left; cursor: pointer; }
 .pp-card::before { content: ""; position: absolute; left: 14px; right: 14px; top: 0; height: 3px; border-radius: 0 0 3px 3px; background: var(--c); }
-.pp-card:hover { border-color: var(--border); }
+.pp-card:hover { border-color: var(--muted); }
 .pp-card:focus-visible { outline: 2px solid var(--stand); outline-offset: 2px; }
 .pp-top { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .pp-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; flex: none; color: var(--c);
