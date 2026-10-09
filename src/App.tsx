@@ -11,14 +11,15 @@ import { Icon } from "./icons";
 import { IconGrid, Popover, ProjectDialog, ThemeSwitch } from "./widgets";
 import { CheckCheck, Link2, ListChecks, Paperclip, Pencil, Repeat, Settings as Gear } from "lucide-react";
 import { fmtRange, QuadrantGlyph } from "./extras";
-import { boardFor, bulkMove, layoutOf, type Layout } from "./boardOps";
-import { BoardView, BulkPanel, LayoutSwitch, StackView, type Pick } from "./Board";
+import { boardFor, dropTo, groupOf, layoutOf, type Group, type Layout } from "./boardOps";
+import { BoardView, BulkPanel, GroupSwitch, LayoutSwitch, type Pick } from "./Board";
 import { ensurePermission, fireDueReminders, maybeSendDigest } from "./reminders";
 import { Settings } from "./Settings";
 import { labelFromAccel, pref, quickKeyLabel, setQuickKeyLabel } from "./prefs";
 import Home, { HomeIcon } from "./home/Home";
 import { KEY_HIDDEN, KEY_ORDER } from "./home/data";
 import CalendarView from "./CalendarView";
+import { toHHMM } from "./calendar";
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -92,7 +93,8 @@ export default function App() {
 
   const layout = layoutOf(view, settings);
   const list = useMemo(() => listFor(view, tasks), [view, tasks]);
-  const columns = useMemo(() => (layout === "board" ? boardFor(view, tasks) : null), [layout, view, tasks]);
+  const group = groupOf(settings);
+  const columns = useMemo(() => (layout === "board" ? boardFor(view, tasks, group) : null), [layout, view, tasks, group]);
   const ids = columns ? columns.flatMap((c) => c.items.map((i) => i.task.id)) : list.map((i) => i.task.id);
   const pickedTasks = tasks.filter((x) => picked.includes(x.id) && ids.includes(x.id));
   const bulk = selecting || pickedTasks.length > 1;
@@ -181,8 +183,29 @@ export default function App() {
     setSel(id);
   };
   const setLayout = (l: Layout) => run(() => db.setSetting(`layout:${view}`, l));
-  const moveCards = (moved: number[], col: Parameters<typeof bulkMove>[1]) =>
-    run(() => bulkMove(tasks.filter((x) => moved.includes(x.id)), col));
+  const setGroup = (g: Group) => run(() => db.setSetting("board.group", g));
+  const moveCards = (moved: number[], col: string) =>
+    run(async () => {
+      for (const x of tasks.filter((x) => moved.includes(x.id))) await dropTo(x, group, col);
+    });
+
+  // Клик по пустому месту календаря: задача на этот день и время, название сразу выделено для правки
+  const createAt = async (day: string, start: number | null, end: number | null) => {
+    try {
+      const id = await db.addTask("Новая задача", "", {
+        due_date: day, start_time: start == null ? null : toHHMM(start), end_time: end == null ? null : toHHMM(end),
+      });
+      await reload();
+      setSel(id);
+      setTimeout(() => {
+        const el = document.querySelector<HTMLTextAreaElement>(".det-title");
+        el?.focus();
+        el?.select();
+      }, 50);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
 
   const saveNew = (title: string, note: string, draft: db.Draft) => {
     setNewOpen(false);
@@ -317,7 +340,8 @@ export default function App() {
           onMove={(id, p) => {
             if (p.remind_at) ensurePermission();
             run(() => db.updateTask(id, p));
-          }} />
+          }}
+          onCreate={createAt} />
       ) : (
       <main className="main">
         {view === "home" ? (
@@ -348,6 +372,7 @@ export default function App() {
               <Pencil size={13} /> Изменить
             </button>
           )}
+          {columns && <GroupSwitch value={group} onChange={setGroup} />}
           <LayoutSwitch value={layout} onChange={setLayout} />
           <button className={`icon-btn ${selecting ? "on" : ""}`} title="Выбрать несколько задач (⌘-клик, ⌘A)"
             onClick={() => (selecting ? clearPick() : (setSelecting(true), setPicked(sel != null ? [sel] : [])))}>
@@ -366,12 +391,9 @@ export default function App() {
 
         <div className={`views ${selecting ? "selecting" : ""}`}>
           {columns ? (
-            <BoardView columns={columns} current={view} projects={projects} sel={sel} picked={picked}
+            <BoardView columns={columns} projects={projects} sel={sel} picked={picked}
               fileDrop={dropOnDetails ? null : dropTarget}
               onPick={pick} onToggle={toggleDone} onMove={moveCards} />
-          ) : layout === "cards" ? (
-            <StackView items={list} projects={projects} sel={sel} picked={picked} empty={emptyText(view)}
-              fileDrop={dropOnDetails ? null : dropTarget} onPick={pick} onToggle={toggleDone} />
           ) : (
             <div className="list" role="listbox">
               {list.map(({ task: x, group }) => (

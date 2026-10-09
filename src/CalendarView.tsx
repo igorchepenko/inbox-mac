@@ -5,7 +5,7 @@ import * as db from "./db";
 import { parseDay, today } from "./dates";
 import { Icon } from "./icons";
 import {
-  byDayOrder, itemsFor, label, layoutDay, movable, rangeFor, shiftAnchor, snap, STEP, titleFor, toHHMM, WEEKDAYS,
+  byDayOrder, DEFAULT_LEN, itemsFor, label, layoutDay, movable, rangeFor, shiftAnchor, snap, STEP, titleFor, toHHMM, WEEKDAYS,
   type CalMode, type Item, type Placed,
 } from "./calendar";
 import "./calendar.css";
@@ -52,6 +52,7 @@ export default function CalendarView(props: {
   onSelect: (id: number) => void;
   onToggle: (task: Task) => void;
   onMove: (id: number, patch: Patch) => void;
+  onCreate: (day: string, start: number | null, end: number | null) => void;
 }) {
   const [mode, setModeState] = useState<CalMode>(() => loadPref("cal:mode", ["day", "week", "month"] as const, "week"));
   const [anchor, setAnchor] = useState(today());
@@ -60,6 +61,9 @@ export default function CalendarView(props: {
   const [pending, setPending] = useState<Record<string, Spot>>({});
   const [landed, setLanded] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
+  // Пустое место под курсором: там появится новая задача по клику
+  const [hover, setHover] = useState<{ day: string; start: number } | null>(null);
+  const press = useRef<{ x: number; y: number } | null>(null);
 
   const setMode = (m: CalMode) => {
     setModeState(m);
@@ -147,6 +151,7 @@ export default function CalendarView(props: {
   const begin = (e: React.PointerEvent, item: Item, kind: Drag["kind"]) => {
     if (e.button !== 0) return;
     e.stopPropagation();
+    press.current = null;
     const at = locate(e.clientX, e.clientY);
     const d: Drag = {
       item, kind, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, active: false,
@@ -231,6 +236,24 @@ export default function CalendarView(props: {
     const first = Math.min(8 * 60, ...items.filter((i) => i.start != null).map((i) => i.start!));
     sc.scrollTop = Math.max(0, (first - 30) * PX);
   }, [mode, days[0]]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Начало новой задачи под курсором: с шагом 15 минут, полчаса должны влезть до конца дня */
+  const newStart = (y: number) => {
+    const r = colsRef.current?.getBoundingClientRect();
+    return r ? clamp(Math.floor((y - r.top) / PX / STEP) * STEP, 0, DAY_END - DEFAULT_LEN) : 0;
+  };
+  // Клик по пустому месту создаёт задачу. Клик, а не конец перетаскивания: курсор почти не сдвинулся
+  const emptyDown = (e: React.PointerEvent) => {
+    press.current = e.button === 0 && e.target === e.currentTarget ? { x: e.clientX, y: e.clientY } : null;
+  };
+  const emptyUp = (e: React.PointerEvent, day: string, timed: boolean) => {
+    const p = press.current;
+    press.current = null;
+    if (!p || e.target !== e.currentTarget || Math.hypot(e.clientX - p.x, e.clientY - p.y) > 4) return;
+    const s = timed ? newStart(e.clientY) : null;
+    setHover(null);
+    props.onCreate(day, s, s == null ? null : s + DEFAULT_LEN);
+  };
 
   const t = today();
   const moving = drag?.active ? drag : null;
@@ -322,7 +345,8 @@ export default function CalendarView(props: {
               const shown = its.length > MONTH_CHIPS ? its.slice(0, MONTH_CHIPS - 1) : its;
               return (
                 <div key={d} className={`cal-cell ${other ? "other" : ""} ${d === t ? "today" : ""} ${target ? "target" : ""}`}
-                  onDoubleClick={() => openDay(d)}>
+                  title={moving ? undefined : "Клик по пустому месту — новая задача на этот день"}
+                  onPointerDown={emptyDown} onPointerUp={(e) => emptyUp(e, d, false)}>
                   <button className="cal-cell-n" onClick={() => openDay(d)}>{parseDay(d).getDate()}</button>
                   {shown.map((it) => chip(it))}
                   {its.length > shown.length && (
@@ -361,7 +385,8 @@ export default function CalendarView(props: {
                 const its = items.filter((i) => i.day === d && i.start == null).sort(byDayOrder);
                 const target = moving?.spot.day === d && moving.spot.start == null;
                 return (
-                  <div key={d} className={`cal-allday-col ${target ? "target" : ""}`}>
+                  <div key={d} className={`cal-allday-col ${target ? "target" : ""}`}
+                    onPointerDown={emptyDown} onPointerUp={(e) => emptyUp(e, d, false)}>
                     {its.map((it) => chip(it))}
                     {target && moving.item.start != null && (
                       <div className={`cal-chip dragging ${chipClass(moving.item, null)}`} style={accent(project(moving.item.task)?.color)}>
@@ -382,7 +407,19 @@ export default function CalendarView(props: {
                 {days.map((d) => {
                   const placed = layoutDay(items.filter((i) => i.day === d));
                   return (
-                    <div key={d} className={`cal-col ${d === t ? "today" : ""}`}>
+                    <div key={d} className={`cal-col ${d === t ? "today" : ""}`}
+                      onPointerDown={emptyDown} onPointerUp={(e) => emptyUp(e, d, true)}
+                      onPointerMove={(e) => {
+                        const s = !drag && e.target === e.currentTarget ? newStart(e.clientY) : null;
+                        if (s == null) return hover && setHover(null);
+                        if (hover?.day !== d || hover.start !== s) setHover({ day: d, start: s });
+                      }}
+                      onPointerLeave={() => setHover(null)}>
+                      {hover?.day === d && !drag && (
+                        <div className="cal-new" style={{ top: hover.start * PX + 1, height: DEFAULT_LEN * PX - 2 }}>
+                          + {label(hover.start)}
+                        </div>
+                      )}
                       {placed.map((it) => event(it))}
                       {d === t && <div className="cal-now" style={{ top: (now.getHours() * 60 + now.getMinutes()) * PX }} />}
                     </div>

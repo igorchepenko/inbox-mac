@@ -26,6 +26,7 @@ export interface Task {
   recurrence: string | null; // правило повтора, JSON из recurrence.ts
   series_id: number | null; // первая задача серии повторов
   next_id: number | null; // у сделанной повторяющейся: созданный следующий повтор
+  started_at: string | null; // когда взяли в работу: этап «В работе» на канбане
   // Не колонки tasks: подтягиваются из своих таблиц в loadTasks
   subtasks: Subtask[];
   links: Link[];
@@ -112,7 +113,7 @@ export async function addTask(title: string, note: string, draft: Draft = {}): P
   return r.lastInsertId ?? 0;
 }
 
-type Editable = Pick<Task, "title" | "note" | "priority" | "project_id" | "due_date" | "remind_at" | "status" | "reminded" | "triaged_at" | "done_at" | "start_time" | "end_time" | "quadrant" | "recurrence" | "series_id" | "next_id">;
+type Editable = Pick<Task, "title" | "note" | "priority" | "project_id" | "due_date" | "remind_at" | "status" | "reminded" | "triaged_at" | "done_at" | "start_time" | "end_time" | "quadrant" | "recurrence" | "series_id" | "next_id" | "started_at">;
 
 export async function updateTask(id: number, patch: Partial<Editable>): Promise<void> {
   const keys = Object.keys(patch) as (keyof Editable)[];
