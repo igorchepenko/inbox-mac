@@ -83,6 +83,11 @@
   background-image: linear-gradient(color-mix(in srgb, var(--line) 50%, transparent) 1px, transparent 1px); background-size: 100% 48px; background-position: 0 23px; }
 .cal-col { position: relative; border-left: 1px solid var(--line); min-width: 0; }
 .cal-col.today { background: color-mix(in srgb, var(--stand) 4%, transparent); }
+/* Подсказка на пустом месте: тут по клику появится задача на полчаса */
+.cal-col, .cal-allday-col, .cal-cell { cursor: cell; }
+.cal-new { position: absolute; left: 2px; right: 2px; z-index: 0; pointer-events: none; padding: 2px 6px; border-radius: 7px;
+  font: 600 10.5px var(--mono); color: var(--stand); border: 1.5px dashed color-mix(in srgb, var(--stand) 60%, transparent);
+  background: color-mix(in srgb, var(--stand) 8%, transparent); }
 .cal-now { position: absolute; left: -1px; right: 0; height: 2px; background: var(--stand); z-index: 3; pointer-events: none; }
 .cal-now::before { content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--stand); }
 

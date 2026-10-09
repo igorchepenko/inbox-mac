@@ -50,6 +50,12 @@ fn migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/004_task_extras.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 7,
+            description: "kanban stage: started_at",
+            sql: include_str!("../migrations/007_task_started.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 

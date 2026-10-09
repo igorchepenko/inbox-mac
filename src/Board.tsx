@@ -1,10 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Bell, CalendarDays, Clock, Columns3, Layers, Link2, List, ListChecks, Paperclip, Repeat } from "lucide-react";
+import { Bell, CalendarDays, Clock, Columns3, Link2, List, ListChecks, Paperclip, Repeat } from "lucide-react";
 import type { Project, Task } from "./db";
 import { addDays, fmtDay, nextMonday, today } from "./dates";
-import { COLUMNS, dropHint, type Column, type Layout } from "./boardOps";
+import { GROUPS, TARGETS, type BoardColumn, type Group, type Layout } from "./boardOps";
 import * as board from "./boardOps";
-import type { ListItem } from "./views";
 import { plural } from "./views";
 import { PRIORITY } from "./components";
 import { Icon } from "./icons";
@@ -20,13 +19,24 @@ export function LayoutSwitch({ value, onChange }: { value: Layout; onChange: (l:
   const opts: [Layout, string, ReactNode][] = [
     ["list", "Списком", <List size={14} />],
     ["board", "Канбан", <Columns3 size={14} />],
-    ["cards", "Карточками", <Layers size={14} />],
   ];
   return (
     <div className="theme-switch layout-switch" role="radiogroup" aria-label="Вид">
       {opts.map(([id, name, icon]) => (
         <button key={id} role="radio" aria-checked={value === id} title={name} className={value === id ? "on" : ""}
           onClick={() => onChange(id)}>{icon}</button>
+      ))}
+    </div>
+  );
+}
+
+/** По какому полю строятся столбцы канбана */
+export function GroupSwitch({ value, onChange }: { value: Group; onChange: (g: Group) => void }) {
+  return (
+    <div className="cal-modes group-switch" role="radiogroup" aria-label="Столбцы канбана" title="По чему строить столбцы">
+      {GROUPS.map((g) => (
+        <button key={g.id} role="radio" aria-checked={value === g.id} className={value === g.id ? "on" : ""}
+          onClick={() => onChange(g.id)}>{g.name}</button>
       ))}
     </div>
   );
@@ -90,26 +100,25 @@ function useFlip(root: React.RefObject<HTMLElement | null>, key: string) {
 
 interface Drag {
   ids: number[];
-  from: Column;
-  over: Column | null;
+  from: string;
+  over: string | null;
 }
 
-/** Канбан: четыре столбца, задачи переносятся мышью, перенос меняет статус и дату */
+/** Канбан: столбцы по выбранной группировке, перенос карточки меняет поле, по которому сгруппировано */
 export function BoardView(props: {
-  columns: { col: Column; items: ListItem[] }[];
-  current: string;
+  columns: BoardColumn[];
   projects: Project[];
   sel: number | null;
   picked: number[];
   fileDrop: number | null; // над какой карточкой держат файлы из Finder
   onPick: Pick;
   onToggle: (x: Task) => void;
-  onMove: (ids: number[], col: Column) => Promise<void>;
+  onMove: (ids: number[], col: string) => Promise<void>;
 }) {
   const root = useRef<HTMLDivElement>(null);
-  const colRefs = useRef(new Map<Column, HTMLElement>());
+  const colRefs = useRef(new Map<string, HTMLElement>());
   const [drag, setDrag] = useState<Drag | null>(null);
-  const key = props.columns.map((c) => `${c.col}:${c.items.map((i) => `${i.task.id}.${i.task.status}`).join(",")}`).join("|");
+  const key = props.columns.map((c) => `${c.key}:${c.items.map((i) => `${i.task.id}.${i.task.status}`).join(",")}`).join("|");
   useFlip(root, key);
 
   // Выбранная карточка не уходит из вида при ходьбе стрелками
@@ -117,18 +126,18 @@ export function BoardView(props: {
     root.current?.querySelector(`[data-card="${props.sel}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [props.sel]);
 
-  const start = (e: React.PointerEvent<HTMLElement>, x: Task, from: Column) => {
+  const start = (e: React.PointerEvent<HTMLElement>, x: Task, from: string) => {
     if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
     const el = e.currentTarget;
     const x0 = e.clientX, y0 = e.clientY;
     const r = el.getBoundingClientRect();
     const offX = x0 - r.left, offY = y0 - r.top;
     let ghost: HTMLElement | null = null;
-    let over: Column | null = null;
+    let over: string | null = null;
     let announced = false;
     let ids: number[] = [];
 
-    const overAt = (cx: number, cy: number): Column | null => {
+    const overAt = (cx: number, cy: number): string | null => {
       for (const [col, c] of colRefs.current) {
         const b = c.getBoundingClientRect();
         if (cx >= b.left && cx <= b.right && cy >= b.top && cy <= b.bottom) return col;
@@ -177,7 +186,8 @@ export function BoardView(props: {
       }
       const g = ghost;
       document.body.classList.remove("dragging");
-      const target = over && over !== from ? over : null;
+      // В столбец без подсказки («Просрочено») переносить нельзя: карточка вернётся на место
+      const target = over && over !== from && props.columns.find((c) => c.key === over)?.hint ? over : null;
       if (target) await props.onMove(ids, target);
       setDrag(null);
       // Ждём, пока React дорисует доску с новыми данными
@@ -205,20 +215,19 @@ export function BoardView(props: {
 
   return (
     <div className="board" ref={root}>
-      {props.columns.map(({ col, items }) => {
-        const meta = COLUMNS.find((c) => c.id === col)!;
-        const open = items.filter((i) => i.task.status !== "done").length;
+      {props.columns.map(({ key: col, name, accent, icon, hint, items }) => {
+        const open = items.filter((i) => i.task.status === "inbox" || i.task.status === "active").length;
         const isOver = drag?.over === col && drag.from !== col;
         return (
           <section key={col} ref={(el) => void (el ? colRefs.current.set(col, el) : colRefs.current.delete(col))}
-            className={`col ${props.current === col ? "cur" : ""} ${isOver ? "over" : ""}`} style={{ "--c": `var(--${meta.accent})` } as React.CSSProperties}>
+            className={`col ${isOver ? (hint ? "over" : "no-drop") : ""}`} style={{ "--c": `var(--${isOver && !hint ? "muted" : accent})` } as React.CSSProperties}>
             <header className="col-head">
-              <span className="col-icon"><Icon name={meta.icon} size={14} /></span>
-              <span>{meta.name}</span>
-              <span className="col-n">{col === "archive" ? items.length || "" : open || ""}</span>
+              <span className="col-icon">{icon ? <Icon name={icon} size={14} /> : <span className="col-dot" />}</span>
+              <span className="col-name">{name}</span>
+              <span className="col-n">{open || items.length || ""}</span>
             </header>
             <div className="col-body">
-              {isOver && <div className="col-hint">{dropHint(col)}</div>}
+              {isOver && <div className="col-hint">{hint ?? "Сюда перенести нельзя"}</div>}
               {items.map(({ task: x, group }) => {
                 const project = props.projects.find((p) => p.id === x.project_id);
                 const done = x.status === "done" || x.status === "archived";
@@ -244,54 +253,6 @@ export function BoardView(props: {
           </section>
         );
       })}
-    </div>
-  );
-}
-
-/**
- * Стопка карточек, как папки в картотеке: каждая чуть наезжает на предыдущую, но только на её нижнее поле,
- * поэтому текст не закрыт. Наведённая выезжает вверх, как вынутая папка.
- */
-export function StackView(props: {
-  items: ListItem[];
-  projects: Project[];
-  sel: number | null;
-  picked: number[];
-  empty: string;
-  fileDrop: number | null;
-  onPick: Pick;
-  onToggle: (x: Task) => void;
-}) {
-  const root = useRef<HTMLDivElement>(null);
-  useFlip(root, props.items.map((i) => `${i.task.id}.${i.task.status}`).join(","));
-  useEffect(() => {
-    root.current?.querySelector(`[data-card="${props.sel}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [props.sel]);
-  return (
-    <div className="stack" ref={root} role="listbox">
-      {props.items.map(({ task: x, group }) => {
-        const project = props.projects.find((p) => p.id === x.project_id);
-        const done = x.status === "done" || x.status === "archived";
-        const note = x.note.trim();
-        return [
-          group && <div key={`g${x.id}`} className="group stack-group">{group}</div>,
-          <article key={x.id} data-card={x.id} data-task-id={x.id} role="option" aria-selected={props.sel === x.id}
-            style={{ "--c": `var(--${project?.color ?? "graphite"})` } as React.CSSProperties}
-            className={`scard ${group ? "first" : ""} ${props.sel === x.id ? "sel" : ""} ${props.fileDrop === x.id ? "filedrop" : ""} ${props.picked.includes(x.id) ? "picked" : ""} ${done ? "done" : ""}`}
-            onMouseDown={(e) => props.onPick(x.id, mods(e))}>
-            <span className="scard-tab" aria-hidden="true" />
-            <div className="kcard-top">
-              <button className="chk" title={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
-                onMouseDown={(e) => e.stopPropagation()} onClick={() => props.onToggle(x)} />
-              <span className="t">{x.title}</span>
-              {x.priority === 3 && !done && <span className="tag" style={{ background: "var(--move)" }}>!</span>}
-            </div>
-            {note && <p className="scard-note">{note}</p>}
-            {hasMeta(x, project) && <Meta task={x} project={project} />}
-          </article>,
-        ];
-      })}
-      {!props.items.length && <div className="empty">{props.empty}</div>}
     </div>
   );
 }
@@ -378,7 +339,7 @@ export function BulkPanel(props: {
       <div className="det-sec">
         <div className="lbl">Перенести</div>
         <div className="seg">
-          {COLUMNS.map((c) => (
+          {TARGETS.map((c) => (
             <button key={c.id} type="button" className="chip" onClick={() => go((xs) => board.bulkMove(xs, c.id))}>
               <span style={{ color: `var(--${c.accent})`, display: "inline-flex" }}><Icon name={c.icon} size={12} /></span> {c.name}
             </button>
