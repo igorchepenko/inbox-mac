@@ -7,7 +7,9 @@ import { countFor, listFor, progressFor, VIEWS, type ViewId } from "./views";
 import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
 import { Icon } from "./icons";
 import { IconGrid, Popover, ProjectDialog, ThemeSwitch } from "./widgets";
-import { Pencil } from "lucide-react";
+import { CheckCheck, Pencil } from "lucide-react";
+import { boardFor, bulkMove, layoutOf, type Layout } from "./board";
+import { BoardView, BulkPanel, LayoutSwitch, StackView, type Pick } from "./Board";
 import { ensurePermission, fireDueReminders } from "./reminders";
 
 export default function App() {
@@ -18,6 +20,9 @@ export default function App() {
   const [projectDlg, setProjectDlg] = useState<Project | "new" | null>(null);
   const [view, setView] = useState<ViewId>("inbox");
   const [sel, setSel] = useState<number | null>(null);
+  // Выделение для массовых действий и режим «Выбрать», в котором клик добавляет задачу к выделению
+  const [picked, setPicked] = useState<number[]>([]);
+  const [selecting, setSelecting] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,8 +72,12 @@ export default function App() {
     };
   }, [reload]);
 
+  const layout = layoutOf(view, settings);
   const list = useMemo(() => listFor(view, tasks), [view, tasks]);
-  const ids = list.map((i) => i.task.id);
+  const columns = useMemo(() => (layout === "board" ? boardFor(view, tasks) : null), [layout, view, tasks]);
+  const ids = columns ? columns.flatMap((c) => c.items.map((i) => i.task.id)) : list.map((i) => i.task.id);
+  const pickedTasks = tasks.filter((x) => picked.includes(x.id) && ids.includes(x.id));
+  const bulk = selecting || pickedTasks.length > 1;
   const task = tasks.find((x) => x.id === sel && ids.includes(x.id)) ?? null;
 
   // Когда выбранная задача ушла из списка (разобрана, сделана), выбираем ту, что встала на её место
@@ -79,8 +88,10 @@ export default function App() {
     else setSel(ids[Math.min(lastIdx.current, ids.length - 1)] ?? null);
   }, [ids.join(","), sel]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const clearPick = () => (setPicked([]), setSelecting(false));
   const openView = (v: ViewId) => {
     setView(v);
+    clearPick();
     lastIdx.current = 0;
     setSel(listFor(v, tasks)[0]?.task.id ?? null);
   };
@@ -90,12 +101,26 @@ export default function App() {
     run(() => db.updateTask(id, p));
   };
   const triage = (x: Task) => run(() => db.updateTask(x.id, { status: "active", triaged_at: nowStamp() }));
-  const toggleDone = (x: Task) =>
-    run(() =>
-      db.updateTask(x.id, x.status === "done" ? { status: "active", done_at: null } : { status: "done", done_at: nowStamp() }),
-    );
+  const toggleDone = (x: Task) => run(() => (x.status === "done" ? db.reopenTask(x) : db.completeTask(x)));
   const archive = (x: Task) => run(() => db.updateTask(x.id, { status: "archived", done_at: x.done_at ?? nowStamp() }));
   const restore = (x: Task) => run(() => db.updateTask(x.id, { status: "active", done_at: null }));
+
+  // Клик выбирает задачу, ⌘-клик или режим «Выбрать» добавляют к выделению, ⇧-клик берёт всё подряд от выбранной
+  const pick: Pick = (id, m) => {
+    if (m.shift && sel != null && ids.includes(sel)) {
+      const [a, b] = [ids.indexOf(sel), ids.indexOf(id)].sort((x, y) => x - y);
+      setPicked(ids.slice(a, b + 1));
+      return;
+    }
+    if (m.meta || selecting) {
+      const base = picked.length ? picked : sel != null && sel !== id ? [sel] : [];
+      setPicked(base.includes(id) ? base.filter((x) => x !== id) : [...base, id]);
+    } else setPicked([]);
+    setSel(id);
+  };
+  const setLayout = (l: Layout) => run(() => db.setSetting(`layout:${view}`, l));
+  const moveCards = (moved: number[], col: Parameters<typeof bulkMove>[1]) =>
+    run(() => bulkMove(tasks.filter((x) => moved.includes(x.id)), col));
 
   const saveNew = (title: string, note: string) => {
     setNewOpen(false);
@@ -126,6 +151,8 @@ export default function App() {
         if (e.key === "Escape") el.blur();
         return;
       }
+      if (e.metaKey && e.code === "KeyA") return e.preventDefault(), setPicked(ids);
+      if (e.key === "Escape" && bulk) return clearPick();
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const i = ids.indexOf(sel ?? -1);
       // e.code не зависит от раскладки: N работает и на русской
@@ -199,6 +226,11 @@ export default function App() {
               <Pencil size={13} /> Изменить
             </button>
           )}
+          <LayoutSwitch value={layout} onChange={setLayout} />
+          <button className={`icon-btn ${selecting ? "on" : ""}`} title="Выбрать несколько задач (⌘-клик, ⌘A)"
+            onClick={() => (selecting ? clearPick() : (setSelecting(true), setPicked(sel != null ? [sel] : [])))}>
+            <CheckCheck size={13} /> Выбрать
+          </button>
           <button className="icon-btn" title="Клавиши (⌘/)" onClick={() => setHelpOpen(true)}>⌘/</button>
         </header>
 
@@ -210,19 +242,32 @@ export default function App() {
 
         {error && <div className="error">Ошибка базы: {error}</div>}
 
-        <div className="list" role="listbox">
-          {list.map(({ task: x, group }) => (
-            <div key={x.id}>
-              {group && <div className="group">{group}</div>}
-              <TaskRow task={x} project={projects.find((p) => p.id === x.project_id)} selected={x.id === sel}
-                onSelect={() => setSel(x.id)} onToggle={() => toggleDone(x)} />
+        <div className={`views ${selecting ? "selecting" : ""}`}>
+          {columns ? (
+            <BoardView columns={columns} current={view} projects={projects} sel={sel} picked={picked}
+              onPick={pick} onToggle={toggleDone} onMove={moveCards} />
+          ) : layout === "cards" ? (
+            <StackView items={list} projects={projects} sel={sel} picked={picked} empty={emptyText(view)}
+              onPick={pick} onToggle={toggleDone} />
+          ) : (
+            <div className="list" role="listbox">
+              {list.map(({ task: x, group }) => (
+                <div key={x.id}>
+                  {group && <div className="group">{group}</div>}
+                  <TaskRow task={x} project={projects.find((p) => p.id === x.project_id)} selected={x.id === sel}
+                    picked={picked.includes(x.id)} onSelect={(m) => pick(x.id, m)} onToggle={() => toggleDone(x)} />
+                </div>
+              ))}
+              {!list.length && <div className="empty">{emptyText(view)}</div>}
             </div>
-          ))}
-          {!list.length && <div className="empty">{emptyText(view)}</div>}
+          )}
         </div>
       </main>
 
-      {task ? (
+      {bulk ? (
+        <BulkPanel tasks={pickedTasks} total={ids.length} projects={projects} selecting={selecting} run={run}
+          onSelectAll={() => setPicked(ids)} onClear={clearPick} />
+      ) : task ? (
         <Details key={task.id} task={task} projects={projects}
           onPatch={(p) => patch(task.id, p)}
           onTriage={() => triage(task)} onToggleDone={() => toggleDone(task)}
@@ -321,7 +366,14 @@ function Sidebar(props: {
   );
 }
 
-function TaskRow(props: { task: Task; project?: Project; selected: boolean; onSelect: () => void; onToggle: () => void }) {
+function TaskRow(props: {
+  task: Task;
+  project?: Project;
+  selected: boolean;
+  picked: boolean;
+  onSelect: (mods: { meta: boolean; shift: boolean }) => void;
+  onToggle: () => void;
+}) {
   const { task: x, project } = props;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -330,10 +382,10 @@ function TaskRow(props: { task: Task; project?: Project; selected: boolean; onSe
   const done = x.status === "done" || x.status === "archived";
   const overdue = x.status === "active" && !!x.due_date && x.due_date < today();
   return (
-    <div ref={ref} role="option" aria-selected={props.selected} className={`row ${props.selected ? "sel" : ""} ${done ? "done" : ""}`}
-      onMouseDown={props.onSelect}>
+    <div ref={ref} role="option" aria-selected={props.selected} className={`row ${props.selected ? "sel" : ""} ${props.picked ? "picked" : ""} ${done ? "done" : ""}`}
+      onMouseDown={(e) => props.onSelect({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey })}>
       <button className="chk" title={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
-        onClick={(e) => (e.stopPropagation(), props.onToggle())} />
+        onMouseDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), props.onToggle())} />
       <span className="t">{x.title}</span>
       {x.remind_at && !x.reminded && !done && <span className="meta" title="Напоминание">⏰ {x.remind_at.slice(11, 16)}</span>}
       {x.priority === 3 && !done && <span className="tag" style={{ background: "var(--move)" }}>!</span>}
