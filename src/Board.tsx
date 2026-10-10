@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { spaceVars } from "./palette";
 import { Bell, CalendarDays, Clock, Columns3, Link2, List, ListChecks, Paperclip, Repeat } from "lucide-react";
 import type { Project, Task } from "./db";
 import { addDays, fmtDay, nextMonday, today } from "./dates";
@@ -62,7 +63,7 @@ function Meta({ task: x, project }: { task: Task; project?: Project }) {
       {x.files.length > 0 && <span className="meta"><Paperclip size={11} /> {x.files.length}</span>}
       {x.recurrence && !done && <span className="meta" title="Повторяется"><Repeat size={11} /></span>}
       {x.quadrant && !done && <QuadrantGlyph q={x.quadrant} />}
-      {project && <span className="tag" style={{ background: `var(--${project.color})` }}>{project.name}</span>}
+      {project && <span className="tag" style={{ background: `var(--${project.color})`, color: `var(--${project.color}-ink, var(--on-acc))` }}>{project.name}</span>}
     </div>
   );
 }
@@ -237,7 +238,8 @@ export function BoardView(props: {
                   <div key={x.id}>
                     {group && <div className="group col-group">{group}</div>}
                     <article data-card={x.id} data-task-id={x.id} onPointerDown={(e) => start(e, x, col)}
-                      className={`kcard ${props.sel === x.id ? "sel" : ""} ${props.fileDrop === x.id ? "filedrop" : ""} ${props.picked.includes(x.id) ? "picked" : ""} ${done ? "done" : ""} ${lifted ? "lifted" : ""}`}>
+                      className={`kcard ${props.sel === x.id ? "sel" : ""} ${props.fileDrop === x.id ? "filedrop" : ""} ${props.picked.includes(x.id) ? "picked" : ""} ${done ? "done" : ""} ${lifted ? "lifted" : ""} ${project ? "pc" : ""}`}
+                      style={spaceVars(project?.color)}>
                       <div className="kcard-top">
                         <button className="chk" title={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
                           onClick={(e) => (e.stopPropagation(), props.onToggle(x))} />
@@ -326,14 +328,14 @@ export function BulkPanel(props: {
       </fieldset>
 
       <fieldset className="det-sec" disabled={!editable}>
-        <div className="lbl">Проект</div>
+        <div className="lbl">Пространство</div>
         <div className="seg">
           {props.projects.map((p) =>
             chip(project === p.id, p.color, () => go((xs) => board.bulkProject(xs, project === p.id ? null : p.id)), <><Icon name={p.icon} size={12} /> {p.name}</>, p.id))}
           {project !== null && xs.length > 0 && (
-            <button type="button" className="link" onClick={() => go((xs) => board.bulkProject(xs, null))}>без проекта</button>
+            <button type="button" className="link" onClick={() => go((xs) => board.bulkProject(xs, null))}>без пространства</button>
           )}
-          {!props.projects.length && <span className="hint">Проектов пока нет</span>}
+          {!props.projects.length && <span className="hint">Пространств пока нет</span>}
         </div>
       </fieldset>
 

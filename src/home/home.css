@@ -128,7 +128,7 @@ button.h-ds:hover { border-color: var(--border); }
 .h-pj { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; }
 .h-pj b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .h-pj-n { font-size: 11px; color: var(--muted); }
-.h-pj p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.h-pj-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; }
 .h-pj .pb { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--ring-track); overflow: hidden; display: flex; }
 .h-pj .pb i { height: 100%; }
 

@@ -25,6 +25,15 @@
 /* Список проектов прокручивается сам, низ меню с темой и настройками остаётся на месте */
 .proj-list { display: flex; flex-direction: column; gap: 2px; min-height: 64px; overflow-y: auto; flex: 0 1 auto; margin: 0 -4px; padding: 0 4px; }
 .nav.hi { color: var(--fg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--stand) 60%, transparent); }
+/* Пространство в меню: заливка его цветом без контура, иконка, название и счётчик белые или чёрные под цвет.
+   Выбранное отмечено кольцом через зазор, наведение чуть светлее, найденное поиском тонким кольцом цвета текста */
+.nav.space { background: var(--pc); color: var(--pc-ink); }
+.nav.space:hover { color: var(--pc-ink); filter: brightness(1.07) saturate(1.05); }
+.nav.space .nav-icon:hover { background: color-mix(in srgb, var(--pc-ink) 16%, transparent); }
+.nav.space .n { opacity: .8; }
+.nav.space.on { background: var(--pc); color: var(--pc-ink); box-shadow: 0 0 0 2px var(--side), 0 0 0 3.5px var(--pc); }
+.nav.space.hi { color: var(--pc-ink); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--pc-ink) 70%, transparent); }
+.proj-list:has(.nav.space) { gap: 4px; padding-top: 4px; padding-bottom: 4px; }
 .proj-none { font-size: 12px; color: var(--muted); padding: 6px 10px; }
 .side-foot { flex: none; }
 .side-foot-r { display: inline-flex; gap: 2px; }
@@ -46,7 +55,6 @@
 /* Длинное описание проекта не раздвигает вёрстку: в шапке одна строка, полный текст в подсказке */
 .head h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .head p.head-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.h-pj p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 
 /* Страница «Проекты» */
 .app.app-wide { grid-template-columns: 210px minmax(0, 1fr); }

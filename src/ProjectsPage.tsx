@@ -51,14 +51,14 @@ export default function ProjectsPage(props: {
     <div className="pp">
       <header className="pp-head" data-tauri-drag-region>
         <div>
-          <h2>Проекты</h2>
+          <h2>Пространства</h2>
           <p>
-            {cards.length ? plural(cards.length, "проект", "проекта", "проектов") : "Пока ни одного проекта"}
+            {cards.length ? plural(cards.length, "пространство", "пространства", "пространств") : "Пока ни одного пространства"}
             {open > 0 && <> · {plural(open, "открытая задача", "открытые задачи", "открытых задач")}</>}
             {overdue > 0 && <> · <span className="pp-bad">{overdue} просрочено</span></>}
           </p>
         </div>
-        <button className="cta stand narrow" onClick={props.onNew}><Plus size={14} /> Новый проект</button>
+        <button className="cta stand narrow" onClick={props.onNew}><Plus size={14} /> Новое пространство</button>
       </header>
       <div className="pp-grid">
         {cards.map((c) => {
@@ -70,7 +70,7 @@ export default function ProjectsPage(props: {
               <div className="pp-top">
                 <span className="pp-icon"><Icon name={p.icon} size={18} /></span>
                 <b className="pp-name" title={p.name}>{p.name}</b>
-                <button className="pp-edit" data-tip="Изменить проект" aria-label="Изменить проект"
+                <button className="pp-edit" data-tip="Изменить пространство" aria-label="Изменить пространство"
                   onClick={(e) => (e.stopPropagation(), props.onEdit(p))}><Pencil size={13} /></button>
               </div>
               <p className={`pp-desc ${p.description ? "" : "none"}`} title={p.description || undefined}>
@@ -93,7 +93,7 @@ export default function ProjectsPage(props: {
             </div>
           );
         })}
-        <button className="pp-card pp-new" onClick={props.onNew}><Plus size={18} /> Новый проект</button>
+        <button className="pp-card pp-new" onClick={props.onNew}><Plus size={18} /> Новое пространство</button>
       </div>
     </div>
   );

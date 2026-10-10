@@ -5,6 +5,7 @@ import { countFor, VIEWS, type ViewId } from "./views";
 import { Icon } from "./icons";
 import { IconGrid, Popover, ThemeSwitch } from "./widgets";
 import { HomeIcon } from "./home/Home";
+import { spaceVars } from "./palette";
 
 export const KEY_PROJECTS_COLLAPSED = "side.projects.collapsed";
 /** ⌘P из любого места: развернуть проекты и поставить курсор в поиск */
@@ -25,16 +26,25 @@ const swapLayout = (s: string) =>
     return j >= 0 ? EN[j] : ch;
   }).join("");
 
+/**
+ * Поиск пространства. Раньше короткий запрос находил лишнее: «б» в другой раскладке это «,», и любое описание
+ * с запятой совпадало. Теперь другую раскладку берём, только если там буквы или цифры, по названию ищем
+ * начало слова (с 3 символов и середину), по описанию только начало слова и только с 3 символов.
+ */
 export function matchProjects(projects: Project[], query: string): Project[] {
   const q = query.trim().toLowerCase();
   if (!q) return projects;
   const alt = swapLayout(q);
+  const qs = /^[\p{L}\p{N}\s-]+$/u.test(alt) && alt !== q ? [q, alt] : [q];
+  const wordStart = (text: string, w: string) => text.startsWith(w) || text.includes(` ${w}`) || text.includes(`-${w}`);
   const score = (p: Project) => {
     const n = p.name.toLowerCase();
-    if (n.startsWith(q) || n.startsWith(alt)) return 0;
-    if (n.includes(q) || n.includes(alt)) return 1;
     const d = p.description.toLowerCase();
-    return d.includes(q) || d.includes(alt) ? 2 : -1;
+    if (qs.some((w) => n.startsWith(w))) return 0;
+    if (qs.some((w) => wordStart(n, w))) return 1;
+    if (q.length >= 3 && qs.some((w) => n.includes(w))) return 2;
+    if (q.length >= 3 && qs.some((w) => wordStart(d, w))) return 3;
+    return -1;
   };
   return projects
     .map((p) => [p, score(p)] as const)
@@ -86,12 +96,13 @@ export function Sidebar(props: {
     search.current?.blur();
   };
 
-  const item = (id: ViewId, label: string, accent: string, icon: string, onIcon: (el: HTMLElement) => void, key?: string, extra = "") => {
+  // У пространства пункт целиком залит его цветом, иконка и название белые или чёрные (см. nav.css .nav.space)
+  const item = (id: ViewId, label: string, accent: string, icon: string, onIcon: (el: HTMLElement) => void, key?: string, extra = "", space = false) => {
     const n = countFor(id, props.tasks);
     return (
-      <div key={id} className={`nav ${props.view === id ? "on" : ""} ${extra}`} onClick={() => props.onOpen(id)} role="button"
-        data-tip={key ? label : undefined} data-key={key}>
-        <button className="nav-icon" data-tip="Сменить иконку" style={{ color: `var(--${accent})` }}
+      <div key={id} className={`nav ${props.view === id ? "on" : ""} ${space ? "space" : ""} ${extra}`} onClick={() => props.onOpen(id)} role="button"
+        data-tip={key ? label : undefined} data-key={key} style={space ? spaceVars(accent) : undefined}>
+        <button className="nav-icon" data-tip={space ? "Изменить пространство" : "Сменить иконку"} style={space ? undefined : { color: `var(--${accent})` }}
           onClick={(e) => (e.stopPropagation(), onIcon(e.currentTarget))}>
           <Icon name={icon} size={15} />
         </button>
@@ -116,13 +127,13 @@ export function Sidebar(props: {
 
       <div className="sec-row">
         <button className="sec-toggle" aria-expanded={!collapsed} onClick={() => setFolded(!collapsed)}
-          data-tip={collapsed ? "Показать проекты" : "Свернуть проекты"}>
+          data-tip={collapsed ? "Показать пространства" : "Свернуть пространства"}>
           <ChevronDown size={13} className={`chev ${collapsed ? "folded" : ""}`} />
-          <span>Проекты</span>
+          <span>Пространства</span>
           {collapsed && props.projects.length > 0 && <span className="sec-n">{props.projects.length}</span>}
         </button>
         <button className={`sec-btn ${props.view === "projects" ? "on" : ""}`} onClick={() => props.onOpen("projects")}
-          data-tip="Все проекты карточками" data-key="⌘6" aria-label="Все проекты">
+          data-tip="Все пространства карточками" data-key="⌘6" aria-label="Все пространства">
           <LayoutGrid size={14} />
         </button>
       </div>
@@ -130,12 +141,12 @@ export function Sidebar(props: {
       {!collapsed && (<>
         <button className="nav add-project" onClick={props.onNewProject}>
           <span className="nav-icon"><Plus size={15} /></span>
-          <span className="nav-name">Новый проект</span>
+          <span className="nav-name">Новое пространство</span>
         </button>
         {props.projects.length > 0 && (
-          <label className="proj-search" data-tip="Найти проект и перейти" data-key="⌘P">
+          <label className="proj-search" data-tip="Найти пространство и перейти" data-key="⌘P">
             <Search size={13} />
-            <input ref={search} placeholder="Найти проект" value={query} spellCheck={false}
+            <input ref={search} placeholder="Найти пространство" value={query} spellCheck={false}
               onChange={(e) => (setQuery(e.target.value), setHi(0))}
               onBlur={() => setHi(0)}
               onKeyDown={(e) => {
@@ -150,7 +161,7 @@ export function Sidebar(props: {
           </label>
         )}
         <div className="proj-list">
-          {found.map((p, i) => item(`p:${p.id}`, p.name, p.color, p.icon, () => props.onEditProject(p), undefined, query && i === hi ? "hi" : ""))}
+          {found.map((p, i) => item(`p:${p.id}`, p.name, p.color, p.icon, () => props.onEditProject(p), undefined, query && i === hi ? "hi" : "", true))}
           {query && !found.length && <div className="proj-none">Ничего не нашлось</div>}
         </div>
       </>)}

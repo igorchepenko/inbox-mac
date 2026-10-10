@@ -251,7 +251,7 @@ export function ColorGrid({ value, onPick }: { value: string; onPick: (id: strin
     (e.currentTarget.parentElement?.children[PALETTE.indexOf(next)] as HTMLElement | undefined)?.focus();
   };
   return (
-    <div className="color-grid" role="radiogroup" aria-label="Цвет проекта">
+    <div className="color-grid" role="radiogroup" aria-label="Цвет пространства">
       {PALETTE.map((c, i) => (
         <button type="button" key={c.id} role="radio" aria-checked={value === c.id} aria-label={c.name} data-tip={c.name}
           tabIndex={value === c.id || (!swatchOf(value) && i === 0) ? 0 : -1}
@@ -280,10 +280,10 @@ export function ProjectDialog(props: {
           if (e.key === "Escape") props.onClose();
           if (e.key === "Enter" && e.metaKey) save();
         }}>
-        <h3>{props.initial ? "Проект" : "Новый проект"}</h3>
+        <h3>{props.initial ? "Пространство" : "Новое пространство"}</h3>
         <input className="field dlg-name" autoFocus placeholder="Название" value={p.name}
           onChange={(e) => setP({ ...p, name: e.target.value })} />
-        <textarea ref={desc} className="field dlg-desc" placeholder="Описание: зачем этот проект, что в него попадает" rows={2}
+        <textarea ref={desc} className="field dlg-desc" placeholder="Описание: зачем это пространство, что в него попадает" rows={2}
           value={p.description} onChange={(e) => setP({ ...p, description: e.target.value })}
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && !e.metaKey && e.stopPropagation()} />
         <div className="lbl">Цвет <span className="lbl-val">{swatchOf(p.color)?.name ?? ""}</span></div>
@@ -293,9 +293,9 @@ export function ProjectDialog(props: {
         <div className="dlg-foot">
           {props.onDelete && (
             <button type="button" className={`link danger ${armed ? "armed" : ""}`} onBlur={() => setArmed(false)}
-              title="Задачи проекта останутся, просто без проекта"
+              title="Задачи пространства останутся, просто без пространства"
               onClick={() => (armed ? props.onDelete!() : setArmed(true))}>
-              {armed ? "Точно удалить? Задачи останутся" : "Удалить проект"}
+              {armed ? "Точно удалить? Задачи останутся" : "Удалить пространство"}
             </button>
           )}
           <span className="grow" />

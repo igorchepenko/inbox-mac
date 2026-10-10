@@ -9,7 +9,7 @@ export const BLOCKS = [
   { id: "week", name: "Ближайшие 7 дней", hint: "", span: 7 },
   { id: "matrix", name: "Матрица Эйзенхауэра", hint: "необязательно", span: 5 },
   { id: "stats", name: "Статистика", hint: "", span: 8 },
-  { id: "projects", name: "Проекты", hint: "", span: 4 },
+  { id: "projects", name: "Пространства", hint: "", span: 4 },
 ] as const;
 
 export type BlockId = (typeof BLOCKS)[number]["id"];

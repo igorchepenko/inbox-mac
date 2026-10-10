@@ -67,7 +67,7 @@ export function QuickForm(props: { projects: Project[]; onSave: (title: string, 
           <Line label="Напомнить"><TimeInput value={d.remind ?? ""} onCommit={(v) => set({ remind: v || undefined })} /></Line>
           <Line label="Повтор"><RepeatField inline value={d.recurrence ?? null} due={d.due_date ?? null} onChange={(v) => set({ recurrence: v })} /></Line>
           {props.projects.length > 0 && (
-            <Line label="Проект">
+            <Line label="Пространство">
               {props.projects.map((p) => (
                 <Chip key={p.id} on={d.project_id === p.id} accent={p.color} onClick={() => set({ project_id: d.project_id === p.id ? null : p.id })}>
                   <Icon name={p.icon} size={12} /> {p.name}
@@ -80,8 +80,8 @@ export function QuickForm(props: { projects: Project[]; onSave: (title: string, 
         </div>
       )}
       <div className="qi-foot">
-        <button type="button" className={`more-btn ${more ? "on" : ""}`} onClick={() => setMore((m) => !m)} data-tip="Дата, время, проект" data-key="⌘E">
-          {more ? "Скрыть параметры" : filled ? `Параметры · ${filled}` : "+ Дата, время, проект…"}
+        <button type="button" className={`more-btn ${more ? "on" : ""}`} onClick={() => setMore((m) => !m)} data-tip="Дата, время, пространство" data-key="⌘E">
+          {more ? "Скрыть параметры" : filled ? `Параметры · ${filled}` : "+ Дата, время, пространство…"}
         </button>
         <span className="grow" />
         <span>Попадёт в «На разбор»</span>
@@ -178,7 +178,7 @@ export function Details(props: {
       </fieldset>
 
       <fieldset className="det-sec" disabled={locked}>
-        <div className="lbl">Проект</div>
+        <div className="lbl">Пространство</div>
         <div className="seg">
           {projects.map((p) => (
             <Chip key={p.id} on={x.project_id === p.id} accent={p.color}
@@ -186,7 +186,7 @@ export function Details(props: {
               <Icon name={p.icon} size={12} /> {p.name}
             </Chip>
           ))}
-          {!projects.length && <span className="hint">Создай проект в боковой панели</span>}
+          {!projects.length && <span className="hint">Создай пространство в боковой панели</span>}
         </div>
       </fieldset>
 
@@ -245,7 +245,7 @@ export function Details(props: {
           {isInbox
             ? x.project_id || x.due_date
               ? "После разбора задача уйдёт в нужные списки."
-              : "Без проекта и даты задача после разбора окажется в «Скоро», в группе «Без даты»."
+              : "Без пространства и даты задача после разбора окажется в «Скоро», в группе «Без даты»."
             : x.status === "done"
               ? x.recurrence && x.next_id ? "Следующий повтор уже в списке. Сделанные сами уйдут в архив завтра." : "Сделанные сами уйдут в архив завтра."
               : x.recurrence ? "Когда отметишь сделанной, появится следующий повтор." : null}
@@ -281,7 +281,7 @@ function DropZone({ over, title }: { over: HTMLElement | null; title: string }) 
 export const SHORTCUTS: [string, string][] = [
   ["⌥ Space", "Быстрый ввод из любого приложения"],
   ["N", "Записать задачу"],
-  ["⌘E", "Дата, время, проект при записи"],
+  ["⌘E", "Дата, время, пространство при записи"],
   ["↑ ↓", "Выбрать задачу"],
   ["Enter", "Разобрано (в «На разбор»)"],
   ["Space", "Сделано / вернуть"],
@@ -289,8 +289,8 @@ export const SHORTCUTS: [string, string][] = [
   ["T", "Дата: сегодня"],
   ["⌘0", "Главная"],
   ["⌘1 … ⌘5", "На разбор, Сегодня, Скоро, Архив, Календарь"],
-  ["⌘6", "Все проекты карточками"],
-  ["⌘P", "Найти проект и перейти"],
+  ["⌘6", "Все пространства карточками"],
+  ["⌘P", "Найти пространство и перейти"],
   ["D W M  ← →", "Календарь: день, неделя, месяц, листать"],
   ["Клик в календаре", "Новая задача на это время, 30 минут"],
   ["⌘-клик", "Выбрать несколько, ⇧-клик выделяет подряд"],
