@@ -1,6 +1,5 @@
 /* Виды списка: канбан и выделение нескольких задач */
 .layout-switch button { width: 28px; height: 22px; }
-.group-switch { flex: none; }
 
 /* Общие части карточек */
 .card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
@@ -10,7 +9,11 @@
 .kcard-top .t { flex: 1; min-width: 0; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .kcard.done .t { text-decoration: line-through; color: var(--muted); }
-.kcard.done .chk { background: var(--exercise); border-color: var(--exercise); }
+/* Чекбокс карточки: у несделанной галочка едва видна, у сделанной белая на зелёном */
+.kchk { display: grid; place-items: center; padding: 0; color: color-mix(in srgb, var(--muted) 30%, transparent); }
+.kchk svg { display: block; }
+.kchk:hover:not(:disabled) { color: var(--exercise); }
+.kcard.done .kchk { background: var(--exercise); border-color: var(--exercise); color: #fff; }
 
 /* Файл из Finder над карточкой */
 .kcard.filedrop { border-color: var(--stand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--stand) 35%, transparent); }
@@ -27,14 +30,11 @@
 .col-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 8px; font-weight: 700; }
 .col-icon { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); }
 .col-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.col-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
 .col-n { margin-left: auto; font: 600 11px var(--mono); color: var(--muted); }
 .col-body { flex: 1; min-height: 60px; overflow-y: auto; padding: 2px 8px 10px; display: flex; flex-direction: column; gap: 6px; }
 .col-group { margin: 8px 4px 0; }
 .col-empty { color: var(--muted); font-size: 12px; text-align: center; padding: 18px 0; opacity: .7; }
 .col.over { border-color: var(--c); background: color-mix(in srgb, var(--c) 7%, var(--surface)); box-shadow: inset 0 0 0 1px var(--c); }
-/* Столбец, куда переносить нельзя (просроченные): серый пунктир вместо цвета */
-.col.no-drop .col-hint { border-style: dotted; }
 .col-hint { border: 1.5px dashed var(--c); color: var(--c); border-radius: 10px; padding: 12px 10px; font-size: 12px; font-weight: 600; text-align: center;
   background: color-mix(in srgb, var(--c) 8%, transparent); }
 
@@ -59,12 +59,16 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 @media (prefers-reduced-motion: no-preference) {
   .kcard { transition: border-color .12s, background .12s, opacity .15s; }
   .col { transition: border-color .15s, background .15s, box-shadow .15s; }
-  /* Столбец, куда переносить нельзя (просроченные): серый пунктир вместо цвета */
-.col.no-drop .col-hint { border-style: dotted; }
-.col-hint { animation: drop-in .18s cubic-bezier(.2, .8, .2, 1); }
+  .col-hint { animation: drop-in .18s cubic-bezier(.2, .8, .2, 1); }
 }
 @keyframes drop-in { from { opacity: 0; transform: scaleY(.6); } }
 
 /* Обёртка видов в основной колонке */
 .views { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .icon-btn.on { color: var(--stand); border-color: var(--stand); background: color-mix(in srgb, var(--stand) 10%, transparent); }
+
+/* Этап задачи в строке списка: как столбец канбана */
+.stage { --c: var(--muted); display: inline-flex; align-items: center; gap: 4px; flex: none; white-space: nowrap;
+  font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px;
+  color: var(--c); background: color-mix(in srgb, var(--c) 13%, transparent); }
+.row.done .stage { opacity: .7; }

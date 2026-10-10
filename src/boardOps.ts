@@ -1,9 +1,7 @@
 import * as db from "./db";
 import type { Task } from "./db";
-import { addDays, fmtDay, nextMonday, nowStamp, today } from "./dates";
-import { PRIORITY } from "./components";
-import { QUADRANTS } from "./extras";
-import { VIEWS, type ListItem, type ViewId } from "./views";
+import { addDays, nowStamp, today } from "./dates";
+import { compareBy, VIEWS, type ListItem, type SortBy, type ViewId } from "./views";
 
 /** Как показан список: строками или канбаном. Хранится в settings под ключом layout:<вид> */
 export type Layout = "list" | "board";
@@ -15,27 +13,13 @@ export type Target = "inbox" | "today" | "soon" | "archive";
 const TARGET_IDS: string[] = ["inbox", "today", "soon", "archive"];
 export const TARGETS = VIEWS.filter((v) => TARGET_IDS.includes(v.id)) as { id: Target; name: string; accent: string; icon: string }[];
 
-/**
- * Канбан. Столбцы задаёт группировка: этап работы (по умолчанию), срок, важность или матрица.
- * Перенос карточки в столбец меняет ровно то поле, по которому сгруппировано.
- */
-export type Group = "stage" | "due" | "priority" | "quadrant";
-export const GROUPS: { id: Group; name: string }[] = [
-  { id: "stage", name: "Этап" },
-  { id: "due", name: "Срок" },
-  { id: "priority", name: "Важность" },
-  { id: "quadrant", name: "Матрица" },
-];
-export const groupOf = (settings: Record<string, string>): Group =>
-  (GROUPS.find((g) => g.id === settings["board.group"])?.id ?? "stage");
-
+/** Канбан строится только по этапу работы: Новые, К выполнению, Готово */
 export interface BoardColumn {
-  key: string;
+  key: Stage;
   name: string;
   accent: string;
-  icon?: string;
-  prio?: number; // столбец важности: в шапке её иконка
-  hint: string | null; // что станет с задачей при переносе сюда; null — сюда переносить нельзя
+  icon: string;
+  hint: string; // что станет с задачей при переносе сюда
   items: ListItem[];
 }
 
@@ -51,82 +35,28 @@ function scoped(view: ViewId, tasks: Task[]): Task[] {
 
 const isOpen = (x: Task) => x.status === "inbox" || x.status === "active";
 
-// Внутри столбца: ближайший срок выше, без срока ниже, затем важнее и свежее
-function byDue(a: Task, b: Task): number {
-  const ad = a.due_date ?? "9999", bd = b.due_date ?? "9999";
-  if (ad !== bd) return ad < bd ? -1 : 1;
-  if (a.priority !== b.priority) return b.priority - a.priority;
-  return a.created_at < b.created_at ? 1 : -1;
-}
+export type Stage = "new" | "todo" | "done";
+export const STAGES: Omit<BoardColumn, "items">[] = [
+  { key: "new", name: "Новые", accent: "move", icon: "inbox", hint: "Вернётся в «Новые»" },
+  { key: "todo", name: "К выполнению", accent: "stand", icon: "flag", hint: "Разобрана, ждёт очереди" },
+  { key: "done", name: "Готово", accent: "exercise", icon: "target", hint: "Отметится сделанной" },
+];
 
-/** Ближайшая дата для столбца «Позже»: следующий понедельник, но не раньше послезавтра */
-export function laterDate(): string {
-  const t = today();
-  const m = nextMonday();
-  return m > addDays(t, 1) ? m : addDays(m, 7);
-}
-
-/** Этап задачи на канбане */
-export function stageOf(x: Task): "new" | "todo" | "doing" | "done" {
+/** Этап задачи: тот же, что столбец канбана. Отметка «в работе» из прошлой версии больше не учитывается */
+export function stageOf(x: Task): Stage {
   if (x.status === "inbox") return "new";
   if (x.status === "done" || x.status === "archived") return "done";
-  return x.started_at ? "doing" : "todo";
+  return "todo";
 }
 
-export function dueOf(x: Task): "overdue" | "today" | "tomorrow" | "later" | "none" {
-  const t = today();
-  if (!x.due_date) return "none";
-  if (x.due_date < t) return "overdue";
-  if (x.due_date === t) return "today";
-  return x.due_date === addDays(t, 1) ? "tomorrow" : "later";
-}
-
-type Spec = Omit<BoardColumn, "items"> & { has: (x: Task) => boolean };
-
-function specs(group: Group): Spec[] {
-  if (group === "stage")
-    return [
-      { key: "new", name: "Новые", accent: "move", icon: "inbox", hint: "Вернётся на разбор", has: (x) => stageOf(x) === "new" },
-      { key: "todo", name: "К выполнению", accent: "stand", icon: "flag", hint: "Разобрана, ждёт очереди", has: (x) => stageOf(x) === "todo" },
-      { key: "doing", name: "В работе", accent: "amber", icon: "zap", hint: "Возьмётся в работу", has: (x) => stageOf(x) === "doing" },
-      { key: "done", name: "Готово", accent: "exercise", icon: "target", hint: "Отметится сделанной", has: (x) => stageOf(x) === "done" },
-    ];
-  if (group === "due") {
-    const later = laterDate();
-    return [
-      { key: "overdue", name: "Просрочено", accent: "move", icon: "bell", hint: null, has: (x) => dueOf(x) === "overdue" },
-      { key: "today", name: "Сегодня", accent: "exercise", icon: "sun", hint: "Дата станет «Сегодня»", has: (x) => dueOf(x) === "today" },
-      { key: "tomorrow", name: "Завтра", accent: "stand", icon: "calendar", hint: "Дата станет «Завтра»", has: (x) => dueOf(x) === "tomorrow" },
-      { key: "later", name: "Позже", accent: "stand", icon: "schedule", hint: `Ближайшая дата станет «${fmtDay(later)}»`, has: (x) => dueOf(x) === "later" },
-      { key: "none", name: "Без срока", accent: "muted", icon: "folder", hint: "Дата уберётся", has: (x) => dueOf(x) === "none" },
-    ];
-  }
-  if (group === "priority")
-    // Уровни берутся из PRIORITY: станет их больше — станет больше столбцов. Важные слева
-    return [
-      ...[...PRIORITY].reverse().map((p) => ({
-        key: String(p.value), name: p.name, accent: p.accent, prio: p.value, hint: `Важность станет «${p.name.toLowerCase()}»`,
-        has: (x: Task) => x.priority === p.value,
-      })),
-      { key: "0", name: "Не задана", accent: "muted", hint: "Важность снимется", has: (x) => !PRIORITY.some((p) => p.value === x.priority) },
-    ];
-  return [
-    ...QUADRANTS.map((q) => ({
-      key: String(q.value), name: q.name, accent: q.accent, hint: `Квадрант: ${q.hint}`, has: (x: Task) => x.quadrant === q.value,
-    })),
-    { key: "0", name: "Вне матрицы", accent: "muted", hint: "Квадрант снимется", has: (x) => !x.quadrant },
-  ];
-}
-
-export function boardFor(view: ViewId, tasks: Task[], group: Group): BoardColumn[] {
-  const t = today();
-  const since = addDays(t, -DONE_DAYS);
-  // Канбан про текущую работу: сделанное видно только в «Готово» по этапам, и только за последнюю неделю
-  const mine = scoped(view, tasks).filter((x) =>
-    group === "stage" ? isOpen(x) || (!!x.done_at && x.done_at.slice(0, 10) > since) : isOpen(x));
-  return specs(group).map(({ has, ...c }) => {
-    const xs = mine.filter(has);
-    xs.sort(c.key === "done" && group === "stage" ? (a, b) => ((a.done_at ?? "") < (b.done_at ?? "") ? 1 : -1) : byDue);
+export function boardFor(view: ViewId, tasks: Task[], sort: SortBy): BoardColumn[] {
+  const since = addDays(today(), -DONE_DAYS);
+  // Канбан про текущую работу: сделанное видно только за последнюю неделю
+  const mine = scoped(view, tasks).filter((x) => isOpen(x) || (!!x.done_at && x.done_at.slice(0, 10) > since));
+  const cmp = compareBy(sort);
+  return STAGES.map((c) => {
+    const xs = mine.filter((x) => stageOf(x) === c.key);
+    xs.sort(c.key === "done" ? (a, b) => ((a.done_at ?? "") < (b.done_at ?? "") ? 1 : -1) : cmp);
     return { ...c, items: xs.map((task) => ({ task })) };
   });
 }
@@ -135,24 +65,12 @@ export function boardFor(view: ViewId, tasks: Task[], group: Group): BoardColumn
  * Перенос карточки в столбец. Сделанной отмечаем только через completeTask, вернуть через reopenTask:
  * иначе сломаются повторы.
  */
-export async function dropTo(x: Task, group: Group, key: string): Promise<void> {
-  if (group === "stage") {
-    if (stageOf(x) === key) return;
-    if (key === "done") return db.completeTask(x);
-    if (x.status === "done" || x.status === "archived") await db.reopenTask(x);
-    if (key === "new") return db.updateTask(x.id, { status: "inbox", triaged_at: null, started_at: null });
-    const triaged = { status: "active" as const, triaged_at: x.triaged_at ?? nowStamp() };
-    return db.updateTask(x.id, { ...triaged, started_at: key === "doing" ? x.started_at ?? nowStamp() : null });
-  }
-  if (x.status === "archived") return;
-  if (group === "due") {
-    if (dueOf(x) === key || key === "overdue") return;
-    const t = today();
-    const d = key === "today" ? t : key === "tomorrow" ? addDays(t, 1) : key === "later" ? laterDate() : null;
-    return db.updateTask(x.id, withDate(x, d));
-  }
-  if (group === "priority") return db.updateTask(x.id, { priority: Number(key) });
-  return db.updateTask(x.id, { quadrant: Number(key) || null });
+export async function dropTo(x: Task, key: Stage): Promise<void> {
+  if (stageOf(x) === key) return;
+  if (key === "done") return db.completeTask(x);
+  if (x.status === "done" || x.status === "archived") await db.reopenTask(x);
+  if (key === "new") return db.updateTask(x.id, { status: "inbox", triaged_at: null, started_at: null });
+  return db.updateTask(x.id, { status: "active", triaged_at: x.triaged_at ?? nowStamp(), started_at: null });
 }
 
 function withDate(x: Task, d: string | null): Parameters<typeof db.updateTask>[1] {

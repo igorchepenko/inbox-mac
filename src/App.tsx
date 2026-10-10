@@ -5,14 +5,14 @@ import { invoke } from "@tauri-apps/api/core";
 import * as db from "./db";
 import type { Project, ProjectFields, Task } from "./db";
 import { fmtDay, nowStamp, today } from "./dates";
-import { listFor, progressFor, VIEWS, type ViewId } from "./views";
+import { listFor, progressFor, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
 import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
 import { Icon } from "./icons";
 import { ProjectDialog } from "./widgets";
 import { CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat } from "lucide-react";
 import { fmtRange, QuadrantGlyph } from "./extras";
-import { boardFor, dropTo, groupOf, layoutOf, type Group, type Layout } from "./boardOps";
-import { BoardView, BulkPanel, GroupSwitch, LayoutSwitch, type Pick } from "./Board";
+import { boardFor, dropTo, layoutOf, STAGES, stageOf, type Layout, type Stage } from "./boardOps";
+import { BoardView, BulkPanel, LayoutSwitch, SortSwitch, type Pick } from "./Board";
 import { ensurePermission, fireDueReminders, maybeSendDigest } from "./reminders";
 import { Settings } from "./Settings";
 import { labelFromAccel, pref, quickKeyLabel, setQuickKeyLabel } from "./prefs";
@@ -100,9 +100,9 @@ export default function App() {
   }, [reload]);
 
   const layout = layoutOf(view, settings);
-  const list = useMemo(() => listFor(view, tasks), [view, tasks]);
-  const group = groupOf(settings);
-  const columns = useMemo(() => (layout === "board" ? boardFor(view, tasks, group) : null), [layout, view, tasks, group]);
+  const sort = sortOf(view, settings);
+  const list = useMemo(() => listFor(view, tasks, sort), [view, tasks, sort]);
+  const columns = useMemo(() => (layout === "board" ? boardFor(view, tasks, sort) : null), [layout, view, tasks, sort]);
   const ids = columns ? columns.flatMap((c) => c.items.map((i) => i.task.id)) : list.map((i) => i.task.id);
   const pickedTasks = tasks.filter((x) => picked.includes(x.id) && ids.includes(x.id));
   const bulk = selecting || pickedTasks.length > 1;
@@ -122,7 +122,7 @@ export default function App() {
     setView(v);
     clearPick();
     lastIdx.current = 0;
-    setSel(listFor(v, from)[0]?.task.id ?? null);
+    setSel(listFor(v, from, sortOf(v, settings))[0]?.task.id ?? null);
     db.setSetting("last.view", v).catch(() => {}); // для начального экрана «Где остановился»
   };
 
@@ -144,7 +144,7 @@ export default function App() {
   function startUp(t: Task[], st: Record<string, string>) {
     const start = pref(st, "start.view");
     const v = (start === "last" ? st["last.view"] ?? "inbox" : start) as ViewId;
-    // Удалённый проект или спрятанный список сам сменится на «На разбор»
+    // Удалённый проект или спрятанный список сам сменится на «Новые»
     openView(v, t);
     const accel = pref(st, "quick.shortcut");
     if (accel !== "Alt+Space") applyShortcut(accel).then((err) => err && setShortcutError(`Не удалось занять ${labelFromAccel(accel)}: ${err}`));
@@ -191,10 +191,13 @@ export default function App() {
     setSel(id);
   };
   const setLayout = (l: Layout) => run(() => db.setSetting(`layout:${view}`, l));
-  const setGroup = (g: Group) => run(() => db.setSetting("board.group", g));
-  const moveCards = (moved: number[], col: string) =>
+  const setSort = (s: SortBy) => {
+    setSettings((st) => ({ ...st, [`sort:${view}`]: s }));
+    run(() => db.setSetting(`sort:${view}`, s));
+  };
+  const moveCards = (moved: number[], col: Stage) =>
     run(async () => {
-      for (const x of tasks.filter((x) => moved.includes(x.id))) await dropTo(x, group, col);
+      for (const x of tasks.filter((x) => moved.includes(x.id))) await dropTo(x, col);
     });
 
   // Клик по пустому месту календаря: задача на этот день и время, название сразу выделено для правки
@@ -404,7 +407,7 @@ export default function App() {
               <Pencil size={13} /> Изменить
             </button>
           )}
-          {columns && <GroupSwitch value={group} onChange={setGroup} />}
+          {view !== "archive" && <SortSwitch value={sort} onChange={setSort} />}
           <LayoutSwitch value={layout} onChange={setLayout} />
           <button className={`icon-btn ${selecting ? "on" : ""}`} data-tip="Выбрать несколько задач, ⌘-клик по строке" data-key="⌘A"
             onClick={() => (selecting ? clearPick() : (setSelecting(true), setPicked(sel != null ? [sel] : [])))}>
@@ -540,8 +543,19 @@ function TaskRow(props: {
       {x.start_time && <span className="meta" title="Время">{fmtRange(x.start_time, x.end_time)}</span>}
       {x.remind_at && !x.reminded && !done && <span className="meta" title="Напоминание">⏰ {x.remind_at.slice(11, 16)}</span>}
       {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
+      {x.status !== "archived" && <StageChip task={x} />}
       {project && <span className="tag" style={{ background: `var(--${project.color})` }}>{project.name}</span>}
       {x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`}>{fmtDay(x.due_date)}</span>}
     </div>
+  );
+}
+
+/** Этап задачи в строке, как столбец канбана: Новые, К выполнению, Готово */
+function StageChip({ task }: { task: Task }) {
+  const st = STAGES.find((s) => s.key === stageOf(task))!;
+  return (
+    <span className="stage" style={{ "--c": `var(--${st.accent})` } as React.CSSProperties}>
+      <Icon name={st.icon} size={11} /> {st.name}
+    </span>
   );
 }
