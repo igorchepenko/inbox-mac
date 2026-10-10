@@ -6,6 +6,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { addTask, loadProjects, type Draft, type Project } from "./db";
 import { QuickForm } from "./components";
 import { currentZoom } from "./prefs";
+import { activeProfile, profileName } from "./profile";
 
 const hideQuick = () => invoke("hide_quick");
 
@@ -66,7 +67,7 @@ export default function QuickApp() {
 
   return (
     <div ref={root} className="quick-root">
-      <QuickForm key={key} projects={projects} onSave={save} onCancel={cancel} />
+      <QuickForm key={key} projects={projects} onSave={save} onCancel={cancel} profile={profileName(activeProfile())} />
       {error && <div className="error">Не сохранилось: {error}</div>}
     </div>
   );

@@ -2,6 +2,7 @@ import Database from "@tauri-apps/plugin-sql";
 import { invoke } from "@tauri-apps/api/core";
 import { nowStamp, stampDay, stampTime, today } from "./dates";
 import { nextOccurrence, parseRule } from "./recurrence";
+import { activeProfile } from "./profile";
 
 export type Status = "inbox" | "active" | "done" | "archived";
 /** Цвета проектов. Системные move, exercise и stand проектам не достаются */
@@ -72,8 +73,9 @@ export type ProjectFields = Pick<Project, "name" | "description" | "color" | "ic
 
 let dbPromise: Promise<Database> | null = null;
 function db(): Promise<Database> {
-  // Миграции в src-tauri/migrations применяются при первой загрузке
-  return (dbPromise ??= Database.load("sqlite:inbox.db"));
+  // База активного профиля. Rust перед этим делает копию базы, если вышла новая версия,
+  // а миграции из src-tauri/migrations применяются при первой загрузке
+  return (dbPromise ??= invoke<string>("use_profile", { id: activeProfile() }).then((url) => Database.load(url)));
 }
 
 export async function loadTasks(): Promise<Task[]> {

@@ -10,6 +10,7 @@ import {
 } from "./calendar";
 import { edgeScroll, pastThreshold, trackPointer } from "./drag";
 import "./calendar.css";
+import { profileKey } from "./profile";
 import { PriorityIcon } from "./priority";
 
 type Patch = Parameters<typeof db.updateTask>[1];
@@ -39,7 +40,7 @@ interface Drag {
 
 const loadPref = <T extends string>(key: string, ok: readonly T[], def: T): T => {
   try {
-    const v = localStorage.getItem(key) as T | null;
+    const v = localStorage.getItem(profileKey(key)) as T | null;
     return v && ok.includes(v) ? v : def;
   } catch {
     return def;
@@ -69,7 +70,7 @@ export default function CalendarView(props: {
   const setMode = (m: CalMode) => {
     setModeState(m);
     try {
-      localStorage.setItem("cal:mode", m);
+      localStorage.setItem(profileKey("cal:mode"), m);
     } catch { /* не страшно, просто не запомнится */ }
   };
 

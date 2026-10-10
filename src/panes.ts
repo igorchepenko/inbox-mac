@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { profileKey } from "./profile";
 
 /*
  * Ширина и свёрнутость боковых панелей: левого меню и правой панели деталей.
@@ -24,7 +25,7 @@ function load(): Panes {
   const out = {} as Panes;
   let saved: Partial<Record<PaneId, Partial<Pane>>> = {};
   try {
-    saved = JSON.parse(localStorage.getItem(KEY) ?? "{}");
+    saved = JSON.parse(localStorage.getItem(profileKey(KEY)) ?? "{}");
   } catch {
     // нет сохранённого: берём ширину по умолчанию
   }
@@ -39,7 +40,7 @@ export function usePanes() {
   const [panes, setPanes] = useState<Panes>(load);
   useEffect(() => {
     try {
-      localStorage.setItem(KEY, JSON.stringify(panes));
+      localStorage.setItem(profileKey(KEY), JSON.stringify(panes));
     } catch {
       // без localStorage ширина просто не переживёт перезапуск
     }

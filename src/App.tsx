@@ -147,7 +147,9 @@ export default function App() {
     // Удалённый проект или спрятанный список сам сменится на «Новые»
     openView(v, t);
     const accel = pref(st, "quick.shortcut");
-    if (accel !== "Alt+Space") applyShortcut(accel).then((err) => err && setShortcutError(`Не удалось занять ${labelFromAccel(accel)}: ${err}`));
+    // Сочетание у профиля своё, а занято оно одно на приложение: после смены профиля ставим сохранённое в нём.
+    // Если не досталось ⌥Space, об этом уже говорит плашка из Rust
+    applyShortcut(accel).then((err) => err && accel !== "Alt+Space" && setShortcutError(`Не удалось занять ${labelFromAccel(accel)}: ${err}`));
   }
 
   const patch = (id: number, p: TaskPatch) => {

@@ -12,7 +12,7 @@ export { PRIORITY } from "./priority";
 
 /** Карточка записи задачи. Используется и в отдельном окне ⌥Space, и внутри приложения по N.
  * Дата, время, проект и остальное по желанию: блок свёрнут, открывается кнопкой или ⌘E */
-export function QuickForm(props: { projects: Project[]; onSave: (title: string, note: string, draft: Draft) => void; onCancel: () => void }) {
+export function QuickForm(props: { projects: Project[]; onSave: (title: string, note: string, draft: Draft) => void; onCancel: () => void; profile?: string }) {
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
   const [more, setMore] = useState(false);
@@ -84,7 +84,7 @@ export function QuickForm(props: { projects: Project[]; onSave: (title: string, 
           {more ? "Скрыть параметры" : filled ? `Параметры · ${filled}` : "+ Дата, время, пространство…"}
         </button>
         <span className="grow" />
-        <span>Попадёт в «Новые»</span>
+        <span>Попадёт в «Новые»{props.profile && <> профиля <b className="qi-profile">{props.profile}</b></>}</span>
         <button className="cta" type="submit">Сохранить ⏎</button>
       </div>
     </form>

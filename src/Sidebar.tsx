@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Keyboard, LayoutGrid, Plus, Search, Settings as Gear, X } from "lucide-react";
+import { Check, ChevronDown, ChevronsUpDown, Keyboard, LayoutGrid, Plus, Search, Settings as Gear, X } from "lucide-react";
 import type { Project, Task } from "./db";
 import { countFor, VIEWS, type ViewId } from "./views";
 import { Icon } from "./icons";
 import { IconGrid, Popover, ThemeSwitch } from "./widgets";
 import { HomeIcon } from "./home/Home";
 import { spaceVars } from "./palette";
+import { activeProfile, PROFILES, profileName, switchProfile } from "./profile";
 
 export const KEY_PROJECTS_COLLAPSED = "side.projects.collapsed";
 /** ⌘P из любого места: развернуть проекты и поставить курсор в поиск */
@@ -166,6 +167,7 @@ export function Sidebar(props: {
         </div>
       </>)}
 
+      <ProfileSwitch />
       <div className="side-foot">
         <ThemeSwitch />
         <span className="side-foot-r">
@@ -181,5 +183,32 @@ export function Sidebar(props: {
         </Popover>
       )}
     </nav>
+  );
+}
+
+/** Активный профиль внизу меню, чтобы не перепутать, где ты. Клик открывает выбор профиля */
+function ProfileSwitch() {
+  const cur = activeProfile();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  return (
+    <>
+      <button className="side-profile" data-tip="Профиль: своя база задач и свои настройки" onClick={(e) => setAnchor(e.currentTarget)}>
+        <span className="side-profile-dot" />
+        <span className="nav-name">{profileName(cur)}</span>
+        <ChevronsUpDown size={13} />
+      </button>
+      {anchor && (
+        <Popover anchor={anchor} onClose={() => setAnchor(null)} width={250}>
+          <div className="lbl">Профиль</div>
+          {PROFILES.map((p) => (
+            <button key={p.id} className="profile-opt" data-profile={p.id} onClick={() => (setAnchor(null), switchProfile(p.id))}>
+              <span className="side-profile-dot" />
+              <span className="profile-opt-text"><b>{p.name}</b><span>{p.hint}</span></span>
+              {p.id === cur && <Check size={14} />}
+            </button>
+          ))}
+        </Popover>
+      )}
+    </>
   );
 }
