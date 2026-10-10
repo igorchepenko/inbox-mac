@@ -1,20 +1,18 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { spaceVars } from "./palette";
 import { Bell, CalendarDays, Check, Clock, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat } from "lucide-react";
 import type { Project, Task } from "./db";
-import { addDays, fmtDay, nextMonday, today } from "./dates";
+import { addDays, fmtDay, fmtRange, nextMonday, stampTime, today } from "./dates";
 import { TARGETS, type BoardColumn, type Layout, type Stage } from "./boardOps";
 import * as board from "./boardOps";
 import { plural, SORTS, type SortBy } from "./views";
 import { PRIORITY } from "./components";
 import { Icon } from "./icons";
 import { Calendar, Popover } from "./widgets";
-import { fmtRange, QuadrantGlyph } from "./extras";
+import { QuadrantGlyph } from "./extras";
+import { EASE, edgeScroll, pastThreshold, reduceMotion, trackPointer, useFlip } from "./drag";
 import "./board.css";
 import { PriorityIcon } from "./priority";
-
-const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
-const EASE = "cubic-bezier(.2, .8, .2, 1)";
 
 /** Переключатель вида списка в шапке */
 export function LayoutSwitch({ value, onChange }: { value: Layout; onChange: (l: Layout) => void }) {
@@ -62,7 +60,7 @@ function Meta({ task: x, project }: { task: Task; project?: Project }) {
     <div className="card-meta">
       {x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`}><CalendarDays size={11} /> {fmtDay(x.due_date)}</span>}
       {x.start_time && <span className="meta"><Clock size={11} /> {fmtRange(x.start_time, x.end_time)}</span>}
-      {x.remind_at && !x.reminded && !done && <span className="meta"><Bell size={11} /> {x.remind_at.slice(11, 16)}</span>}
+      {x.remind_at && !x.reminded && !done && <span className="meta"><Bell size={11} /> {stampTime(x.remind_at)}</span>}
       {x.subtasks.length > 0 && <span className="meta"><ListChecks size={11} /> {checked}/{x.subtasks.length}</span>}
       {x.links.length > 0 && <span className="meta"><Link2 size={11} /> {x.links.length}</span>}
       {x.files.length > 0 && <span className="meta"><Paperclip size={11} /> {x.files.length}</span>}
@@ -75,34 +73,6 @@ function Meta({ task: x, project }: { task: Task; project?: Project }) {
 
 function hasMeta(x: Task, project?: Project) {
   return !!(x.due_date || x.start_time || x.remind_at || x.recurrence || x.quadrant || x.subtasks.length || x.links.length || x.files.length || project);
-}
-
-/**
- * Плавная перестановка (FLIP): до обновления запоминаем, где стояли карточки, после него
- * сдвигаем каждую обратно и отпускаем анимацией на новое место.
- */
-function useFlip(root: React.RefObject<HTMLElement | null>, key: string) {
-  const last = useRef(key);
-  const before = useRef<Map<string, DOMRect> | null>(null);
-  // Замер в теле рендера: DOM ещё показывает прошлое состояние
-  if (last.current !== key && root.current && !before.current) {
-    before.current = new Map();
-    root.current.querySelectorAll<HTMLElement>("[data-card]").forEach((el) => before.current!.set(el.dataset.card!, el.getBoundingClientRect()));
-  }
-  useLayoutEffect(() => {
-    const prev = before.current;
-    before.current = null;
-    last.current = key;
-    if (!prev || !root.current || reduceMotion()) return;
-    root.current.querySelectorAll<HTMLElement>("[data-card]").forEach((el) => {
-      const a = prev.get(el.dataset.card!);
-      if (!a || el.classList.contains("landing")) return;
-      const b = el.getBoundingClientRect();
-      const dx = a.left - b.left, dy = a.top - b.top;
-      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
-      el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }], { duration: 260, easing: EASE });
-    });
-  }, [key, root]);
 }
 
 interface Drag {
@@ -153,7 +123,7 @@ export function BoardView(props: {
     };
     const move = (ev: PointerEvent) => {
       if (!ghost) {
-        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
+        if (!pastThreshold(x0, y0, ev.clientX, ev.clientY)) return;
         // Тянем всю выделенную группу, если карточка в ней, иначе одну
         ids = props.picked.includes(x.id) ? props.picked : [x.id];
         ghost = el.cloneNode(true) as HTMLElement;
@@ -178,15 +148,9 @@ export function BoardView(props: {
       }
       // У края доски прокручиваем её, чтобы дотянуть до дальнего столбца
       const b = root.current?.getBoundingClientRect();
-      if (b && root.current) {
-        if (ev.clientX > b.right - 40) root.current.scrollLeft += 14;
-        else if (ev.clientX < b.left + 40) root.current.scrollLeft -= 14;
-      }
+      if (b && root.current) root.current.scrollLeft += edgeScroll(ev.clientX, b.left, b.right, 40, 14);
     };
     const up = async (ev: PointerEvent) => {
-      removeEventListener("pointermove", move);
-      removeEventListener("pointerup", up);
-      removeEventListener("pointercancel", up);
       if (!ghost) {
         props.onPick(x.id, mods(ev));
         return;
@@ -214,9 +178,7 @@ export function BoardView(props: {
         };
       });
     };
-    addEventListener("pointermove", move);
-    addEventListener("pointerup", up);
-    addEventListener("pointercancel", up);
+    trackPointer({ move, up });
   };
 
   return (

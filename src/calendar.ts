@@ -1,6 +1,6 @@
 // Логика календаря без интерфейса: какие задачи попадают в видимые дни, повторы, раскладка пересекающихся.
 import type { Task } from "./db";
-import { addDays, dayKey, parseDay, today } from "./dates";
+import { addDays, addMonths, DAY_END, dayMonth, longDate, monthStart, MONTHS, parseDay, today, toHHMM, toMin, weekStart } from "./dates";
 import { nextOccurrence, parseRule } from "./recurrence";
 
 export type CalMode = "day" | "week" | "month";
@@ -9,21 +9,10 @@ export type CalMode = "day" | "week" | "month";
 export const STEP = 15;
 /** Длительность, с которой показывается задача без времени окончания */
 export const DEFAULT_LEN = 30;
-const DAY_END = 24 * 60;
 
-export const toMin = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
-const pad = (n: number) => String(n).padStart(2, "0");
-/** Минуты в HH:MM. Конец дня в базе хранится как 23:59, чтобы не появлялось «24:00» */
-export const toHHMM = (m: number) => (m >= DAY_END ? "23:59" : `${pad(Math.floor(m / 60))}:${pad(m % 60)}`);
 /** Для подписей: 23:59 показывается как 24:00 */
 export const label = (m: number) => (m >= DAY_END - 1 ? "24:00" : toHHMM(m));
 export const snap = (m: number) => Math.round(m / STEP) * STEP;
-
-/** Понедельник недели, в которую входит день */
-export function weekStart(day: string): string {
-  const d = parseDay(day);
-  return addDays(day, -((d.getDay() + 6) % 7));
-}
 
 /** Видимые дни: один, семь или шесть недель месяца с понедельника */
 export function rangeFor(mode: CalMode, anchor: string): string[] {
@@ -32,8 +21,7 @@ export function rangeFor(mode: CalMode, anchor: string): string[] {
     const s = weekStart(anchor);
     return Array.from({ length: 7 }, (_, i) => addDays(s, i));
   }
-  const d = parseDay(anchor);
-  const s = weekStart(dayKey(new Date(d.getFullYear(), d.getMonth(), 1)));
+  const s = weekStart(monthStart(anchor));
   return Array.from({ length: 42 }, (_, i) => addDays(s, i));
 }
 
@@ -41,26 +29,20 @@ export function rangeFor(mode: CalMode, anchor: string): string[] {
 export function shiftAnchor(mode: CalMode, anchor: string, dir: number): string {
   if (mode === "day") return addDays(anchor, dir);
   if (mode === "week") return addDays(anchor, 7 * dir);
-  const d = parseDay(anchor);
-  return dayKey(new Date(d.getFullYear(), d.getMonth() + dir, 1));
+  return addMonths(anchor, dir);
 }
-
-const MONTHS = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
-const MON_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
-export const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-const WD_LONG = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"];
 
 /** Заголовок: «Октябрь 2026», «6 – 12 октября», «Пятница, 9 октября» */
 export function titleFor(mode: CalMode, anchor: string): string {
   const d = parseDay(anchor);
   const year = d.getFullYear() !== new Date().getFullYear() ? ` ${d.getFullYear()}` : "";
   if (mode === "month") return `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
-  if (mode === "day") return `${WD_LONG[d.getDay()]}, ${d.getDate()} ${MON_GEN[d.getMonth()]}${year}`;
+  if (mode === "day") return `${longDate(d)}${year}`;
   const days = rangeFor("week", anchor);
   const a = parseDay(days[0]), b = parseDay(days[6]);
   return a.getMonth() === b.getMonth()
-    ? `${a.getDate()} – ${b.getDate()} ${MON_GEN[b.getMonth()]}${year}`
-    : `${a.getDate()} ${MON_GEN[a.getMonth()]} – ${b.getDate()} ${MON_GEN[b.getMonth()]}${year}`;
+    ? `${a.getDate()} – ${dayMonth(b)}${year}`
+    : `${dayMonth(a)} – ${dayMonth(b)}${year}`;
 }
 
 /** Одна плашка в календаре. Повтор из будущего — не отдельная задача, а проекция правила */

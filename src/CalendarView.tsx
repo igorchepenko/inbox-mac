@@ -2,12 +2,13 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { ChevronLeft, ChevronRight, Repeat } from "lucide-react";
 import type { Project, Task } from "./db";
 import * as db from "./db";
-import { parseDay, today } from "./dates";
+import { DAY_END, pad, parseDay, stampTime, today, toHHMM, weekdayShort, WEEKDAYS } from "./dates";
 import { Icon } from "./icons";
 import {
-  byDayOrder, DEFAULT_LEN, itemsFor, label, layoutDay, movable, rangeFor, shiftAnchor, snap, STEP, titleFor, toHHMM, WEEKDAYS,
+  byDayOrder, DEFAULT_LEN, itemsFor, label, layoutDay, movable, rangeFor, shiftAnchor, snap, STEP, titleFor,
   type CalMode, type Item, type Placed,
 } from "./calendar";
+import { edgeScroll, pastThreshold, trackPointer } from "./drag";
 import "./calendar.css";
 import { PriorityIcon } from "./priority";
 
@@ -15,7 +16,6 @@ type Patch = Parameters<typeof db.updateTask>[1];
 
 const HOUR = 48; // высота часа, px
 const PX = HOUR / 60;
-const DAY_END = 24 * 60;
 const MONTH_CHIPS = 4; // сколько плашек помещается в ячейку месяца, остальное «ещё N»
 
 /** Где задача окажется после перетаскивания */
@@ -179,7 +179,8 @@ export default function CalendarView(props: {
       const d = dragRef.current, sc = scrollRef.current;
       if (d?.active && sc && mode !== "month") {
         const r = sc.getBoundingClientRect();
-        const dy = d.y < r.top + 28 && d.y > r.top - 4 ? -10 : d.y > r.bottom - 28 ? 10 : 0;
+        // Над шапкой дней сетку не крутим
+        const dy = d.y > r.top - 4 ? edgeScroll(d.y, r.top, r.bottom, 28, 10) : 0;
         if (dy) {
           sc.scrollTop += dy;
           update();
@@ -191,7 +192,7 @@ export default function CalendarView(props: {
     const onMove = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
-      const active = d.active || (movable(d.item) && Math.hypot(e.clientX - d.x0, e.clientY - d.y0) > 4);
+      const active = d.active || (movable(d.item) && pastThreshold(d.x0, d.y0, e.clientX, e.clientY));
       dragRef.current = { ...d, x: e.clientX, y: e.clientY, active };
       if (active) update();
     };
@@ -213,13 +214,11 @@ export default function CalendarView(props: {
       dragRef.current = null;
       setDrag(null);
     };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+    const untrack = trackPointer({ move: onMove, up: onUp });
     window.addEventListener("keydown", onKey);
     return () => {
       cancelAnimationFrame(raf);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
+      untrack();
       window.removeEventListener("keydown", onKey);
     };
   }, [drag != null]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -250,7 +249,7 @@ export default function CalendarView(props: {
   const emptyUp = (e: React.PointerEvent, day: string, timed: boolean) => {
     const p = press.current;
     press.current = null;
-    if (!p || e.target !== e.currentTarget || Math.hypot(e.clientX - p.x, e.clientY - p.y) > 4) return;
+    if (!p || e.target !== e.currentTarget || pastThreshold(p.x, p.y, e.clientX, e.clientY)) return;
     const s = timed ? newStart(e.clientY) : null;
     setHover(null);
     props.onCreate(day, s, s == null ? null : s + DEFAULT_LEN);
@@ -375,7 +374,7 @@ export default function CalendarView(props: {
               return (
                 <button key={d} className={`cal-dayhead ${d === t ? "today" : ""} ${d < t ? "past" : ""}`} onClick={() => openDay(d)}
                   disabled={mode === "day"}>
-                  <span className="wd">{WEEKDAYS[(dt.getDay() + 6) % 7]}</span>
+                  <span className="wd">{weekdayShort(d)}</span>
                   <span className="dn">{dt.getDate()}</span>
                 </button>
               );
@@ -404,7 +403,7 @@ export default function CalendarView(props: {
           <div className="cal-scroll" ref={scrollRef}>
             <div className="cal-grid-body" style={{ height: 24 * HOUR }}>
               <div className="cal-hours">
-                {Array.from({ length: 23 }, (_, h) => <span key={h} style={{ top: (h + 1) * HOUR }}>{String(h + 1).padStart(2, "0")}:00</span>)}
+                {Array.from({ length: 23 }, (_, h) => <span key={h} style={{ top: (h + 1) * HOUR }}>{pad(h + 1)}:00</span>)}
               </div>
               <div className="cal-cols" ref={colsRef}>
                 {days.map((d) => {
@@ -464,7 +463,7 @@ function patchFor(it: Item, to: Spot, kind: Drag["kind"], mode: CalMode): Patch 
   }
   // Напоминание едет вместе с задачей. Если оно стояло на начало, то и остаётся на начале
   if (x.remind_at && (p.due_date || p.start_time !== undefined)) {
-    let rt = x.remind_at.slice(11, 16);
+    let rt = stampTime(x.remind_at);
     if (x.start_time && rt === x.start_time && to.start != null && mode !== "month") rt = toHHMM(to.start);
     const r = `${to.day}T${rt}`;
     if (r !== x.remind_at) Object.assign(p, { remind_at: r, reminded: 0 });

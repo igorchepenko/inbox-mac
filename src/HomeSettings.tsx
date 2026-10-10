@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import { ResetSection, Row, Toggle } from "./Settings";
+import { moveItem, useSortable } from "./drag";
 import { BLOCKS, blockOrder, DEFAULT_ORDER, hiddenBlocks, KEY_HIDDEN, KEY_ORDER, type BlockId } from "./home/data";
 
 /*
@@ -21,15 +22,10 @@ export function HomeSettings(props: { settings: Record<string, string>; onSet: (
   // Порядок держим локально, чтобы перетаскивание шло без задержки на запись в базу
   const [order, setOrder] = useState(blockOrder(s));
   useEffect(() => setOrder(blockOrder(s)), [s[KEY_ORDER]]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [drag, setDrag] = useState<BlockId | null>(null);
   const blocksChanged = order.some((id, i) => id !== DEFAULT_ORDER[i]) || hidden.length > 0;
   const resetBlocks = () => (saveOrder(DEFAULT_ORDER), props.onSet(KEY_HIDDEN, "[]"));
   const saveOrder = (o: BlockId[]) => (setOrder(o), props.onSet(KEY_ORDER, JSON.stringify(o)));
-  const move = (id: BlockId, to: number) => {
-    const o = order.filter((k) => k !== id);
-    o.splice(Math.max(0, Math.min(to, o.length)), 0, id);
-    return o;
-  };
+  const sort = useSortable({ onDrop: (from, to) => saveOrder(moveItem(order, from, to)) });
 
   const start = num(s, "home:day_start", 9);
   const end = num(s, "home:day_end", 20);
@@ -52,19 +48,16 @@ export function HomeSettings(props: { settings: Record<string, string>; onSet: (
         </div>
         {blocksChanged && <button type="button" className="link" onClick={resetBlocks}>Сбросить</button>}
       </div>
-      <div className="block-list" onDragOver={(e) => e.preventDefault()}>
+      <div className={`block-list ${sort.dragging != null ? "sorting" : ""}`} ref={sort.listRef}>
         {order.map((id, i) => {
           const b = BLOCKS.find((x) => x.id === id)!;
           const off = hidden.includes(id);
           return (
-            <div key={id} className={`block-row ${off ? "off" : ""} ${drag === id ? "dragging" : ""}`} draggable
-              onDragStart={(e) => (e.dataTransfer.setData("text/plain", id), e.dataTransfer.effectAllowed = "move", setDrag(id))}
-              onDragEnter={() => drag && drag !== id && setOrder(move(drag, i))}
-              onDragEnd={() => (setDrag(null), saveOrder(order))}>
-              <GripVertical size={14} className="grip" />
+            <div key={id} className={`block-row sort-row ${off ? "off" : ""} ${sort.dragging === i ? "lifted" : ""}`} style={sort.rowStyle(i)}>
+              <span className="grip" title="Перетащи, чтобы поменять порядок" {...sort.grip(i)}><GripVertical size={14} /></span>
               <span className="block-name">{b.name}</span>
-              <button type="button" className="cal-nav" disabled={i === 0} aria-label="Выше" onClick={() => saveOrder(move(id, i - 1))}><ChevronUp size={14} /></button>
-              <button type="button" className="cal-nav" disabled={i === order.length - 1} aria-label="Ниже" onClick={() => saveOrder(move(id, i + 1))}><ChevronDown size={14} /></button>
+              <button type="button" className="cal-nav" disabled={i === 0} aria-label="Выше" onClick={() => saveOrder(moveItem(order, i, i - 1))}><ChevronUp size={14} /></button>
+              <button type="button" className="cal-nav" disabled={i === order.length - 1} aria-label="Ниже" onClick={() => saveOrder(moveItem(order, i, i + 1))}><ChevronDown size={14} /></button>
               <Toggle label={`Показывать «${b.name}»`} on={!off}
                 onChange={(on) => props.onSet(KEY_HIDDEN, JSON.stringify(on ? hidden.filter((k) => k !== id) : [...hidden, id]))} />
             </div>

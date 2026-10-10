@@ -1,6 +1,6 @@
 // Расчёты для главной: всё считается из задач на лету, отдельных таблиц для статистики нет
 import type { Project, Task } from "../db";
-import { addDays, parseDay, today } from "../dates";
+import { addDays, daysBetween, fmtMin, hoursBetween, monthEnd, monthStart, stampDay, toMin, today, weekdayShort, weekStart } from "../dates";
 
 export const BLOCKS = [
   { id: "summary", name: "Итоги дня", hint: "", span: 12 },
@@ -72,30 +72,21 @@ export function dayConfig(settings: Record<string, string>): DayConfig {
 
 // Время и длительность
 
-export const mins = (hhmm: string) => {
-  const [h, m] = hhmm.split(":").map(Number);
-  return h * 60 + (m || 0);
-};
-export const fmtMin = (m: number) => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
 
 /** Задача без конца занимает полчаса */
 export function duration(x: Task): number {
   if (!x.start_time) return 0;
-  const d = x.end_time ? mins(x.end_time) - mins(x.start_time) : 30;
+  const d = x.end_time ? toMin(x.end_time) - toMin(x.start_time) : 30;
   return d > 0 ? d : 30;
 }
 
-export function fmtDur(m: number): string {
-  if (m < 60) return `${m} мин`;
-  return `${Math.floor(m / 60)} ч${m % 60 ? ` ${m % 60} мин` : ""}`;
-}
 
-export const timeRange = (x: Task) => (x.start_time ? `${x.start_time}–${fmtMin(mins(x.start_time) + duration(x))}` : "");
+export const timeRange = (x: Task) => (x.start_time ? `${x.start_time}–${fmtMin(toMin(x.start_time) + duration(x))}` : "");
 
 // Состояния задач
 
 export const isDone = (x: Task) => x.status === "done" || x.status === "archived";
-const doneDay = (x: Task) => (isDone(x) && x.done_at ? x.done_at.slice(0, 10) : null);
+const doneDay = (x: Task) => (isDone(x) && x.done_at ? stampDay(x.done_at) : null);
 const byStart = (a: Task, b: Task) => (a.start_time ?? "99") < (b.start_time ?? "99") ? -1 : (a.start_time ?? "99") > (b.start_time ?? "99") ? 1 : 0;
 
 /** Задачи дня: разобранные с этой датой, открытые и сделанные */
@@ -119,9 +110,6 @@ export function todayItems(tasks: Task[]): Task[] {
 
 export const busyMinutes = (items: Task[]) => items.reduce((s, x) => s + duration(x), 0);
 
-export function daysBetween(from: string, to: string): number {
-  return Math.round((parseDay(to).getTime() - parseDay(from).getTime()) / 86_400_000);
-}
 
 // Итоги дня
 
@@ -138,7 +126,7 @@ export function summary(tasks: Task[]): Summary {
   const items = todayItems(tasks);
   return {
     inbox: tasks.filter((x) => x.status === "inbox").length,
-    triagedToday: tasks.filter((x) => x.triaged_at?.slice(0, 10) === t).length,
+    triagedToday: tasks.filter((x) => !!x.triaged_at && stampDay(x.triaged_at) === t).length,
     planned: items.length + overdue(tasks).length,
     doneToday: items.filter(isDone).length,
     busy: busyMinutes(items.filter((x) => x.due_date === t)),
@@ -152,11 +140,11 @@ export function summary(tasks: Task[]): Summary {
 export function streak(tasks: Task[]): { days: number; week: boolean[] } {
   const t = today();
   if (!tasks.length) return { days: 0, week: Array(7).fill(false) };
-  const first = tasks.reduce((m, x) => (x.created_at < m ? x.created_at : m), t).slice(0, 10);
+  const first = stampDay(tasks.reduce((m, x) => (x.created_at < m ? x.created_at : m), t));
   const left = tasks.map((x) => ({
-    from: x.created_at.slice(0, 10),
+    from: stampDay(x.created_at),
     // Когда задача ушла из входящих; у ещё лежащих там — никогда
-    out: x.status === "inbox" ? "9999" : (x.triaged_at ?? x.done_at ?? x.created_at).slice(0, 10),
+    out: x.status === "inbox" ? "9999" : stampDay(x.triaged_at ?? x.done_at ?? x.created_at),
   }));
   const clean = (day: string) => day >= first && !left.some((l) => l.from <= day && l.out > day);
   const week = Array.from({ length: 7 }, (_, i) => clean(addDays(t, i - 6)));
@@ -172,7 +160,7 @@ export function inboxItems(tasks: Task[]): { task: Task; age: number }[] {
   return tasks
     .filter((x) => x.status === "inbox")
     .sort((a, b) => (a.created_at < b.created_at ? -1 : 1))
-    .map((task) => ({ task, age: Math.max(0, daysBetween(task.created_at.slice(0, 10), t)) }));
+    .map((task) => ({ task, age: Math.max(0, daysBetween(stampDay(task.created_at), t)) }));
 }
 
 export const fmtAge = (a: number) => (a === 0 ? "сегодня" : a === 1 ? "вчера" : `${a} дн`);
@@ -233,12 +221,6 @@ export interface Stats {
   planned: number; // минуты
 }
 
-const WD = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
-
-function stampHours(a: string, b: string): number {
-  const p = (s: string) => new Date(s.length > 10 ? s : `${s}T00:00`).getTime();
-  return Math.max(0, (p(b) - p(a)) / 3_600_000);
-}
 
 export function stats(tasks: Task[], period: Period, cfg: DayConfig): Stats {
   const t = today();
@@ -248,7 +230,7 @@ export function stats(tasks: Task[], period: Period, cfg: DayConfig): Stats {
   const bars: Bar[] = Array.from({ length: n }, (_, i) => {
     const start = addDays(from, i * len);
     const label = period === "week"
-      ? i === n - 1 ? "Сег" : WD[parseDay(start).getDay()]
+      ? i === n - 1 ? "Сег" : weekdayShort(start)
       : ["3 нед. назад", "2 нед. назад", "Прошлая", "Эта"][i];
     return { label, current: i === n - 1, byProject: new Map(), total: 0 };
   });
@@ -263,18 +245,17 @@ export function stats(tasks: Task[], period: Period, cfg: DayConfig): Stats {
     b.total++;
   }
   const withDue = done.filter((x) => x.due_date);
-  const triaged = tasks.filter((x) => x.triaged_at && x.triaged_at.slice(0, 10) >= from);
+  const triaged = tasks.filter((x) => !!x.triaged_at && stampDay(x.triaged_at) >= from);
   // Запланированное: вся текущая неделя с понедельника или весь месяц
-  const td = parseDay(t);
-  const pFrom = period === "week" ? addDays(t, -((td.getDay() + 6) % 7)) : t.slice(0, 8) + "01";
-  const pTo = period === "week" ? addDays(pFrom, 6) : addDays(addDays(pFrom, 31).slice(0, 8) + "01", -1);
+  const pFrom = period === "week" ? weekStart(t) : monthStart(t);
+  const pTo = period === "week" ? addDays(pFrom, 6) : monthEnd(t);
   const planned = busyMinutes(tasks.filter((x) => x.status !== "inbox" && !!x.due_date && x.due_date >= pFrom && x.due_date <= pTo));
   return {
     bars,
     goal: period === "week" ? cfg.goal : cfg.goal * 5,
     done: done.length,
     onTime: withDue.length ? withDue.filter((x) => doneDay(x)! <= x.due_date!).length / withDue.length : null,
-    triage: triaged.length ? triaged.reduce((s, x) => s + stampHours(x.created_at, x.triaged_at!), 0) / triaged.length : null,
+    triage: triaged.length ? triaged.reduce((s, x) => s + hoursBetween(x.created_at, x.triaged_at!), 0) / triaged.length : null,
     planned,
   };
 }
@@ -314,9 +295,3 @@ export function greeting(d: Date): string {
   return h < 5 ? "Доброй ночи" : h < 12 ? "Доброе утро" : h < 17 ? "Добрый день" : h < 23 ? "Добрый вечер" : "Доброй ночи";
 }
 
-const WD_LONG = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"];
-const MON_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
-
-export const longDate = (d: Date) => `${WD_LONG[d.getDay()]}, ${d.getDate()} ${MON_GEN[d.getMonth()]}`;
-export const weekdayShort = (day: string) => WD[parseDay(day).getDay()];
-export const isWeekend = (day: string) => [0, 6].includes(parseDay(day).getDay());

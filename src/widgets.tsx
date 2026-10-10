@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { ChevronLeft, ChevronRight, Monitor, Moon, Sun } from "lucide-react";
-import { dayKey, parseDay, today } from "./dates";
+import { dayKey, MONTHS, pad, parseDay, today, WEEKDAYS, weekdayIndex } from "./dates";
 import { Icon, ICONS } from "./icons";
 import type { ProjectFields } from "./db";
 import { PALETTE, swatchOf } from "./palette";
@@ -60,8 +60,6 @@ export function Popover(props: { anchor: HTMLElement | null; onClose: () => void
   );
 }
 
-const MONTHS = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
-const WEEK = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
 /**
  * Календарь месяца в стиле приложения, неделя с понедельника.
@@ -75,7 +73,7 @@ export function Calendar(props: { value: string | null; onPick: (day: string | n
   const [mode, setMode] = useState<"days" | "months" | "years">("days");
   const y = month.getFullYear();
   const first = new Date(month);
-  first.setDate(1 - ((month.getDay() + 6) % 7));
+  first.setDate(1 - weekdayIndex(month));
   const days = Array.from({ length: 42 }, (_, i) => {
     const d = new Date(first);
     d.setDate(first.getDate() + i);
@@ -99,7 +97,7 @@ export function Calendar(props: { value: string | null; onPick: (day: string | n
       </div>
       {mode === "days" && (
         <div className="cal-grid">
-          {WEEK.map((w) => <span key={w} className="cal-wd">{w}</span>)}
+          {WEEKDAYS.map((w) => <span key={w} className="cal-wd">{w}</span>)}
           {days.map((d) => {
             const k = dayKey(d);
             const cls = ["cal-day", d.getMonth() !== month.getMonth() && "other", k === t && "today", k === props.value && "on", k < t && "past"]
@@ -161,7 +159,7 @@ export function TimeInput(props: { value: string; disabled?: boolean; onCommit: 
       setMm("");
       return;
     }
-    const hhmm = `${h.padStart(2, "0")}:${(m || "00").padStart(2, "0")}`;
+    const hhmm = `${pad(Number(h))}:${pad(Number(m || 0))}`;
     if (hhmm !== props.value) props.onCommit(hhmm);
     else {
       setHh(hhmm.slice(0, 2));

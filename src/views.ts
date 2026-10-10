@@ -1,5 +1,5 @@
 import type { Task } from "./db";
-import { fmtDay, today } from "./dates";
+import { fmtDay, stampDay, stampTime, today } from "./dates";
 import { quickKeyLabel } from "./prefs";
 import { PRIORITY } from "./priority";
 
@@ -18,7 +18,7 @@ export interface ListItem {
   group?: string; // заголовок группы перед строкой
 }
 
-const doneToday = (x: Task, t: string) => x.status === "done" && !!x.done_at && x.done_at.slice(0, 10) === t;
+const doneToday = (x: Task, t: string) => x.status === "done" && !!x.done_at && stampDay(x.done_at) === t;
 
 /** Порядок строк в списке и в столбцах канбана. Хранится отдельно для каждого списка: settings sort:<вид> */
 export type SortBy = "date" | "priority" | "matrix";
@@ -35,7 +35,7 @@ const QUAD_ORDER = [1, 3, 2, 4];
 const QUAD_NAMES: Record<number, string> = { 1: "Срочно и важно", 2: "Важно, не срочно", 3: "Срочно, не важно", 4: "Не срочно, не важно" };
 const quadRank = (x: Task) => (x.quadrant ? QUAD_ORDER.indexOf(x.quadrant) : 9);
 // Время задачи в дне: начало из календаря, иначе напоминание. Без времени после задач со временем
-const timeOf = (x: Task) => x.start_time ?? x.remind_at?.slice(11, 16) ?? "99";
+const timeOf = (x: Task) => x.start_time ?? (x.remind_at ? stampTime(x.remind_at) : "99");
 
 /** Ближайшие сверху: дата (без даты в конце), время, затем важнее и свежее */
 function byDate(a: Task, b: Task): number {
@@ -118,7 +118,7 @@ export function progressFor(view: ViewId, tasks: Task[]): Progress | null {
   const t = today();
   if (view === "inbox") {
     const left = tasks.filter((x) => x.status === "inbox").length;
-    const sorted = tasks.filter((x) => x.triaged_at?.slice(0, 10) === t).length;
+    const sorted = tasks.filter((x) => !!x.triaged_at && stampDay(x.triaged_at) === t).length;
     const subtitle = left
       ? `${plural(left, "задача ждёт", "задачи ждут", "задач ждут")} разбора${sorted ? `, разобрано сегодня ${sorted}` : ""}`
       : sorted ? `Всё разобрано, сегодня ${sorted}` : `Пусто. Нажми ${quickKeyLabel()}, чтобы записать задачу`;

@@ -5,9 +5,10 @@ import { Check, Copy, CalendarDays, FileText, FolderSearch, GripVertical, Link2,
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import * as db from "./db";
 import type { Task } from "./db";
-import { addDays, fmtDay, nextMonday, parseDay, today } from "./dates";
-import { anchorRule, describe, isoWeekday, nthLabel, parseRule, PRESETS, WD_SHORT, type Freq, type Rule } from "./recurrence";
+import { addDays, fmtDay, fmtDuration, nextMonday, parseDay, today, toHHMM, toMin } from "./dates";
+import { anchorRule, describe, nthLabel, nthOf, parseRule, PRESETS, WD_SHORT, type Freq, type Rule } from "./recurrence";
 import { Calendar, Popover, TimeInput, useAutosize } from "./widgets";
+import { moveItem, useSortable } from "./drag";
 import { PRIORITY, PriorityIcon } from "./priority";
 
 export type RunDb = (fn: () => Promise<unknown>) => void;
@@ -61,19 +62,8 @@ export function DateField(props: { value: string | null; onChange: (d: string | 
 
 // Время «от–до»
 
-const toMin = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
-const toHHMM = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 const LAST = 23 * 60 + 59;
 
-export function fmtDuration(min: number): string {
-  const h = Math.floor(min / 60), m = min % 60;
-  return [h && `${h} ч`, m && `${m} мин`].filter(Boolean).join(" ") || "0 мин";
-}
-
-/** «10:00–11:30» для строки списка */
-export function fmtRange(start: string | null, end: string | null): string {
-  return start ? (end ? `${start}–${end}` : start) : "";
-}
 
 const DURATIONS = [15, 30, 60, 90, 120];
 
@@ -225,8 +215,7 @@ function RuleEditor(props: { rule: Rule | null; due: string; onApply: (r: Rule |
   const setFreq = (freq: Freq) =>
     setR((cur) => anchorRule({ freq, every: cur.every, fromDone: cur.fromDone, until: cur.until, count: cur.count, monthBy: freq === "month" ? "day" : undefined }, due));
   const d = parseDay(due);
-  const nth = Math.min(Math.ceil(d.getDate() / 7), 4);
-  const isLast = d.getDate() + 7 > new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  const { nth, weekday, last: isLast } = nthOf(due);
   const ending = r.until ? "until" : r.count != null ? "count" : "never";
   const valid = r.freq !== "week" || !!r.days?.length;
 
@@ -262,12 +251,12 @@ function RuleEditor(props: { rule: Rule | null; due: string; onApply: (r: Rule |
           <Chip on={r.monthBy !== "nth"} accent="stand" onClick={() => set({ monthBy: "day", day: d.getDate(), nth: undefined, weekday: undefined })}>
             {d.getDate()} числа
           </Chip>
-          <Chip on={r.monthBy === "nth" && r.nth !== -1} accent="stand" onClick={() => set({ monthBy: "nth", nth, weekday: isoWeekday(d), day: undefined })}>
-            {nthLabel(nth, isoWeekday(d))}
+          <Chip on={r.monthBy === "nth" && r.nth !== -1} accent="stand" onClick={() => set({ monthBy: "nth", nth, weekday, day: undefined })}>
+            {nthLabel(nth, weekday)}
           </Chip>
           {isLast && (
-            <Chip on={r.monthBy === "nth" && r.nth === -1} accent="stand" onClick={() => set({ monthBy: "nth", nth: -1, weekday: isoWeekday(d), day: undefined })}>
-              {nthLabel(-1, isoWeekday(d))}
+            <Chip on={r.monthBy === "nth" && r.nth === -1} accent="stand" onClick={() => set({ monthBy: "nth", nth: -1, weekday, day: undefined })}>
+              {nthLabel(-1, weekday)}
             </Chip>
           )}
         </Line>
@@ -312,63 +301,19 @@ export function Checklist(props: { task: Task; locked?: boolean; run: RunDb }) {
   const [order, setOrder] = useState<number[] | null>(null);
   const [draft, setDraft] = useState("");
   const newRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
   const subsKey = subs.map((s) => s.id).join(",");
   useEffect(() => setOrder(null), [subsKey]);
   const items = order ? order.map((id) => subs.find((s) => s.id === id)!).filter(Boolean) : subs;
 
   // Перетаскивание на указателе мыши: работает и в WebView macOS, где HTML5 drag-and-drop занят файлами
-  const geo = useRef<{ tops: number[]; hs: number[]; startY: number }>({ tops: [], hs: [], startY: 0 });
-  const [drag, setDrag] = useState<{ from: number; to: number; dy: number } | null>(null);
-  const [settle, setSettle] = useState<{ id: number; offset: number } | null>(null);
-  useLayoutEffect(() => {
-    if (!settle) return;
-    const f = requestAnimationFrame(() => requestAnimationFrame(() => setSettle(null)));
-    return () => cancelAnimationFrame(f);
-  }, [settle]);
-
-  const startDrag = (e: React.PointerEvent, i: number) => {
-    if (props.locked || e.button !== 0) return;
-    e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    const rows = [...(listRef.current?.querySelectorAll<HTMLElement>(".sub") ?? [])];
-    geo.current = { tops: rows.map((r) => r.offsetTop), hs: rows.map((r) => r.offsetHeight), startY: e.clientY };
-    setDrag({ from: i, to: i, dy: 0 });
-  };
-  const moveDrag = (e: React.PointerEvent) => {
-    if (!drag) return;
-    const { tops, hs, startY } = geo.current;
-    const dy = e.clientY - startY;
-    const center = tops[drag.from] + hs[drag.from] / 2 + dy;
-    const to = tops.filter((t, j) => j !== drag.from && t + hs[j] / 2 < center).length;
-    setDrag({ ...drag, dy, to });
-  };
-  const endDrag = () => {
-    if (!drag) return;
-    const { from, to, dy } = drag;
-    setDrag(null);
-    if (from === to) return;
-    const ids = items.map((s) => s.id);
-    const [moved] = ids.splice(from, 1);
-    ids.splice(to, 0, moved);
-    const { tops } = geo.current;
-    // Карточка плавно доезжает из точки, где её отпустили, на новое место
-    setSettle({ id: moved, offset: tops[from] + dy - tops[to] });
-    setOrder(ids);
-    run(() => db.reorderSubtasks(ids));
-  };
-
-  const shiftFor = (i: number): React.CSSProperties => {
-    if (settle) return items[i].id === settle.id ? { transform: `translateY(${settle.offset}px)`, transition: "none" } : { transition: "none" };
-    if (!drag) return {};
-    const { hs, tops } = geo.current;
-    if (i === drag.from) return { transform: `translateY(${drag.dy}px)`, transition: "none", zIndex: 2 };
-    const gap = tops.length > 1 ? tops[1] - tops[0] - hs[0] : 0;
-    const h = hs[drag.from] + gap;
-    if (drag.from < drag.to && i > drag.from && i <= drag.to) return { transform: `translateY(${-h}px)` };
-    if (drag.to < drag.from && i >= drag.to && i < drag.from) return { transform: `translateY(${h}px)` };
-    return {};
-  };
+  const sort = useSortable({
+    disabled: props.locked,
+    onDrop: (from, to) => {
+      const ids = moveItem(items.map((s) => s.id), from, to);
+      setOrder(ids);
+      run(() => db.reorderSubtasks(ids));
+    },
+  });
 
   const add = () => {
     const t = draft.trim();
@@ -379,12 +324,11 @@ export function Checklist(props: { task: Task; locked?: boolean; run: RunDb }) {
 
   return (
     <div className="checklist">
-      <div ref={listRef} className={`subs ${drag ? "dragging" : ""}`}>
+      <div ref={sort.listRef} className={`subs ${sort.dragging != null ? "dragging" : ""}`}>
         {items.map((s, i) => (
-          <div key={s.id} className={`sub ${s.done ? "done" : ""} ${drag?.from === i ? "lifted" : ""}`} style={shiftFor(i)}>
+          <div key={s.id} className={`sub ${s.done ? "done" : ""} ${sort.dragging === i ? "lifted" : ""}`} style={sort.rowStyle(i)}>
             {!props.locked && (
-              <span className="grip" title="Перетащи, чтобы поменять порядок"
-                onPointerDown={(e) => startDrag(e, i)} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}>
+              <span className="grip" title="Перетащи, чтобы поменять порядок" {...sort.grip(i)}>
                 <GripVertical size={13} />
               </span>
             )}

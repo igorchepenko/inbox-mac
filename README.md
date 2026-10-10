@@ -211,5 +211,5 @@ Inbox → Настройки (**⌘,**) → Основные → включи «
   - `src-tauri/migrations/`: схема базы.
   - `src/home/`: главная. `src/CalendarView.tsx`, `src/calendar.ts`: календарь. `src/Board.tsx`, `src/boardOps.ts`: канбан, карточки, массовые действия. `src/Settings.tsx`, `src/HomeSettings.tsx`, `src/prefs.ts`: настройки. `src/extras.tsx`, `src/recurrence.ts`: поля расширенной задачи и повторы.
   - `src/db.ts`: запросы к SQLite. Сделанной задачу отмечают только `completeTask`, возвращают `reopenTask`: они ведут повторы. `src/views.ts`: какие задачи в каком списке. `src/App.tsx`: основное окно и клавиатура. `src/Quick.tsx`: окно ⌥Space. `src/reminders.ts`: уведомления. `src/styles.css`: цвета и вёрстка.
-- **Проверка**: `npm run build` (TypeScript и сборка фронтенда), `cargo check` в `src-tauri`. GitHub Actions (`.github/workflows/build-macos.yml`) собирает universal `.dmg` на macOS.
+- **Проверка**: `npm test` (Vitest, тесты логики в `src/__tests__`: даты, повторы, сортировки, календарь, перетаскивание), `npm run build` (TypeScript и сборка фронтенда), `cargo check` в `src-tauri`. GitHub Actions (`.github/workflows/build-macos.yml`) сначала гоняет тесты, затем собирает universal `.dmg` на macOS.
 - Спецификация и макет: в проекте Tasks (`inbox-app/spec.md`).
