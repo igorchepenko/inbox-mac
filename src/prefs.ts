@@ -1,9 +1,11 @@
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { profileKey } from "./profile";
 
 /*
  * Настройки приложения.
  * Внешний вид (шрифт, размер) живёт в localStorage, как и тема: его нужно применить до первой отрисовки, без мигания.
+ * Ключи localStorage у каждого профиля свои, см. profileKey.
  * Всё остальное хранится в таблице settings в базе и читается вместе с задачами.
  */
 
@@ -37,7 +39,7 @@ export const DEFAULT_APPEARANCE: Appearance = { font: "system", size: "m" };
 
 export function savedAppearance(): Appearance {
   try {
-    const a = JSON.parse(localStorage.getItem(APPEARANCE_KEY) ?? "{}") as Partial<Appearance>;
+    const a = JSON.parse(localStorage.getItem(profileKey(APPEARANCE_KEY)) ?? "{}") as Partial<Appearance>;
     return {
       font: FONTS.some((f) => f.id === a.font) ? a.font! : DEFAULT_APPEARANCE.font,
       size: SIZES.some((s) => s.id === a.size) ? a.size! : DEFAULT_APPEARANCE.size,
@@ -62,7 +64,7 @@ export function applyAppearance(a: Appearance) {
 /** Выбор пользователя: запомнить и разослать второму окну */
 export function setAppearance(a: Appearance) {
   try {
-    localStorage.setItem(APPEARANCE_KEY, JSON.stringify(a));
+    localStorage.setItem(profileKey(APPEARANCE_KEY), JSON.stringify(a));
   } catch {
     // без localStorage настройка просто не переживёт перезапуск
   }

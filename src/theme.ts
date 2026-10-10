@@ -1,12 +1,13 @@
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { profileKey } from "./profile";
 
 export type Theme = "system" | "light" | "dark";
 const KEY = "inbox.theme";
 
 export function savedTheme(): Theme {
   try {
-    const t = localStorage.getItem(KEY);
+    const t = localStorage.getItem(profileKey(KEY));
     return t === "light" || t === "dark" ? t : "system";
   } catch {
     return "system";
@@ -23,7 +24,7 @@ export function applyTheme(t: Theme) {
 /** Выбор пользователя: запомнить и разослать второму окну */
 export function setTheme(t: Theme) {
   try {
-    localStorage.setItem(KEY, t);
+    localStorage.setItem(profileKey(KEY), t);
   } catch {
     // без localStorage тема просто не переживёт перезапуск
   }

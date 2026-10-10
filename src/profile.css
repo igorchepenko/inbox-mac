@@ -1,0 +1,18 @@
+/* Профиль виден всегда: точка и название внизу меню, у «Теста» ещё янтарная полоска по верху окна */
+:root, [data-profile="igor"] { --profile: var(--stand); }
+[data-profile="test"] { --profile: var(--amber); }
+
+:root[data-profile="test"]:not(.quick) body::before { content: ""; position: fixed; z-index: 100; top: 0; left: 0; right: 0; height: 3px; background: var(--amber); pointer-events: none; }
+
+.side-profile { flex: none; display: flex; align-items: center; gap: 8px; width: 100%; margin-top: auto; padding: 6px 8px; border-radius: 9px; color: var(--fg); font-weight: 600; font-size: 13px; text-align: left; }
+.side-profile:hover { background: var(--field); }
+.side-profile svg { color: var(--muted); flex: none; }
+.side-profile + .side-foot { margin-top: 0; padding-top: 6px; }
+.side-profile-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--profile); flex: none; }
+
+.profile-opt { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border-radius: 9px; text-align: left; }
+.profile-opt:hover { background: var(--field); }
+.profile-opt-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.profile-opt-text span { color: var(--muted); font-size: 12px; }
+
+.qi-profile { color: var(--profile); }

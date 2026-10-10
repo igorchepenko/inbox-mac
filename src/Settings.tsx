@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BellRing, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, SlidersHorizontal, Type, X, type LucideIcon } from "lucide-react";
+import { BellRing, Check, FolderOpen, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, SlidersHorizontal, Type, UserRound, X, type LucideIcon } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as autostartEnabled } from "@tauri-apps/plugin-autostart";
 import { Icon } from "./icons";
 import { VIEWS, type ViewId } from "./views";
@@ -8,6 +9,7 @@ import { savedTheme, setTheme } from "./theme";
 import { HomeSettings } from "./HomeSettings";
 import { HomeIcon } from "./home/Home";
 import { QuickKeyTest } from "./QuickKeyCheck";
+import { activeProfile, PROFILES, switchProfile } from "./profile";
 import { ensurePermission, notify } from "./reminders";
 import {
   accelFromEvent, DEFAULT_APPEARANCE, DEFAULTS, FONTS, labelFromAccel, pref, savedAppearance, setAppearance, SIZES, SOUNDS, type Appearance,
@@ -30,6 +32,7 @@ const SECTIONS: { id: string; name: string; icon: LucideIcon; render: (p: Settin
   { id: "notify", name: "Уведомления", icon: BellRing, render: (p) => <Notifications {...p} /> },
   { id: "menu", name: "Меню", icon: PanelLeft, render: (p) => <MenuItems {...p} /> },
   { id: "home", name: "Главная", icon: LayoutDashboard, render: (p) => <HomeSettings settings={p.settings} onSet={p.onSet} /> },
+  { id: "profile", name: "Профиль", icon: UserRound, render: () => <Profiles /> },
 ];
 
 /** Окно настроек поверх приложения. Открывается по ⌘, из меню Inbox и иконкой-шестерёнкой внизу меню */
@@ -165,6 +168,34 @@ function General(p: SettingsProps) {
       </Row>
       <ResetSection name="Основные" changed={startView !== DEFAULTS["start.view"] || !!autostart}
         onReset={() => (resetStart(), autostart && toggleAutostart(false))} />
+    </div>
+  );
+}
+
+function Profiles() {
+  const cur = activeProfile();
+  const [err, setErr] = useState<string | null>(null);
+  return (
+    <div className="set-group">
+      <Row name="Активный профиль"
+        hint="«Тест» для проверки новых сборок, «Игорь» для настоящих задач. У каждого свои задачи, пространства и настройки. Быстрый ввод пишет в активный. Переключиться можно и в меню Inbox в строке меню">
+        <div className="seg">
+          {PROFILES.map((p) => (
+            <button type="button" key={p.id} className={`chip ${cur === p.id ? "on" : ""}`} data-profile={p.id}
+              style={cur === p.id ? { background: "var(--profile)" } : undefined}
+              onClick={() => switchProfile(p.id)}>
+              {cur === p.id && <Check size={13} />} {p.name}
+            </button>
+          ))}
+        </div>
+      </Row>
+      <Row name="Копии базы"
+        hint="Перед первым запуском каждой новой версии Inbox сохраняет копию базы профиля. Хранятся последние 10">
+        <button type="button" className="btn small" onClick={() => invoke("open_backups").then(() => setErr(null), (e) => setErr(String(e)))}>
+          <FolderOpen size={13} /> Показать в Finder
+        </button>
+      </Row>
+      {err && <div className="error">{err}</div>}
     </div>
   );
 }
