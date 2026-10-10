@@ -8,6 +8,7 @@ import {
   byDayOrder, DEFAULT_LEN, itemsFor, label, layoutDay, movable, rangeFor, shiftAnchor, snap, STEP, titleFor,
   type CalMode, type Item, type Placed,
 } from "./calendar";
+import { edgeScroll, pastThreshold, trackPointer } from "./drag";
 import "./calendar.css";
 import { PriorityIcon } from "./priority";
 
@@ -178,7 +179,8 @@ export default function CalendarView(props: {
       const d = dragRef.current, sc = scrollRef.current;
       if (d?.active && sc && mode !== "month") {
         const r = sc.getBoundingClientRect();
-        const dy = d.y < r.top + 28 && d.y > r.top - 4 ? -10 : d.y > r.bottom - 28 ? 10 : 0;
+        // Над шапкой дней сетку не крутим
+        const dy = d.y > r.top - 4 ? edgeScroll(d.y, r.top, r.bottom, 28, 10) : 0;
         if (dy) {
           sc.scrollTop += dy;
           update();
@@ -190,7 +192,7 @@ export default function CalendarView(props: {
     const onMove = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
-      const active = d.active || (movable(d.item) && Math.hypot(e.clientX - d.x0, e.clientY - d.y0) > 4);
+      const active = d.active || (movable(d.item) && pastThreshold(d.x0, d.y0, e.clientX, e.clientY));
       dragRef.current = { ...d, x: e.clientX, y: e.clientY, active };
       if (active) update();
     };
@@ -212,13 +214,11 @@ export default function CalendarView(props: {
       dragRef.current = null;
       setDrag(null);
     };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+    const untrack = trackPointer({ move: onMove, up: onUp });
     window.addEventListener("keydown", onKey);
     return () => {
       cancelAnimationFrame(raf);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
+      untrack();
       window.removeEventListener("keydown", onKey);
     };
   }, [drag != null]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -249,7 +249,7 @@ export default function CalendarView(props: {
   const emptyUp = (e: React.PointerEvent, day: string, timed: boolean) => {
     const p = press.current;
     press.current = null;
-    if (!p || e.target !== e.currentTarget || Math.hypot(e.clientX - p.x, e.clientY - p.y) > 4) return;
+    if (!p || e.target !== e.currentTarget || pastThreshold(p.x, p.y, e.clientX, e.clientY)) return;
     const s = timed ? newStart(e.clientY) : null;
     setHover(null);
     props.onCreate(day, s, s == null ? null : s + DEFAULT_LEN);

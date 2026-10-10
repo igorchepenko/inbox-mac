@@ -8,6 +8,7 @@ import type { Task } from "./db";
 import { addDays, fmtDay, fmtDuration, nextMonday, parseDay, today, toHHMM, toMin } from "./dates";
 import { anchorRule, describe, nthLabel, nthOf, parseRule, PRESETS, WD_SHORT, type Freq, type Rule } from "./recurrence";
 import { Calendar, Popover, TimeInput, useAutosize } from "./widgets";
+import { moveItem, useSortable } from "./drag";
 import { PRIORITY, PriorityIcon } from "./priority";
 
 export type RunDb = (fn: () => Promise<unknown>) => void;
@@ -300,63 +301,19 @@ export function Checklist(props: { task: Task; locked?: boolean; run: RunDb }) {
   const [order, setOrder] = useState<number[] | null>(null);
   const [draft, setDraft] = useState("");
   const newRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
   const subsKey = subs.map((s) => s.id).join(",");
   useEffect(() => setOrder(null), [subsKey]);
   const items = order ? order.map((id) => subs.find((s) => s.id === id)!).filter(Boolean) : subs;
 
   // Перетаскивание на указателе мыши: работает и в WebView macOS, где HTML5 drag-and-drop занят файлами
-  const geo = useRef<{ tops: number[]; hs: number[]; startY: number }>({ tops: [], hs: [], startY: 0 });
-  const [drag, setDrag] = useState<{ from: number; to: number; dy: number } | null>(null);
-  const [settle, setSettle] = useState<{ id: number; offset: number } | null>(null);
-  useLayoutEffect(() => {
-    if (!settle) return;
-    const f = requestAnimationFrame(() => requestAnimationFrame(() => setSettle(null)));
-    return () => cancelAnimationFrame(f);
-  }, [settle]);
-
-  const startDrag = (e: React.PointerEvent, i: number) => {
-    if (props.locked || e.button !== 0) return;
-    e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    const rows = [...(listRef.current?.querySelectorAll<HTMLElement>(".sub") ?? [])];
-    geo.current = { tops: rows.map((r) => r.offsetTop), hs: rows.map((r) => r.offsetHeight), startY: e.clientY };
-    setDrag({ from: i, to: i, dy: 0 });
-  };
-  const moveDrag = (e: React.PointerEvent) => {
-    if (!drag) return;
-    const { tops, hs, startY } = geo.current;
-    const dy = e.clientY - startY;
-    const center = tops[drag.from] + hs[drag.from] / 2 + dy;
-    const to = tops.filter((t, j) => j !== drag.from && t + hs[j] / 2 < center).length;
-    setDrag({ ...drag, dy, to });
-  };
-  const endDrag = () => {
-    if (!drag) return;
-    const { from, to, dy } = drag;
-    setDrag(null);
-    if (from === to) return;
-    const ids = items.map((s) => s.id);
-    const [moved] = ids.splice(from, 1);
-    ids.splice(to, 0, moved);
-    const { tops } = geo.current;
-    // Карточка плавно доезжает из точки, где её отпустили, на новое место
-    setSettle({ id: moved, offset: tops[from] + dy - tops[to] });
-    setOrder(ids);
-    run(() => db.reorderSubtasks(ids));
-  };
-
-  const shiftFor = (i: number): React.CSSProperties => {
-    if (settle) return items[i].id === settle.id ? { transform: `translateY(${settle.offset}px)`, transition: "none" } : { transition: "none" };
-    if (!drag) return {};
-    const { hs, tops } = geo.current;
-    if (i === drag.from) return { transform: `translateY(${drag.dy}px)`, transition: "none", zIndex: 2 };
-    const gap = tops.length > 1 ? tops[1] - tops[0] - hs[0] : 0;
-    const h = hs[drag.from] + gap;
-    if (drag.from < drag.to && i > drag.from && i <= drag.to) return { transform: `translateY(${-h}px)` };
-    if (drag.to < drag.from && i >= drag.to && i < drag.from) return { transform: `translateY(${h}px)` };
-    return {};
-  };
+  const sort = useSortable({
+    disabled: props.locked,
+    onDrop: (from, to) => {
+      const ids = moveItem(items.map((s) => s.id), from, to);
+      setOrder(ids);
+      run(() => db.reorderSubtasks(ids));
+    },
+  });
 
   const add = () => {
     const t = draft.trim();
@@ -367,12 +324,11 @@ export function Checklist(props: { task: Task; locked?: boolean; run: RunDb }) {
 
   return (
     <div className="checklist">
-      <div ref={listRef} className={`subs ${drag ? "dragging" : ""}`}>
+      <div ref={sort.listRef} className={`subs ${sort.dragging != null ? "dragging" : ""}`}>
         {items.map((s, i) => (
-          <div key={s.id} className={`sub ${s.done ? "done" : ""} ${drag?.from === i ? "lifted" : ""}`} style={shiftFor(i)}>
+          <div key={s.id} className={`sub ${s.done ? "done" : ""} ${sort.dragging === i ? "lifted" : ""}`} style={sort.rowStyle(i)}>
             {!props.locked && (
-              <span className="grip" title="Перетащи, чтобы поменять порядок"
-                onPointerDown={(e) => startDrag(e, i)} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}>
+              <span className="grip" title="Перетащи, чтобы поменять порядок" {...sort.grip(i)}>
                 <GripVertical size={13} />
               </span>
             )}

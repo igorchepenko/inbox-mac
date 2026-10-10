@@ -138,7 +138,7 @@ button.h-ds:hover { border-color: var(--border); }
   display: grid; gap: 8px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 18px 40px -20px rgba(0, 0, 0, .45); }
 .h-cust-list { display: grid; gap: 4px; }
 .h-cust .it { display: flex; align-items: center; gap: 8px; border-radius: 10px; padding: 6px 6px 6px 2px; background: var(--surface); border: 1px solid transparent; }
-.h-cust .it.drag { opacity: .6; border-color: var(--stand); background: var(--sel); }
+.h-cust .it.lifted { border-color: var(--stand); }
 .h-cust .hd { cursor: grab; color: var(--muted); font-size: 14px; letter-spacing: -2px; padding: 0 4px; user-select: none; touch-action: none; }
 .h-cust .hd:active { cursor: grabbing; }
 .h-cust .mv { color: var(--muted); font-size: 11px; padding: 2px 5px; border-radius: 6px; }

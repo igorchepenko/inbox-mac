@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { Project, Task } from "../db";
+import { moveItem, useFlip, useSortable } from "../drag";
 import { addDays, fmtDay, fmtDuration, fmtMin, isWeekend, longDate, today, toMin, weekdayShort } from "../dates";
 import { plural } from "../views";
 import * as H from "./data";
@@ -464,12 +465,7 @@ function ProjectsBlock(props: { tasks: Task[]; projects: Project[]; onNew: () =>
 function Customize(props: { order: BlockId[]; hidden: BlockId[]; onSave: (o: BlockId[], h: BlockId[]) => void; onClose: () => void }) {
   const [order, setOrder] = useState(props.order);
   const [hidden, setHidden] = useState(props.hidden);
-  const [dragging, setDragging] = useState<BlockId | null>(null);
-  const orderRef = useRef(order);
-  orderRef.current = order;
   const boxRef = useRef<HTMLDivElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-  const before = useRef(new Map<string, number>());
 
   useEffect(() => {
     const down = (e: MouseEvent) => {
@@ -485,65 +481,32 @@ function Customize(props: { order: BlockId[]; hidden: BlockId[]; onSave: (o: Blo
     };
   }, [props]);
 
-  // Соседи плавно сдвигаются: запоминаем положение до перестановки и анимируем разницу
-  const reorder = (next: BlockId[]) => {
-    before.current = new Map([...(listRef.current?.children ?? [])].map((el) => [(el as HTMLElement).dataset.k!, el.getBoundingClientRect().top]));
-    setOrder(next);
-  };
-  useLayoutEffect(() => {
-    const prev = before.current;
-    before.current = new Map();
-    if (!prev.size || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    for (const el of [...(listRef.current?.children ?? [])] as HTMLElement[]) {
-      const top = prev.get(el.dataset.k!);
-      if (top == null || el.dataset.k === dragging) continue;
-      const d = top - el.getBoundingClientRect().top;
-      if (d) el.animate([{ transform: `translateY(${d}px)` }, { transform: "none" }], { duration: 180, easing: "cubic-bezier(.2,.8,.2,1)" });
-    }
-  }, [order]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Стрелки переставляют с анимацией соседей, перетаскивание за ⋮⋮ сохраняет порядок, когда строку отпустили
+  const sort = useSortable({
+    onDrop: (from, to) => {
+      const next = moveItem(order, from, to);
+      setOrder(next);
+      props.onSave(next, hidden);
+    },
+  });
+  useFlip(sort.listRef, order.join(), { attr: "k", duration: 180 });
 
   const move = (k: BlockId, dir: -1 | 1) => {
     const i = order.indexOf(k), j = i + dir;
     if (j < 0 || j >= order.length) return;
-    const next = [...order];
-    [next[i], next[j]] = [next[j], next[i]];
-    reorder(next);
+    const next = moveItem(order, i, j);
+    setOrder(next);
     props.onSave(next, hidden);
-  };
-
-  const onPointerMove = (e: PointerEvent) => {
-    if (!dragging || !listRef.current) return;
-    const els = [...listRef.current.children] as HTMLElement[];
-    const rest = els.filter((el) => el.dataset.k !== dragging);
-    const after = rest.find((el) => {
-      const r = el.getBoundingClientRect();
-      return e.clientY < r.top + r.height / 2;
-    });
-    const ids = rest.map((el) => el.dataset.k as BlockId);
-    const at = after ? ids.indexOf(after.dataset.k as BlockId) : ids.length;
-    const next = [...ids.slice(0, at), dragging, ...ids.slice(at)];
-    if (next.join() !== orderRef.current.join()) reorder(next);
-  };
-  const endDrag = () => {
-    if (!dragging) return;
-    setDragging(null);
-    props.onSave(orderRef.current, hidden);
   };
 
   return (
     <div className="h-cust" ref={boxRef}>
-      <div className="h-cust-list" ref={listRef}>
-        {order.map((k) => {
+      <div className={`h-cust-list ${sort.dragging != null ? "sorting" : ""}`} ref={sort.listRef}>
+        {order.map((k, i) => {
           const b = H.BLOCKS.find((x) => x.id === k)!;
           return (
-            <div key={k} data-k={k} className={`it ${dragging === k ? "drag" : ""}`}>
-              <span className="hd" title="Перетащи, чтобы поменять порядок"
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  e.currentTarget.setPointerCapture(e.pointerId);
-                  setDragging(k);
-                }}
-                onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}>⋮⋮</span>
+            <div key={k} data-k={k} className={`it sort-row ${sort.dragging === i ? "lifted" : ""}`} style={sort.rowStyle(i)}>
+              <span className="hd" title="Перетащи, чтобы поменять порядок" {...sort.grip(i)}>⋮⋮</span>
               <label>
                 <input type="checkbox" checked={!hidden.includes(k)} onChange={(e) => {
                   const next = e.target.checked ? hidden.filter((h) => h !== k) : [...hidden, k];
@@ -561,7 +524,7 @@ function Customize(props: { order: BlockId[]; hidden: BlockId[]; onSave: (o: Blo
       </div>
       <div className="hint">Тяни за ⋮⋮, чтобы выстроить блоки в своём порядке. Галочка прячет блок. Всё запоминается.</div>
       <button className="link" style={{ justifySelf: "start" }} onClick={() => {
-        reorder(H.DEFAULT_ORDER);
+        setOrder(H.DEFAULT_ORDER);
         setHidden([]);
         props.onSave(H.DEFAULT_ORDER, []);
       }}>Вернуть как было</button>

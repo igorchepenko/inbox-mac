@@ -219,7 +219,11 @@ html.quick, html.quick body { background: transparent; }
 .sub { display: flex; align-items: center; gap: 7px; padding: 3px 6px 3px 2px; border-radius: 8px; background: var(--surface); position: relative; transition: transform .18s cubic-bezier(.2, .8, .2, 1), box-shadow .18s; }
 .sub:hover { background: color-mix(in srgb, var(--fg) 4%, var(--surface)); }
 .sub.lifted { box-shadow: 0 10px 22px -12px rgba(0, 0, 0, .5), 0 0 0 1px var(--border); background: var(--surface); }
-.subs.dragging, .subs.dragging * { cursor: grabbing !important; user-select: none; }
+.subs.dragging, .subs.dragging *, .sorting, .sorting * { cursor: grabbing !important; user-select: none; }
+/* Строки сортируемых списков (useSortable в drag.ts): соседи плавно расступаются, строка в руке приподнята */
+.sort-row { position: relative; transition: transform .18s cubic-bezier(.2, .8, .2, 1), box-shadow .18s; }
+.sort-row.lifted { box-shadow: 0 10px 22px -12px rgba(0, 0, 0, .5), 0 0 0 1px var(--border); }
+@media (prefers-reduced-motion: reduce) { .sort-row { transition: none; } }
 .grip { display: grid; place-items: center; color: var(--muted); opacity: 0; cursor: grab; padding: 2px 0; touch-action: none; }
 .sub:hover .grip, .sub.lifted .grip { opacity: .8; }
 .chk.small { width: 15px; height: 15px; border-radius: 5px; }
@@ -309,18 +313,14 @@ html.quick, html.quick body { background: transparent; }
 .set-input.wide { width: 180px; text-align: left; }
 /* Блоки главной: перетаскиваемый список */
 .block-list { display: flex; flex-direction: column; gap: 5px; }
-.block-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 6px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); cursor: grab; }
+.block-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 6px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); }
 .block-row:hover { border-color: var(--border); }
-.block-row.dragging { opacity: .55; border-style: dashed; border-color: var(--stand); }
 .block-row.off .block-name { color: var(--muted); }
-.block-row .grip { color: var(--muted); flex: none; }
+.block-row .grip { color: var(--muted); flex: none; opacity: .8; }
 .block-name { flex: 1; font-weight: 600; }
 .block-row .cal-nav { width: 24px; height: 24px; }
 .block-row .cal-nav:disabled { opacity: .3; }
 .block-row .toggle { margin-left: 6px; }
-@media (prefers-reduced-motion: no-preference) {
-  .block-row { transition: transform .15s, opacity .15s, border-color .12s; }
-}
 
 /* Значения по умолчанию в настройках */
 .set-def { margin-top: 3px; font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
