@@ -5,6 +5,7 @@ import QuickApp from "./Quick";
 import "./styles.css";
 import "./task.css";
 import "./nav.css";
+import "./frame.css";
 import { installPalette } from "./palette";
 import { applyTheme, followThemeChanges, savedTheme } from "./theme";
 import { applyAppearance, followAppearanceChanges, savedAppearance } from "./prefs";

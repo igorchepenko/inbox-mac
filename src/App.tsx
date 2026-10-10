@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { invoke } from "@tauri-apps/api/core";
@@ -25,6 +25,8 @@ import { FIND_PROJECT_EVENT, Sidebar, viewIcon } from "./Sidebar";
 import ProjectsPage from "./ProjectsPage";
 import { Tooltips } from "./Tooltips";
 import { QuickKeyBanner } from "./QuickKeyCheck";
+import { usePanes } from "./panes";
+import { Frame } from "./Frame";
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -33,6 +35,7 @@ export default function App() {
   // null закрыто, "new" новый проект, иначе редактируемый
   const [projectDlg, setProjectDlg] = useState<Project | "new" | null>(null);
   const [view, setView] = useState<ViewId>("home");
+  const { panes, setWidth: setPaneWidth, toggle: togglePane, reset: resetPane } = usePanes();
   const [sel, setSel] = useState<number | null>(null);
   // Выделение для массовых действий и режим «Выбрать», в котором клик добавляет задачу к выделению
   const [picked, setPicked] = useState<number[]>([]);
@@ -267,6 +270,8 @@ export default function App() {
         return;
       }
       if (e.metaKey && e.code === "Slash") return e.preventDefault(), setHelpOpen(true);
+      if (e.metaKey && e.ctrlKey && e.code === "KeyS") return e.preventDefault(), togglePane("side");
+      if (e.metaKey && e.altKey && e.code === "KeyI") return e.preventDefault(), togglePane("det");
       if (e.metaKey && e.code === "Digit0") return e.preventDefault(), openView("home");
       if (e.metaKey && e.code === "Digit6") return e.preventDefault(), openView("projects");
       if (e.metaKey && e.code === "KeyP") return e.preventDefault(), window.dispatchEvent(new Event(FIND_PROJECT_EVENT));
@@ -338,8 +343,10 @@ export default function App() {
   const progress = progressFor(view, tasks);
 
   return (
-    <div className={`app ${view === "home" ? "app-home" : view === "projects" ? "app-wide" : ""}`}>
+    <div className={`app ${view === "home" ? "app-home" : view === "projects" ? "app-wide" : ""} ${panes.side.collapsed ? "side-off" : ""} ${panes.det.collapsed && !wide ? "det-off" : ""}`}
+      style={{ "--side-w": `${panes.side.collapsed ? 0 : panes.side.width}px`, "--det-w": `${panes.det.collapsed ? 0 : panes.det.width}px` } as CSSProperties}>
       <div className="titlebar" data-tauri-drag-region />
+      <Frame panes={panes} hasDetails={!wide} onWidth={setPaneWidth} onToggle={togglePane} onReset={resetPane} />
       <Sidebar view={view} tasks={tasks} projects={projects} settings={settings} onOpen={openView}
         onNewProject={() => setProjectDlg("new")} onEditProject={(p) => setProjectDlg(p)}
         onSettings={() => setSettingsOpen(true)} onShortcuts={() => setHelpOpen(true)}
@@ -383,7 +390,7 @@ export default function App() {
           )}
           <div className="head-text">
             <h2>{project?.name ?? current?.name ?? ""}</h2>
-            <p className="head-sub" title={project?.description || undefined}>{project?.description || progress?.subtitle || subtitleFor(view, list.length)}</p>
+            <p className="head-sub" data-tip={project?.description || undefined} data-tip-full="">{project?.description || progress?.subtitle || subtitleFor(view, list.length)}</p>
           </div>
           {project && (
             <button className="icon-btn" data-tip="Изменить проект" onClick={() => setProjectDlg(project)}>

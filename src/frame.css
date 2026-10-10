@@ -1,0 +1,35 @@
+/* Каркас окна: изменяемая ширина и сворачивание левого меню и правой панели (Frame.tsx, panes.ts) */
+
+/* Свёрнутая панель остаётся в сетке колонкой нулевой ширины, чтобы main не съезжал в чужую колонку */
+.app.side-off > .side, .app.det-off > .det { visibility: hidden; overflow: hidden; padding-left: 0; padding-right: 0; border: 0; }
+
+/* Ручка на границе панели: тонкая полоса, подсвечивается при наведении и перетаскивании */
+.pane-handle { position: fixed; top: 0; bottom: 0; width: 7px; z-index: 3; cursor: col-resize; touch-action: none; }
+.pane-handle::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 1px; background: transparent; transition: background .12s; }
+.pane-handle:hover::after, .pane-resizing .pane-handle::after { background: var(--stand); width: 2px; left: 2px; }
+.pane-side { margin-left: -1px; }
+body.pane-resizing { cursor: col-resize; user-select: none; }
+body.pane-resizing * { cursor: col-resize !important; }
+
+/* Кнопки сворачивания в полосе заголовка: левая справа от «светофора», правая в углу окна */
+.frame-btn { position: fixed; top: 5px; z-index: 4; display: grid; place-items: center; width: 28px; height: 22px; border-radius: 6px; color: var(--muted); }
+.frame-btn:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.frame-left { left: 78px; }
+.frame-right { right: 10px; }
+
+/* Узкая главная колонка: подписи кнопок в шапке прячутся (остаются иконки с подсказками),
+   заголовку всегда остаётся место, а если и так тесно, кнопки переносятся на вторую строку */
+.main { container-type: inline-size; }
+.head { flex-wrap: wrap; row-gap: 8px; }
+.head-text { flex: 1 1 140px; }
+@container (max-width: 620px) {
+  .head { gap: 10px; }
+  .head .icon-btn { font-size: 0; gap: 0; }
+  .head .icon-btn svg { margin: 0; }
+  .head-icon, .head .ring { width: 42px; height: 42px; }
+}
+/* Совсем узко: шпаргалка по клавишам остаётся кнопкой внизу меню и по ⌘/ */
+@container (max-width: 460px) {
+  .head .icon-btn[aria-label="Сочетания клавиш"] { display: none; }
+  .head-text { flex-basis: 110px; }
+}
