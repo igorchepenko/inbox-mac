@@ -27,12 +27,14 @@
 .nav.hi { color: var(--fg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--stand) 60%, transparent); }
 /* Пространство в меню: заливка его цветом без контура, иконка, название и счётчик белые или чёрные под цвет.
    Выбранное отмечено кольцом через зазор, наведение чуть светлее, найденное поиском тонким кольцом цвета текста */
-.nav.space { background: var(--pc); color: var(--pc-ink); }
-.nav.space:hover { color: var(--pc-ink); filter: brightness(1.07) saturate(1.05); }
-.nav.space .nav-icon:hover { background: color-mix(in srgb, var(--pc-ink) 16%, transparent); }
-.nav.space .n { opacity: .8; }
-.nav.space.on { background: var(--pc); color: var(--pc-ink); box-shadow: 0 0 0 2px var(--side), 0 0 0 3.5px var(--pc); }
-.nav.space.hi { color: var(--pc-ink); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--pc-ink) 70%, transparent); }
+/* Пункт пространства: мягкая заливка его цветом, как круг вокруг иконки в заголовке пространства. Иконка цветная, название обычным цветом текста */
+.nav.space { background: color-mix(in srgb, var(--pc) 14%, transparent); color: var(--fg); }
+.nav.space .nav-icon { color: color-mix(in srgb, var(--pc) 78%, var(--fg)); }
+.nav.space:hover { color: var(--fg); background: color-mix(in srgb, var(--pc) 22%, transparent); }
+.nav.space .nav-icon:hover { background: color-mix(in srgb, var(--pc) 20%, transparent); }
+.nav.space .n { opacity: .7; }
+.nav.space.on { background: color-mix(in srgb, var(--pc) 26%, transparent); color: var(--fg); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--pc) 70%, transparent); }
+.nav.space.hi { color: var(--fg); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--pc) 70%, transparent); }
 .proj-list:has(.nav.space) { gap: 4px; padding-top: 4px; padding-bottom: 4px; }
 .proj-none { font-size: 12px; color: var(--muted); padding: 6px 10px; }
 .side-foot { flex: none; }

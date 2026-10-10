@@ -244,7 +244,10 @@ export default function App() {
     // Над панелью задачи зона горит всё время, пока там курсор: решает панель целиком, а не то, что под курсором внутри неё.
     // Между строками списка остаётся последняя строка, иначе подсветка моргала бы на каждом зазоре.
     const targetAt = (pos: { x: number; y: number }) => {
-      const el = document.elementFromPoint(pos.x / devicePixelRatio, pos.y / devicePixelRatio);
+      // На macOS wry отдаёт точку в логических пикселях, хотя тип называется PhysicalPosition
+      // (wry 0.57, wkwebview/drag_drop.rs). Деление на devicePixelRatio на Retina уводило точку в левую верхнюю четверть окна
+      const k = /Mac/.test(navigator.userAgent) ? 1 : devicePixelRatio;
+      const el = document.elementFromPoint(pos.x / k, pos.y / k);
       const onPanel = !!el?.closest(".det");
       const row = onPanel ? null : el?.closest<HTMLElement>("[data-task-id]");
       if (row) lastRow.current = Number(row.dataset.taskId);

@@ -286,10 +286,10 @@ export default function CalendarView(props: {
       ...accent(p?.color),
       top: it.start! * PX + 1,
       height: h,
-      // Пересекающиеся задачи встают рядом колонками, как в Google Календаре
-      left: `calc(${(it.col / it.cols) * 100}% + 2px)`,
-      width: `calc(${100 / it.cols}% - 4px)`,
-      ["--z" as string]: it.col + 1,
+      // Раскладка как в Google Календаре: поздняя задача поверх ранней со сдвигом, одновременные рядом (calendar.ts)
+      left: `calc(${it.left * 100}% + 2px)`,
+      width: `calc(${it.width * 100}% - 4px)`,
+      ["--z" as string]: it.z,
     };
     const canResize = movable(it) && !ghost;
     return (
@@ -430,7 +430,7 @@ export default function CalendarView(props: {
                 })}
                 {ghostCol >= 0 && moving && (
                   <div className="cal-drag-layer" style={{ left: `${(ghostCol / days.length) * 100}%`, width: `${100 / days.length}%` }}>
-                    {event({ ...moving.item, ...moving.spot, col: 0, cols: 1 }, true)}
+                    {event({ ...moving.item, ...moving.spot, left: 0, width: 1, z: 1 }, true)}
                     <span className="cal-drag-label" style={{ top: moving.spot.start! * PX }}>
                       {label(moving.spot.start!)}–{label(moving.spot.end!)}
                     </span>

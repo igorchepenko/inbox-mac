@@ -94,10 +94,10 @@
 .cal-ev { --c: var(--stand); position: absolute; z-index: var(--z, 1); display: flex; flex-direction: column; gap: 1px; padding: 3px 6px 3px 7px; overflow: hidden;
   border-radius: 7px; cursor: grab; font-size: 11.5px; line-height: 15px;
   background: color-mix(in srgb, var(--c) 15%, var(--surface)); border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
-  box-shadow: inset 3px 0 0 var(--c); container-type: inline-size; }
+  box-shadow: inset 3px 0 0 var(--c), 0 0 0 1px var(--surface); container-type: inline-size; }
 .cal-ev:hover { z-index: 9; border-color: color-mix(in srgb, var(--c) 60%, transparent); }
 .cal-ev.short { padding-top: 0; padding-bottom: 0; justify-content: center; }
-.cal-ev.done { box-shadow: inset 3px 0 0 var(--line); }
+.cal-ev.done { box-shadow: inset 3px 0 0 var(--line), 0 0 0 1px var(--surface); }
 .cal-ev.sel { box-shadow: inset 3px 0 0 var(--c), 0 0 0 1.5px var(--stand); z-index: 8; }
 .cal-ev-head { display: flex; align-items: center; gap: 5px; min-width: 0; font-weight: 600; }
 .cal-ev-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -107,11 +107,8 @@
 /* Узкие колонки (рядом несколько задач): остаётся название и время начала, остальное в подсказке при наведении */
 @container (max-width: 110px) { .cal-ev-rest { display: none; } .cal-ev-head { gap: 3px; } .cal-ev .cal-chk { width: 10px; height: 10px; } }
 @container (max-width: 70px) {
-  .cal-ev-head > svg, .cal-ev .cal-chk, .cal-ev-time { display: none; }
-  .cal-ev-head { flex: 1; min-height: 0; align-items: flex-start; }
+  .cal-ev-head > svg, .cal-ev .cal-chk { display: none; }
   .cal-ev-t { font-size: 11px; line-height: 13px; }
-  /* Высокая узкая плашка: название по вертикали, как на корешке книги, а не по букве в строку */
-  .cal-ev:not(.short):not(.compact) .cal-ev-t { display: block; writing-mode: vertical-rl; white-space: nowrap; max-height: 100%; overflow: hidden; text-overflow: ellipsis; }
 }
 
 /* Ручки растягивания сверху и снизу */

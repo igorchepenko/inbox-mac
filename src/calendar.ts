@@ -112,33 +112,46 @@ export function itemsFor(tasks: Task[], days: string[]): Item[] {
 }
 
 export interface Placed extends Item {
-  col: number; // колонка внутри группы пересекающихся
-  cols: number; // сколько колонок в группе
+  left: number; // доля ширины колонки дня, 0…1
+  width: number; // доля ширины колонки дня
+  z: number; // кто позже начался, лежит выше
 }
 
-/** Раскладка задач одного дня: пересекающиеся встают рядом, каждая в своей колонке */
+/** Начались почти одновременно: заголовок нижней не виден, поэтому такие встают рядом, а не внахлёст */
+const NEAR = 30;
+/** На сколько сдвигается вправо задача, которая легла поверх более ранней */
+const INDENT = 0.4;
+
+/**
+ * Раскладка задач одного дня, как в Google Календаре. Задача, начавшаяся позже, ложится поверх более ранней
+ * со сдвигом вправо и тянется до правого края: у нижней остаётся видна верхняя часть с названием и полоска слева.
+ * Задачи, начавшиеся почти одновременно (меньше 30 минут разницы), делят ширину поровну и стоят рядом.
+ */
 export function layoutDay(items: Item[]): Placed[] {
   const timed = items.filter((i) => i.start != null).sort((a, b) => a.start! - b.start! || b.end! - a.end!);
   const out: Placed[] = [];
-  let group: Placed[] = [];
-  let colEnds: number[] = [];
-  let groupEnd = -1;
-  const flush = () => {
-    for (const p of group) p.cols = colEnds.length;
-    out.push(...group);
-    group = [];
-    colEnds = [];
-  };
-  for (const it of timed) {
-    if (it.start! >= groupEnd) flush();
-    let col = colEnds.findIndex((e) => e <= it.start!);
-    if (col < 0) col = colEnds.push(0) - 1;
-    // Совсем короткие задачи рисуются минимум на 15 минут, раскладка учитывает именно это
-    colEnds[col] = Math.max(it.end!, it.start! + STEP);
-    groupEnd = Math.max(groupEnd, colEnds[col]);
-    group.push({ ...it, col, cols: 1 });
-  }
-  flush();
+  const bottom = new Map<Placed, number>(); // совсем короткие задачи рисуются минимум на 15 минут
+  const clusters: { start: number; left: number; members: Placed[] }[] = [];
+  const running = (at: number) => out.filter((p) => bottom.get(p)! > at);
+  timed.forEach((it, i) => {
+    const start = it.start!;
+    const now = running(start);
+    const cl = clusters.find((c) => start - c.start < NEAR && c.members.some((m) => now.includes(m)));
+    const placed: Placed = { ...it, left: 0, width: 1, z: i + 1 };
+    bottom.set(placed, Math.max(it.end!, start + STEP));
+    out.push(placed);
+    if (cl) {
+      cl.members.push(placed);
+      const w = (1 - cl.left) / cl.members.length;
+      cl.members.forEach((m, k) => ((m.left = cl.left + k * w), (m.width = w)));
+      return;
+    }
+    const under = now.filter((p) => !clusters.some((c) => c.members.includes(p) && start - c.start < NEAR));
+    const base = under.length ? Math.max(...under.map((p) => p.left)) : -1;
+    placed.left = base < 0 ? 0 : Math.min(0.75, base + (1 - base) * INDENT);
+    placed.width = 1 - placed.left;
+    clusters.push({ start, left: placed.left, members: [placed] });
+  });
   return out;
 }
 
