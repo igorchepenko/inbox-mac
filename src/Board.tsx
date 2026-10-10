@@ -1,10 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Bell, CalendarDays, Clock, Columns3, Link2, List, ListChecks, Paperclip, Repeat } from "lucide-react";
+import { Bell, CalendarDays, Check, Clock, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat } from "lucide-react";
 import type { Project, Task } from "./db";
 import { addDays, fmtDay, nextMonday, today } from "./dates";
-import { GROUPS, TARGETS, type BoardColumn, type Group, type Layout } from "./boardOps";
+import { TARGETS, type BoardColumn, type Layout, type Stage } from "./boardOps";
 import * as board from "./boardOps";
-import { plural } from "./views";
+import { plural, SORTS, type SortBy } from "./views";
 import { PRIORITY } from "./components";
 import { Icon } from "./icons";
 import { Calendar, Popover } from "./widgets";
@@ -31,13 +31,18 @@ export function LayoutSwitch({ value, onChange }: { value: Layout; onChange: (l:
   );
 }
 
-/** По какому полю строятся столбцы канбана */
-export function GroupSwitch({ value, onChange }: { value: Group; onChange: (g: Group) => void }) {
+/** Сортировка списка и столбцов канбана: по дате, по важности, по матрице */
+export function SortSwitch({ value, onChange }: { value: SortBy; onChange: (s: SortBy) => void }) {
+  const icons: Record<SortBy, ReactNode> = {
+    date: <CalendarDays size={14} />,
+    priority: <PriorityIcon p={5} size={14} color="currentColor" />,
+    matrix: <Grid2x2 size={14} />,
+  };
   return (
-    <div className="cal-modes group-switch" role="radiogroup" aria-label="Столбцы канбана" title="По чему строить столбцы">
-      {GROUPS.map((g) => (
-        <button key={g.id} role="radio" aria-checked={value === g.id} className={value === g.id ? "on" : ""}
-          onClick={() => onChange(g.id)}>{g.name}</button>
+    <div className="theme-switch layout-switch" role="radiogroup" aria-label="Сортировка">
+      {SORTS.map((s) => (
+        <button key={s.id} role="radio" aria-checked={value === s.id} aria-label={s.name} data-tip={s.hint}
+          className={value === s.id ? "on" : ""} onClick={() => onChange(s.id)}>{icons[s.id]}</button>
       ))}
     </div>
   );
@@ -101,11 +106,11 @@ function useFlip(root: React.RefObject<HTMLElement | null>, key: string) {
 
 interface Drag {
   ids: number[];
-  from: string;
-  over: string | null;
+  from: Stage;
+  over: Stage | null;
 }
 
-/** Канбан: столбцы по выбранной группировке, перенос карточки меняет поле, по которому сгруппировано */
+/** Канбан по этапам: перенос карточки в столбец меняет этап задачи */
 export function BoardView(props: {
   columns: BoardColumn[];
   projects: Project[];
@@ -114,10 +119,10 @@ export function BoardView(props: {
   fileDrop: number | null; // над какой карточкой держат файлы из Finder
   onPick: Pick;
   onToggle: (x: Task) => void;
-  onMove: (ids: number[], col: string) => Promise<void>;
+  onMove: (ids: number[], col: Stage) => Promise<void>;
 }) {
   const root = useRef<HTMLDivElement>(null);
-  const colRefs = useRef(new Map<string, HTMLElement>());
+  const colRefs = useRef(new Map<Stage, HTMLElement>());
   const [drag, setDrag] = useState<Drag | null>(null);
   const key = props.columns.map((c) => `${c.key}:${c.items.map((i) => `${i.task.id}.${i.task.status}`).join(",")}`).join("|");
   useFlip(root, key);
@@ -127,18 +132,18 @@ export function BoardView(props: {
     root.current?.querySelector(`[data-card="${props.sel}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [props.sel]);
 
-  const start = (e: React.PointerEvent<HTMLElement>, x: Task, from: string) => {
+  const start = (e: React.PointerEvent<HTMLElement>, x: Task, from: Stage) => {
     if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
     const el = e.currentTarget;
     const x0 = e.clientX, y0 = e.clientY;
     const r = el.getBoundingClientRect();
     const offX = x0 - r.left, offY = y0 - r.top;
     let ghost: HTMLElement | null = null;
-    let over: string | null = null;
+    let over: Stage | null = null;
     let announced = false;
     let ids: number[] = [];
 
-    const overAt = (cx: number, cy: number): string | null => {
+    const overAt = (cx: number, cy: number): Stage | null => {
       for (const [col, c] of colRefs.current) {
         const b = c.getBoundingClientRect();
         if (cx >= b.left && cx <= b.right && cy >= b.top && cy <= b.bottom) return col;
@@ -187,8 +192,7 @@ export function BoardView(props: {
       }
       const g = ghost;
       document.body.classList.remove("dragging");
-      // В столбец без подсказки («Просрочено») переносить нельзя: карточка вернётся на место
-      const target = over && over !== from && props.columns.find((c) => c.key === over)?.hint ? over : null;
+      const target = over && over !== from ? over : null;
       if (target) await props.onMove(ids, target);
       setDrag(null);
       // Ждём, пока React дорисует доску с новыми данными
@@ -216,19 +220,19 @@ export function BoardView(props: {
 
   return (
     <div className="board" ref={root}>
-      {props.columns.map(({ key: col, name, accent, icon, prio, hint, items }) => {
+      {props.columns.map(({ key: col, name, accent, icon, hint, items }) => {
         const open = items.filter((i) => i.task.status === "inbox" || i.task.status === "active").length;
         const isOver = drag?.over === col && drag.from !== col;
         return (
           <section key={col} ref={(el) => void (el ? colRefs.current.set(col, el) : colRefs.current.delete(col))}
-            className={`col ${isOver ? (hint ? "over" : "no-drop") : ""}`} style={{ "--c": `var(--${isOver && !hint ? "muted" : accent})` } as React.CSSProperties}>
+            className={`col ${isOver ? "over" : ""}`} style={{ "--c": `var(--${accent})` } as React.CSSProperties}>
             <header className="col-head">
-              <span className="col-icon">{prio ? <PriorityIcon p={prio} /> : icon ? <Icon name={icon} size={14} /> : <span className="col-dot" />}</span>
+              <span className="col-icon"><Icon name={icon} size={14} /></span>
               <span className="col-name">{name}</span>
               <span className="col-n">{open || items.length || ""}</span>
             </header>
             <div className="col-body">
-              {isOver && <div className="col-hint">{hint ?? "Сюда перенести нельзя"}</div>}
+              {isOver && <div className="col-hint">{hint}</div>}
               {items.map(({ task: x, group }) => {
                 const project = props.projects.find((p) => p.id === x.project_id);
                 const done = x.status === "done" || x.status === "archived";
@@ -239,8 +243,8 @@ export function BoardView(props: {
                     <article data-card={x.id} data-task-id={x.id} onPointerDown={(e) => start(e, x, col)}
                       className={`kcard ${props.sel === x.id ? "sel" : ""} ${props.fileDrop === x.id ? "filedrop" : ""} ${props.picked.includes(x.id) ? "picked" : ""} ${done ? "done" : ""} ${lifted ? "lifted" : ""}`}>
                       <div className="kcard-top">
-                        <button className="chk" title={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
-                          onClick={(e) => (e.stopPropagation(), props.onToggle(x))} />
+                        <button className="chk kchk" aria-label={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
+                          onClick={(e) => (e.stopPropagation(), props.onToggle(x))}><Check size={11} strokeWidth={3.2} /></button>
                         <span className="t">{x.title}</span>
                         {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
                       </div>

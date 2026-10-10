@@ -411,18 +411,45 @@ export function Checklist(props: { task: Task; locked?: boolean; run: RunDb }) {
   );
 }
 
-/** Текст пункта переносится по строкам, поле растёт по высоте. Enter не делает новую строку, а сохраняет */
+/**
+ * Пункт чеклиста: не больше 3 строк, длиннее обрезается многоточием, полный текст в подсказке при наведении.
+ * Клик открывает правку, Enter не делает новую строку, а сохраняет
+ */
 function SubTitle(props: { value: string; disabled?: boolean; onCommit: (v: string) => void; onEnter: () => void }) {
   const [v, setV] = useState(props.value);
+  const [editing, setEditing] = useState(false);
+  const [clamped, setClamped] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
-  useAutosize(ref, v, 2000);
+  const view = useRef<HTMLDivElement>(null);
+  useAutosize(ref, editing ? v : "", 2000);
   useEffect(() => setV(props.value), [props.value]);
-  const commit = () => v.trim() !== props.value && props.onCommit(v.trim());
+  // Обрезан ли текст: меряем при каждой смене ширины, панели можно растягивать
+  useLayoutEffect(() => {
+    const el = view.current;
+    if (!el) return;
+    const check = () => setClamped(el.scrollHeight > el.clientHeight + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [v, editing]);
+  useLayoutEffect(() => {
+    if (editing) ref.current?.focus();
+  }, [editing]);
+  const commit = () => {
+    setEditing(false);
+    if (v.trim() !== props.value) props.onCommit(v.trim());
+  };
+  if (!editing)
+    return (
+      <div ref={view} className="sub-t sub-v" data-tip={clamped ? v : undefined} tabIndex={props.disabled ? -1 : 0}
+        onClick={() => !props.disabled && setEditing(true)} onFocus={() => !props.disabled && setEditing(true)}>{v}</div>
+    );
   return (
-    <textarea ref={ref} rows={1} className="sub-t" value={v} disabled={props.disabled} onChange={(e) => setV(e.target.value.replace(/\n/g, " "))} onBlur={commit}
+    <textarea ref={ref} rows={1} className="sub-t editing" value={v} onChange={(e) => setV(e.target.value.replace(/\n/g, " "))} onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === "Enter") (e.preventDefault(), e.stopPropagation(), commit(), props.onEnter());
-        if (e.key === "Escape") setV(props.value);
+        if (e.key === "Escape") (setV(props.value), setEditing(false));
       }} />
   );
 }

@@ -25,10 +25,12 @@
 .prio-cap { font-size: 12px; font-weight: 600; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .prio-cap.preview { color: var(--muted); }
 
-/* Чеклист: длинный пункт переносится и виден целиком */
+/* Чеклист: пункт не выше 3 строк, длиннее обрезается многоточием, полный текст в подсказке */
 .sub { align-items: flex-start; }
 .sub .grip, .sub .chk, .sub .x { margin-top: 4px; }
 .sub-t { resize: none; overflow: hidden; line-height: 1.4; font: inherit; color: inherit; white-space: pre-wrap; overflow-wrap: anywhere; display: block; }
+.sub-v { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; cursor: text; }
+.sub-t.editing { max-height: calc(1.4em * 3 + 6px); overflow-y: auto !important; }
 
 /* Ссылки */
 .att-link { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--stand); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--stand) 45%, transparent); text-underline-offset: 2px; font-weight: 500; }

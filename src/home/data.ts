@@ -5,7 +5,7 @@ import { addDays, parseDay, today } from "../dates";
 export const BLOCKS = [
   { id: "summary", name: "Итоги дня", hint: "", span: 12 },
   { id: "today", name: "Сегодня", hint: "полоса дня и список", span: 8 },
-  { id: "inbox", name: "На разбор", hint: "", span: 4 },
+  { id: "inbox", name: "Новые", hint: "", span: 4 },
   { id: "week", name: "Ближайшие 7 дней", hint: "", span: 7 },
   { id: "matrix", name: "Матрица Эйзенхауэра", hint: "необязательно", span: 5 },
   { id: "stats", name: "Статистика", hint: "", span: 8 },

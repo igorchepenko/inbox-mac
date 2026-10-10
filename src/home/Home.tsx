@@ -156,7 +156,7 @@ function SummaryBlock(props: { tasks: Task[]; cfg: DayConfig; name: string; onIn
           <button className="cta go narrow" onClick={props.onToday}>Всё разобрано, к делам</button>
         )}
         <div className="h-streak">
-          {st.days ? <>Разбираешь входящие <b>{plural(st.days, "день", "дня", "дней")} подряд</b></> : "Серия разбора начнётся, когда «На разбор» опустеет"}
+          {st.days ? <>Разбираешь входящие <b>{plural(st.days, "день", "дня", "дней")} подряд</b></> : "Серия разбора начнётся, когда «Новые» опустеют"}
           <span className="h-dots">
             {st.week.map((f, i) => {
               const day = H.weekdayShort(addDays(t, i - 6));
@@ -263,7 +263,7 @@ function InboxBlock(props: { tasks: Task[]; onOpen: () => void; onOpenTask: (x: 
   const n = items.length;
   return (
     <>
-      <Head title="На разбор"><button className="h-link" onClick={props.onOpen}>Открыть</button></Head>
+      <Head title="Новые"><button className="h-link" onClick={props.onOpen}>Открыть</button></Head>
       <div className="h-inb-top">
         <div className="h-big" style={{ color: n ? "var(--move)" : "var(--exercise)" }}>{n}</div>
         <p>

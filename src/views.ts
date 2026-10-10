@@ -1,11 +1,12 @@
 import type { Task } from "./db";
 import { fmtDay, today } from "./dates";
 import { quickKeyLabel } from "./prefs";
+import { PRIORITY } from "./priority";
 
 export type ViewId = "home" | "projects" | "inbox" | "today" | "soon" | "archive" | "calendar" | `p:${number}`;
 
 export const VIEWS: { id: ViewId; name: string; accent: string; icon: string }[] = [
-  { id: "inbox", name: "На разбор", accent: "move", icon: "inbox" },
+  { id: "inbox", name: "Новые", accent: "move", icon: "inbox" },
   { id: "today", name: "Сегодня", accent: "exercise", icon: "sun" },
   { id: "soon", name: "Скоро", accent: "stand", icon: "calendar" },
   { id: "archive", name: "Архив", accent: "muted", icon: "archive" },
@@ -19,50 +20,86 @@ export interface ListItem {
 
 const doneToday = (x: Task, t: string) => x.status === "done" && !!x.done_at && x.done_at.slice(0, 10) === t;
 
-// Открытые выше сделанных, затем по дате (без даты в конце), важности и свежести
-function byWork(a: Task, b: Task): number {
-  const da = a.status === "done" ? 1 : 0, dbn = b.status === "done" ? 1 : 0;
-  if (da !== dbn) return da - dbn;
+/** Порядок строк в списке и в столбцах канбана. Хранится отдельно для каждого списка: settings sort:<вид> */
+export type SortBy = "date" | "priority" | "matrix";
+export const SORTS: { id: SortBy; name: string; hint: string }[] = [
+  { id: "date", name: "По дате", hint: "По дате и времени: ближайшие сверху" },
+  { id: "priority", name: "По важности", hint: "По важности: самые важные сверху" },
+  { id: "matrix", name: "По матрице", hint: "По матрице Эйзенхауэра: срочно и важно сверху" },
+];
+export const sortOf = (view: ViewId, settings: Record<string, string>): SortBy =>
+  SORTS.find((s) => s.id === settings[`sort:${view}`])?.id ?? "date";
+
+// Порядок квадрантов задал Игорь: срочно и важно, срочно не важно, важно не срочно, не срочно не важно
+const QUAD_ORDER = [1, 3, 2, 4];
+const QUAD_NAMES: Record<number, string> = { 1: "Срочно и важно", 2: "Важно, не срочно", 3: "Срочно, не важно", 4: "Не срочно, не важно" };
+const quadRank = (x: Task) => (x.quadrant ? QUAD_ORDER.indexOf(x.quadrant) : 9);
+// Время задачи в дне: начало из календаря, иначе напоминание. Без времени после задач со временем
+const timeOf = (x: Task) => x.start_time ?? x.remind_at?.slice(11, 16) ?? "99";
+
+/** Ближайшие сверху: дата (без даты в конце), время, затем важнее и свежее */
+function byDate(a: Task, b: Task): number {
   const ad = a.due_date ?? "9999", bd = b.due_date ?? "9999";
   if (ad !== bd) return ad < bd ? -1 : 1;
+  const at = timeOf(a), bt = timeOf(b);
+  if (at !== bt) return at < bt ? -1 : 1;
   if (a.priority !== b.priority) return b.priority - a.priority;
   return a.created_at < b.created_at ? 1 : -1;
 }
 
-export function listFor(view: ViewId, tasks: Task[]): ListItem[] {
+export function compareBy(sort: SortBy): (a: Task, b: Task) => number {
+  if (sort === "priority") return (a, b) => b.priority - a.priority || byDate(a, b);
+  if (sort === "matrix") return (a, b) => quadRank(a) - quadRank(b) || byDate(a, b);
+  return byDate;
+}
+
+/** Заголовок группы при сортировке по важности или матрице: видно, где кончается один уровень и начинается другой */
+function groupName(x: Task, sort: SortBy): string {
+  if (x.status === "done") return "Сделано";
+  if (sort === "priority") return PRIORITY.find((p) => p.value === x.priority)?.name ?? "Важность не задана";
+  return x.quadrant ? QUAD_NAMES[x.quadrant] : "Вне матрицы";
+}
+
+/** Открытые выше сделанных, внутри по выбранной сортировке; при важности и матрице с заголовками групп */
+function arrange(xs: Task[], sort: SortBy): ListItem[] {
+  const cmp = compareBy(sort);
+  const sorted = [...xs].sort((a, b) => (a.status === "done" ? 1 : 0) - (b.status === "done" ? 1 : 0) || cmp(a, b));
+  if (sort === "date") return sorted.map((task) => ({ task }));
+  let last = "";
+  return sorted.map((task) => {
+    const g = groupName(task, sort);
+    const item = g !== last ? { task, group: g } : { task };
+    last = g;
+    return item;
+  });
+}
+
+export function listFor(view: ViewId, tasks: Task[], sort: SortBy = "date"): ListItem[] {
   const t = today();
   if (view === "home" || view === "projects") return [];
-  if (view === "inbox") return tasks.filter((x) => x.status === "inbox").map((task) => ({ task }));
-  if (view === "today")
-    return tasks
-      .filter((x) => (x.status === "active" && !!x.due_date && x.due_date <= t) || doneToday(x, t))
-      .sort(byWork)
-      .map((task) => ({ task }));
+  if (view === "inbox") return arrange(tasks.filter((x) => x.status === "inbox"), sort);
+  if (view === "today") return arrange(tasks.filter((x) => (x.status === "active" && !!x.due_date && x.due_date <= t) || doneToday(x, t)), sort);
   if (view === "archive")
     return tasks
       .filter((x) => x.status === "archived")
       .sort((a, b) => ((a.done_at ?? "") < (b.done_at ?? "") ? 1 : -1))
       .map((task) => ({ task }));
   if (view === "soon") {
-    // Будущие даты по дням, затем всё разобранное без даты, чтобы ничего не терялось
-    const dated = tasks.filter((x) => x.status === "active" && !!x.due_date && x.due_date > t).sort(byWork);
-    const undated = tasks.filter((x) => x.status === "active" && !x.due_date).sort(byWork);
+    const active = tasks.filter((x) => x.status === "active" && (!x.due_date || x.due_date > t));
+    if (sort !== "date") return arrange(active, sort);
+    // По дате: будущие даты по дням, затем всё разобранное без даты, чтобы ничего не терялось
     const out: ListItem[] = [];
     let last = "";
-    for (const task of dated) {
-      const g = fmtDay(task.due_date!);
+    for (const task of active.sort(byDate)) {
+      const g = task.due_date ? fmtDay(task.due_date) : "Без даты";
       out.push(g !== last ? { task, group: g } : { task });
       last = g;
     }
-    undated.forEach((task, i) => out.push(i === 0 ? { task, group: "Без даты" } : { task }));
     return out;
   }
   if (view === "calendar") return []; // у календаря своя сетка, см. CalendarView
   const pid = Number(view.slice(2));
-  return tasks
-    .filter((x) => x.project_id === pid && (x.status === "active" || doneToday(x, t)))
-    .sort(byWork)
-    .map((task) => ({ task }));
+  return arrange(tasks.filter((x) => x.project_id === pid && (x.status === "active" || doneToday(x, t))), sort);
 }
 
 export function countFor(view: ViewId, tasks: Task[]): number {
