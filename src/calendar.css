@@ -33,7 +33,6 @@
 .virtual .cal-chk { border-style: dashed; opacity: .7; }
 .cal-chip.locked, .cal-ev.locked { cursor: pointer; }
 .cal-chip.sel, .cal-ev.sel { box-shadow: 0 0 0 1.5px var(--stand); }
-.cal-chip.high::after, .cal-ev.high .cal-ev-head::after { content: "!"; color: var(--move); font-weight: 800; flex: none; }
 .overdue .cal-chk { border-color: var(--move); }
 
 /* Сетка месяца */
@@ -107,7 +106,13 @@
 
 /* Узкие колонки (рядом несколько задач): остаётся название и время начала, остальное в подсказке при наведении */
 @container (max-width: 110px) { .cal-ev-rest { display: none; } .cal-ev-head { gap: 3px; } .cal-ev .cal-chk { width: 10px; height: 10px; } }
-@container (max-width: 70px) { .cal-ev-head > svg { display: none; } .cal-ev-head::after { display: none; } .cal-ev-t { font-size: 11px; line-height: 13px; overflow-wrap: anywhere; } }
+@container (max-width: 70px) {
+  .cal-ev-head > svg, .cal-ev .cal-chk, .cal-ev-time { display: none; }
+  .cal-ev-head { flex: 1; min-height: 0; align-items: flex-start; }
+  .cal-ev-t { font-size: 11px; line-height: 13px; }
+  /* Высокая узкая плашка: название по вертикали, как на корешке книги, а не по букве в строку */
+  .cal-ev:not(.short):not(.compact) .cal-ev-t { display: block; writing-mode: vertical-rl; white-space: nowrap; max-height: 100%; overflow: hidden; text-overflow: ellipsis; }
+}
 
 /* Ручки растягивания сверху и снизу */
 .cal-grip { position: absolute; left: 0; right: 0; height: 7px; cursor: ns-resize; z-index: 1; }
