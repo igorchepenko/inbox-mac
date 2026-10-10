@@ -6,6 +6,7 @@ import * as H from "./data";
 import type { BlockId, DayConfig, Period } from "./data";
 import "./home.css";
 import { PriorityIcon } from "../priority";
+import { LayoutDashboard } from "lucide-react";
 
 export interface HomeProps {
   tasks: Task[];
@@ -59,7 +60,8 @@ export default function Home(props: HomeProps) {
     <div className="home">
       <div className="home-bar" data-tauri-drag-region>
         <div className="h-rel">
-          <button className="btn h-cust-btn" aria-expanded={custOpen} onClick={() => setCustOpen((o) => !o)}>Настроить главную</button>
+          <button className="gear h-cust-btn" aria-expanded={custOpen} aria-label="Настроить главную" data-tip="Настроить главную"
+            onClick={() => setCustOpen((o) => !o)}><LayoutDashboard size={16} /></button>
           {custOpen && <Customize order={order} hidden={hidden} onSave={props.onSaveLayout} onClose={() => setCustOpen(false)} />}
         </div>
       </div>
@@ -69,7 +71,7 @@ export default function Home(props: HomeProps) {
         ))}
         {!shown.length && (
           <section className="w" style={{ gridColumn: "span 12" }}>
-            <div className="h-note">Все блоки скрыты. Верни нужные через «Настроить главную».</div>
+            <div className="h-note">Все блоки скрыты. Верни нужные кнопкой «Настроить главную» справа вверху.</div>
           </section>
         )}
       </div>
@@ -448,7 +450,6 @@ function ProjectsBlock(props: { tasks: Task[]; projects: Project[]; onNew: () =>
             <span className="mono h-pj-n">
               {open} откр.{overdue > 0 && <> · <span style={{ color: "var(--move)" }}>{overdue} просроч.</span></>}
             </span>
-            {p.description && <p>{p.description}</p>}
             <span className="pb"><i style={{ width: `${done + open ? (done / (done + open)) * 100 : 0}%`, background: `var(--${p.color})` }} /></span>
           </div>
         ))}

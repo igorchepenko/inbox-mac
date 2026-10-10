@@ -35,6 +35,9 @@
   border: 1px solid var(--border); box-shadow: 0 8px 20px -10px rgba(0, 0, 0, .35); }
 .tip.above { transform: translateY(-100%); }
 .tip kbd { padding: 0 5px; font-size: 11px; }
+/* Полный текст длинного описания или ссылки: шире, с переносами и сохранением абзацев */
+.tip { max-width: min(420px, calc(100vw - 16px)); }
+.tip span { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.4; }
 
 /* Палитра проектов: 8 × 4 кружка */
 .color-grid { display: grid; grid-template-columns: repeat(8, 28px); gap: 6px; }
@@ -49,7 +52,7 @@
 .h-pj p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 
 /* Страница «Проекты» */
-.app.app-wide { grid-template-columns: 210px minmax(0, 1fr); }
+.app.app-wide { grid-template-columns: var(--side-w) minmax(0, 1fr); }
 .pp { display: flex; flex-direction: column; gap: 16px; min-height: 0; flex: 1; }
 .pp-head { display: flex; align-items: center; gap: 16px; min-height: 54px; }
 .pp-head > div { flex: 1; min-width: 0; }
