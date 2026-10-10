@@ -1,0 +1,74 @@
+/* Виды списка: канбан и выделение нескольких задач */
+.layout-switch button { width: 28px; height: 22px; }
+
+/* Общие части карточек */
+.card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.card-meta .meta { display: inline-flex; align-items: center; gap: 3px; }
+.kcard-top { display: flex; align-items: flex-start; gap: 9px; }
+.kcard-top .chk { margin-top: 1px; }
+.kcard-top .t { flex: 1; min-width: 0; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.kcard.done .t { text-decoration: line-through; color: var(--muted); }
+/* Чекбокс карточки: у несделанной галочка едва видна, у сделанной белая на зелёном */
+.kchk { display: grid; place-items: center; padding: 0; color: color-mix(in srgb, var(--muted) 30%, transparent); }
+.kchk svg { display: block; }
+.kchk:hover:not(:disabled) { color: var(--exercise); }
+.kcard.done .kchk { background: var(--exercise); border-color: var(--exercise); color: #fff; }
+
+/* Файл из Finder над карточкой */
+.kcard.filedrop { border-color: var(--stand); box-shadow: 0 0 0 2px color-mix(in srgb, var(--stand) 35%, transparent); }
+
+/* Выделенные для массовых действий: заметная бирюзовая рамка и галочка в углу */
+.row.picked, .kcard.picked { border-color: var(--stand); box-shadow: inset 0 0 0 1px var(--stand); }
+.row.picked { background: color-mix(in srgb, var(--stand) 14%, var(--surface)); }
+.selecting .row, .selecting .kcard { cursor: pointer; }
+
+/* Канбан */
+.board { flex: 1; min-height: 0; display: flex; gap: 10px; overflow-x: auto; margin: 0 -6px; padding: 0 6px 6px; scroll-behavior: smooth; }
+.col { --c: var(--muted); flex: 1 0 200px; max-width: 320px; display: flex; flex-direction: column; min-height: 0;
+  border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--surface) 40%, transparent); }
+.col-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 8px; font-weight: 700; }
+.col-icon { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); }
+.col-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.col-n { margin-left: auto; font: 600 11px var(--mono); color: var(--muted); }
+.col-body { flex: 1; min-height: 60px; overflow-y: auto; padding: 2px 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.col-group { margin: 8px 4px 0; }
+.col-empty { color: var(--muted); font-size: 12px; text-align: center; padding: 18px 0; opacity: .7; }
+.col.over { border-color: var(--c); background: color-mix(in srgb, var(--c) 7%, var(--surface)); box-shadow: inset 0 0 0 1px var(--c); }
+.col-hint { border: 1.5px dashed var(--c); color: var(--c); border-radius: 10px; padding: 12px 10px; font-size: 12px; font-weight: 600; text-align: center;
+  background: color-mix(in srgb, var(--c) 8%, transparent); }
+
+.kcard { position: relative; display: flex; flex-direction: column; gap: 7px; padding: 9px 10px; border-radius: 11px; background: var(--surface);
+  border: 1px solid var(--line); cursor: grab; touch-action: none; }
+.kcard:hover { border-color: var(--border); }
+.kcard.sel { border-color: color-mix(in srgb, var(--stand) 55%, transparent); background: color-mix(in srgb, var(--stand) 8%, var(--surface)); }
+.kcard.done { background: transparent; }
+.kcard.lifted { opacity: .35; border-style: dashed; }
+.kcard.landing { visibility: hidden; }
+
+/* Карточка в руке: чуть повёрнута и приподнята, тень мягкая */
+.drag-ghost { position: fixed; left: 0; top: 0; z-index: 50; margin: 0; pointer-events: none; cursor: grabbing;
+  box-shadow: 0 22px 40px -16px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .12); border-color: var(--border); background: var(--surface); }
+.drag-count { position: absolute; top: -8px; right: -8px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
+  display: grid; place-items: center; font: 700 11px var(--mono); color: var(--on-acc); background: var(--stand); }
+body.dragging, body.dragging * { cursor: grabbing !important; }
+
+/* Панель массовых действий */
+.bulk-title { font-size: 20px; font-weight: 800; letter-spacing: -.01em; margin-bottom: 4px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .kcard { transition: border-color .12s, background .12s, opacity .15s; }
+  .col { transition: border-color .15s, background .15s, box-shadow .15s; }
+  .col-hint { animation: drop-in .18s cubic-bezier(.2, .8, .2, 1); }
+}
+@keyframes drop-in { from { opacity: 0; transform: scaleY(.6); } }
+
+/* Обёртка видов в основной колонке */
+.views { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.icon-btn.on { color: var(--stand); border-color: var(--stand); background: color-mix(in srgb, var(--stand) 10%, transparent); }
+
+/* Этап задачи в строке списка: как столбец канбана */
+.stage { --c: var(--muted); display: inline-flex; align-items: center; gap: 4px; flex: none; white-space: nowrap;
+  font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px;
+  color: var(--c); background: color-mix(in srgb, var(--c) 13%, transparent); }
+.row.done .stage { opacity: .7; }

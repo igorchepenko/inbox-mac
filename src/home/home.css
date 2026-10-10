@@ -1,0 +1,162 @@
+/* Главная: карточки-блоки в сетке на 12 колонок. Токены общие с остальным приложением (styles.css) */
+.app.app-home { grid-template-columns: var(--side-w) minmax(0, 1fr); }
+.app-home .main { padding: 0; background: var(--bg); }
+
+.home { flex: 1; min-height: 0; overflow-y: auto; padding: 0 22px 22px; }
+/* Шапка главной: сплошной фон и чёткая линия снизу, блоки при прокрутке уходят под неё */
+.home-bar { position: sticky; top: 0; z-index: 4; display: flex; justify-content: flex-end; align-items: center;
+  margin: 0 -22px 16px; padding: 30px 22px 8px; background: var(--bg); border-bottom: 1px solid var(--line); }
+.h-rel { position: relative; }
+.h-cust-btn { width: 30px; height: 28px; }
+.h-cust-btn[aria-expanded="true"] { color: var(--fg); background: var(--sel); }
+.h-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.w { background: var(--surface); border: 1px solid var(--border); box-shadow: var(--card-shadow); border-radius: 18px; padding: 16px 18px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.w-h { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.w-h h3 { margin: 0; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); white-space: nowrap; }
+.w-h .r { margin-left: auto; font-size: 12px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.h-link { color: var(--stand); font-weight: 700; font-size: 12px; }
+.h-link:hover { text-decoration: underline; }
+.h-note { font-size: 12px; color: var(--muted); line-height: 1.45; }
+.h-sub { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 4px 0 -6px 6px; }
+.h-sm { padding: 8px 12px; border-radius: 11px; font-size: 12px; align-self: flex-start; }
+
+/* Строки задач внутри блоков: линии, а не карточки */
+.h-list { display: flex; flex-direction: column; }
+.h-row { display: flex; align-items: center; gap: 10px; padding: 8px 6px; border-bottom: 1px solid var(--line); min-width: 0; }
+.h-row:last-child { border-bottom: 0; }
+.h-row .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; text-align: left; }
+.h-row .t:hover { text-decoration: underline; text-underline-offset: 2px; }
+.h-row.done .t { text-decoration: line-through; color: var(--muted); }
+.h-row.empty { color: var(--muted); }
+.h-chk { width: 17px; height: 17px; border-radius: 6px; flex: none; border: 2px solid var(--muted); }
+.h-chk:hover:not(:disabled) { border-color: var(--exercise); }
+.h-chk.on { background: var(--exercise); border-color: var(--exercise); }
+.h-tm { font-family: var(--mono); font-size: 11px; color: var(--stand); min-width: 84px; font-variant-numeric: tabular-nums; flex: none; }
+.h-tm.none { color: var(--muted); }
+.h-meta { font-family: var(--mono); font-size: 11px; color: var(--move); white-space: nowrap; }
+.h-mini { padding: 4px 9px; border-radius: 9px; font-size: 11.5px; font-weight: 700; background: var(--surface); border: 1px solid var(--border); white-space: nowrap; }
+.h-mini:hover { border-color: var(--muted); }
+
+/* 1. Итоги дня */
+.h-hero { display: flex; gap: 18px 22px; align-items: center; flex-wrap: wrap; }
+.h-hello { min-width: 200px; }
+.h-hello h2 { font-size: 24px; font-weight: 800; margin: 0; letter-spacing: -.01em; }
+.h-date { color: var(--muted); margin-top: 2px; }
+.h-hero-cta { margin-left: auto; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.h-streak { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+.h-streak b { color: var(--fg); }
+.h-dots { display: inline-flex; gap: 3px; }
+.h-dots i { width: 7px; height: 7px; border-radius: 2px; background: var(--ring-track); }
+.h-dots i.f { background: var(--move); }
+.h-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; }
+.h-ds { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; min-width: 0; text-align: left;
+  background: color-mix(in srgb, var(--fg) 4%, var(--surface)); border: 1px solid var(--line); }
+button.h-ds:hover { border-color: var(--border); }
+.h-ds b { display: block; font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.h-ds span { font-size: 12px; color: var(--muted); }
+.h-ring { flex: none; }
+
+/* 2. Сегодня: полоса дня */
+.h-strip { position: relative; height: 44px; border-radius: 12px; background: color-mix(in srgb, var(--fg) 4%, var(--surface)); border: 1px solid var(--line); }
+.h-blk { position: absolute; top: 7px; bottom: 7px; min-width: 6px; border-radius: 8px; opacity: .9; display: flex; align-items: center; padding: 0 7px;
+  font-size: 11px; font-weight: 700; color: var(--on-acc); overflow: hidden; white-space: nowrap; outline-offset: 1px; }
+.h-blk.done { opacity: .35; }
+.h-blk .tt { display: none; }
+/* Наведение или фокус раскрывает блок до полного названия со временем */
+.h-blk:hover, .h-blk:focus-visible { width: max-content !important; min-width: var(--w); z-index: 3; opacity: 1; box-shadow: 0 6px 16px -6px var(--bc); }
+.h-blk:hover .tt, .h-blk:focus-visible .tt { display: inline; margin-right: 6px; font-family: var(--mono); font-weight: 500; opacity: .85; }
+.h-now { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--move); z-index: 2; pointer-events: none; }
+.h-now::before { content: ""; position: absolute; top: -1px; left: -4px; width: 10px; height: 10px; border-radius: 50%; background: var(--move); }
+.h-hours { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-top: -6px; }
+.h-over { border: 1px solid color-mix(in srgb, var(--move) 45%, var(--border)); background: color-mix(in srgb, var(--move) 7%, var(--surface)); border-radius: 12px; padding: 6px 10px; }
+.h-over .w-h { padding: 4px 6px 2px; }
+.h-over .h-row { border-color: color-mix(in srgb, var(--move) 20%, var(--line)); }
+
+/* 3. На разбор */
+.h-big { font-size: 44px; font-weight: 800; line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.h-inb-top { display: flex; align-items: flex-end; gap: 12px; }
+.h-inb-top p { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.h-age { font-family: var(--mono); font-size: 11px; color: var(--muted); flex: none; }
+.h-age.old { color: var(--amber); }
+
+/* 4. 7 дней */
+.h-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+.h-day { border-radius: 12px; padding: 10px 8px; display: flex; flex-direction: column; gap: 6px; text-align: left; min-width: 0;
+  background: color-mix(in srgb, var(--fg) 4%, var(--surface)); border: 1px solid var(--line); }
+.h-day:hover { border-color: var(--border); }
+.h-day .dn { font-size: 11px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h-day .dd { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.h-day .bar { height: 5px; border-radius: 3px; background: var(--ring-track); overflow: hidden; }
+.h-day .bar i { display: block; height: 100%; border-radius: 3px; }
+.h-day .cnt { font-size: 11px; color: var(--muted); font-family: var(--mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h-day.on { background: var(--sel); border-color: transparent; }
+.h-day.we .dn { color: var(--stand); }
+
+/* 5. Матрица */
+.h-mx { display: grid; grid-template-columns: auto 1fr 1fr; grid-template-rows: auto 1fr 1fr; gap: 6px; font-size: 12px; }
+.h-mx .ax { color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; align-self: end; text-align: center; }
+.h-mx .ay { writing-mode: vertical-rl; transform: rotate(180deg); align-self: center; }
+.h-q { border-radius: 12px; padding: 10px; text-align: left; display: flex; flex-direction: column; gap: 2px; min-height: 62px; border: 1px solid var(--line); }
+.h-q:hover { border-color: var(--border); }
+.h-q b { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.h-q span { color: var(--muted); font-size: 11.5px; }
+.h-q.on { outline: 2px solid var(--stand); outline-offset: 1px; }
+
+/* 6. Статистика */
+.h-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.h-kpi { padding: 10px 12px; border-radius: 12px; min-width: 0; background: color-mix(in srgb, var(--fg) 4%, var(--surface)); border: 1px solid var(--line); }
+.h-kpi b { display: block; font-size: 19px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.h-kpi span { font-size: 11.5px; color: var(--muted); }
+.h-seg { display: inline-flex; gap: 4px; padding: 3px; border-radius: 10px; background: var(--field); border: 1px solid var(--line); }
+.h-seg button { padding: 3px 10px; border-radius: 8px; font-size: 12px; font-weight: 700; color: var(--muted); border: 1px solid transparent; }
+.h-seg button.on { background: var(--surface); color: var(--fg); border-color: var(--border); }
+.h-chart { width: 100%; height: auto; max-height: 240px; display: block; }
+.h-chart text { fill: var(--muted); font-family: var(--mono); font-size: 11px; }
+.h-chart line { stroke: var(--border); }
+/* Цель: плотный пунктир цвета «сделано» и подпись на плашке, читается и на тёмной, и на светлой карточке */
+.h-chart .goal-line { stroke: var(--goal); stroke-width: 2; stroke-dasharray: 7 5; }
+.h-chart .goal-tag rect { fill: var(--surface); stroke: var(--goal); stroke-width: 1.5; }
+.h-chart .goal-tag text { fill: var(--fg); font-weight: 700; }
+.h-chart text.cur { fill: var(--fg); font-weight: 700; }
+.h-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.h-legend .sw { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.h-tip { position: fixed; pointer-events: none; background: var(--fg); color: var(--bg); font-size: 12px; padding: 6px 9px; border-radius: 8px; z-index: 9; white-space: nowrap; }
+
+/* 7. Проекты */
+.h-proj { display: grid; gap: 12px; }
+.h-pj { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; }
+.h-pj b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.h-pj-n { font-size: 11px; color: var(--muted); }
+.h-pj-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; vertical-align: 1px; }
+.h-pj .pb { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--ring-track); overflow: hidden; display: flex; }
+.h-pj .pb i { height: 100%; }
+
+/* Настройка главной */
+.h-cust { position: absolute; right: 0; top: calc(100% + 8px); width: 360px; max-width: calc(100vw - 260px); border-radius: 16px; padding: 14px; z-index: 6;
+  display: grid; gap: 8px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 18px 40px -20px rgba(0, 0, 0, .45); }
+.h-cust-list { display: grid; gap: 4px; }
+.h-cust .it { display: flex; align-items: center; gap: 8px; border-radius: 10px; padding: 6px 6px 6px 2px; background: var(--surface); border: 1px solid transparent; }
+.h-cust .it.drag { opacity: .6; border-color: var(--stand); background: var(--sel); }
+.h-cust .hd { cursor: grab; color: var(--muted); font-size: 14px; letter-spacing: -2px; padding: 0 4px; user-select: none; touch-action: none; }
+.h-cust .hd:active { cursor: grabbing; }
+.h-cust .mv { color: var(--muted); font-size: 11px; padding: 2px 5px; border-radius: 6px; }
+.h-cust .mv:hover { color: var(--fg); background: var(--sel); }
+.h-cust label { flex: 1; display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 13px; cursor: pointer; }
+.h-cust label small { margin-left: auto; color: var(--muted); font-weight: 500; }
+.h-cust input { accent-color: var(--stand); width: 16px; height: 16px; }
+
+@media (max-width: 1100px) {
+  .h-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .h-stats { grid-template-columns: 1fr; }
+  .h-hero-cta { margin-left: 0; align-items: flex-start; }
+  .h-week { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .h-day, .h-q, .h-row { transition: background .15s, opacity .2s; }
+  .h-blk { transition: box-shadow .15s, opacity .15s; }
+  .h-arc { transition: stroke-dasharray .5s cubic-bezier(.2, .8, .2, 1); }
+}
