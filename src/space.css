@@ -1,0 +1,11 @@
+/* Цвет пространства на задачах: полоска слева и лёгкий оттенок фона, без сплошной заливки,
+   чтобы не спорить с цветами важности и матрицы. --pc ставит spaceVars() из palette.ts */
+
+.row.pc.pc, .kcard.pc.pc { border-left-color: var(--pc); background-image: linear-gradient(90deg, var(--pc) 3px, transparent 3px); }
+.row.pc.pc:not(.sel):not(.picked):not(.done), .kcard.pc.pc:not(.sel):not(.picked):not(.done) {
+  background-color: color-mix(in srgb, var(--pc) 6%, var(--surface)); }
+.row.pc.pc.done, .kcard.pc.pc.done { border-left-color: color-mix(in srgb, var(--pc) 45%, var(--line));
+  background-image: linear-gradient(90deg, color-mix(in srgb, var(--pc) 45%, transparent) 3px, transparent 3px); }
+
+/* Внутри пространства сверху мягкая подложка его цвета, как круг под иконкой в шапке */
+.main.in-space { background-image: linear-gradient(180deg, color-mix(in srgb, var(--pc) 9%, transparent), transparent 260px); }

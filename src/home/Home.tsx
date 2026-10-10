@@ -131,7 +131,7 @@ function TaskLine({ x, row, time = true, extra }: { x: Task; row: RowCtx; time?:
       {time && <span className={`h-tm ${x.start_time ? "" : "none"}`}>{x.start_time ? H.timeRange(x) : "без времени"}</span>}
       <button className="t" title={x.title} onClick={() => row.onOpen(x)}>{x.title}</button>
       {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
-      {p && <span className="tag" style={{ background: `var(--${p.color})` }}>{p.name}</span>}
+      {p && <span className="tag" style={{ background: `var(--${p.color})`, color: `var(--${p.color}-ink, var(--on-acc))` }}>{p.name}</span>}
       {extra}
     </div>
   );
@@ -369,7 +369,7 @@ function StatsBlock(props: { tasks: Task[]; projects: Project[]; cfg: DayConfig 
   const s = useMemo(() => H.stats(props.tasks, period, props.cfg), [props.tasks, period, props.cfg.goal]); // eslint-disable-line react-hooks/exhaustive-deps
   const series = [
     ...props.projects.map((p) => ({ id: p.id, name: p.name, color: p.color as string })),
-    ...(s.bars.some((b) => b.byProject.get(0)) ? [{ id: 0, name: "Без проекта", color: "muted" }] : []),
+    ...(s.bars.some((b) => b.byProject.get(0)) ? [{ id: 0, name: "Без пространства", color: "muted" }] : []),
   ];
   const max = Math.ceil(Math.max(s.goal, ...s.bars.map((b) => b.total)) * 1.15);
   const W = 520, Hh = 170, pl = 26, pb = 22, pt = 8;
@@ -442,18 +442,18 @@ function ProjectsBlock(props: { tasks: Task[]; projects: Project[]; onNew: () =>
   const list = H.projectStats(props.tasks, props.projects);
   return (
     <>
-      <Head title="Проекты"><button className="h-link" onClick={props.onNew}>+ Проект</button></Head>
+      <Head title="Пространства"><button className="h-link" onClick={props.onNew}>+ Пространство</button></Head>
       <div className="h-proj">
         {list.map(({ project: p, open, overdue, done }) => (
           <div key={p.id} className="h-pj">
-            <b>{p.name}</b>
+            <b><i className="h-pj-dot" style={{ background: `var(--${p.color})` }} />{p.name}</b>
             <span className="mono h-pj-n">
               {open} откр.{overdue > 0 && <> · <span style={{ color: "var(--move)" }}>{overdue} просроч.</span></>}
             </span>
             <span className="pb"><i style={{ width: `${done + open ? (done / (done + open)) * 100 : 0}%`, background: `var(--${p.color})` }} /></span>
           </div>
         ))}
-        {!list.length && <div className="h-note">Проектов пока нет.</div>}
+        {!list.length && <div className="h-note">Пространств пока нет.</div>}
       </div>
     </>
   );

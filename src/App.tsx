@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { spaceVars } from "./palette";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { invoke } from "@tauri-apps/api/core";
@@ -375,7 +376,7 @@ export default function App() {
           }}
           onCreate={createAt} />
       ) : (
-      <main className="main">
+      <main className={`main ${project ? "in-space" : ""}`} style={spaceVars(project?.color)}>
         {view === "projects" ? (
           <ProjectsPage projects={projects} tasks={tasks} onOpen={openView}
             onEdit={(p) => setProjectDlg(p)} onNew={() => setProjectDlg("new")} />
@@ -403,7 +404,7 @@ export default function App() {
             <p className="head-sub" data-tip={project?.description || undefined} data-tip-full="">{project?.description || progress?.subtitle || subtitleFor(view, list.length)}</p>
           </div>
           {project && (
-            <button className="icon-btn" data-tip="Изменить проект" onClick={() => setProjectDlg(project)}>
+            <button className="icon-btn" data-tip="Изменить пространство" onClick={() => setProjectDlg(project)}>
               <Pencil size={13} /> Изменить
             </button>
           )}
@@ -528,7 +529,8 @@ function TaskRow(props: {
   const overdue = x.status === "active" && !!x.due_date && x.due_date < today();
   return (
     <div ref={ref} role="option" aria-selected={props.selected} data-task-id={x.id}
-      className={`row ${props.selected ? "sel" : ""} ${props.picked ? "picked" : ""} ${done ? "done" : ""} ${props.dropping ? "drop" : ""}`}
+      className={`row ${props.selected ? "sel" : ""} ${props.picked ? "picked" : ""} ${done ? "done" : ""} ${props.dropping ? "drop" : ""} ${project ? "pc" : ""}`}
+      style={spaceVars(project?.color)}
       onMouseDown={(e) => props.onSelect({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey })}>
       <button className="chk" title={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
         onMouseDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), props.onToggle())} />
@@ -544,7 +546,7 @@ function TaskRow(props: {
       {x.remind_at && !x.reminded && !done && <span className="meta" title="Напоминание">⏰ {x.remind_at.slice(11, 16)}</span>}
       {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
       {x.status !== "archived" && <StageChip task={x} />}
-      {project && <span className="tag" style={{ background: `var(--${project.color})` }}>{project.name}</span>}
+      {project && <span className="tag" style={{ background: `var(--${project.color})`, color: `var(--${project.color}-ink, var(--on-acc))` }}>{project.name}</span>}
       {x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`}>{fmtDay(x.due_date)}</span>}
     </div>
   );
