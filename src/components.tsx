@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Draft, Project, Task } from "./db";
-import { fmtDay, today } from "./dates";
+import { fmtDay, stampDay, stampTime, today } from "./dates";
 import { Icon } from "./icons";
 import { TimeInput, useAutosize } from "./widgets";
 import { firstOccurrence, parseRule } from "./recurrence";
@@ -132,7 +132,7 @@ export function Details(props: {
   const isInbox = x.status === "inbox";
   const locked = x.status === "archived";
   const t = today();
-  const remindTime = x.remind_at?.slice(11, 16) ?? "";
+  const remindTime = (x.remind_at ? stampTime(x.remind_at) : "");
   const subsDone = x.subtasks.filter((s) => s.done).length;
 
   const saveTitle = () => {
@@ -200,7 +200,7 @@ export function Details(props: {
           <TimeInput value={remindTime} disabled={locked} onCommit={setRemind} />
           {remindTime && (
             <>
-              <span className="hint">{fmtDay(x.remind_at!.slice(0, 10))}{x.reminded ? ", уже пришло" : ""}</span>
+              <span className="hint">{fmtDay(stampDay(x.remind_at!))}{x.reminded ? ", уже пришло" : ""}</span>
               <button type="button" className="link" onClick={() => setRemind("")}>убрать</button>
             </>
           )}

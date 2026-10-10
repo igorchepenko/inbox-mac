@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from "react";
 import type { Project, Task } from "../db";
-import { addDays, fmtDay, today } from "../dates";
+import { addDays, fmtDay, fmtDuration, fmtMin, isWeekend, longDate, today, toMin, weekdayShort } from "../dates";
 import { plural } from "../views";
 import * as H from "./data";
 import type { BlockId, DayConfig, Period } from "./data";
@@ -149,7 +149,7 @@ function SummaryBlock(props: { tasks: Task[]; cfg: DayConfig; name: string; onIn
     <div className="h-hero">
       <div className="h-hello">
         <h2>{H.greeting(now)}{props.name ? `, ${props.name}` : ""}</h2>
-        <div className="h-date">{H.longDate(now)} · <span className="mono">{H.fmtMin(now.getHours() * 60 + now.getMinutes())}</span></div>
+        <div className="h-date">{longDate(now)} · <span className="mono">{fmtMin(now.getHours() * 60 + now.getMinutes())}</span></div>
       </div>
       <div className="h-hero-cta">
         {s.inbox ? (
@@ -161,7 +161,7 @@ function SummaryBlock(props: { tasks: Task[]; cfg: DayConfig; name: string; onIn
           {st.days ? <>Разбираешь входящие <b>{plural(st.days, "день", "дня", "дней")} подряд</b></> : "Серия разбора начнётся, когда «Новые» опустеют"}
           <span className="h-dots">
             {st.week.map((f, i) => {
-              const day = H.weekdayShort(addDays(t, i - 6));
+              const day = weekdayShort(addDays(t, i - 6));
               return <i key={i} className={f ? "f" : ""} title={`${day}: ${f ? "разобрано до нуля" : "не разобрано"}`} />;
             })}
           </span>
@@ -178,7 +178,7 @@ function SummaryBlock(props: { tasks: Task[]; cfg: DayConfig; name: string; onIn
         </button>
         <div className="h-ds">
           <MiniRing fraction={s.busy / props.cfg.capacity} color="stand" />
-          <div><b>{s.busy ? H.fmtDur(s.busy) : "0 ч"}</b><span>занято из {props.cfg.capacity / 60} ч рабочего дня</span></div>
+          <div><b>{s.busy ? fmtDuration(s.busy) : "0 ч"}</b><span>занято из {props.cfg.capacity / 60} ч рабочего дня</span></div>
         </div>
       </div>
     </div>
@@ -197,10 +197,10 @@ function TodayBlock(props: { tasks: Task[]; cfg: DayConfig; row: RowCtx; onMoveT
   const now = new Date();
   const nowMin = now.getHours() * 60 + now.getMinutes();
   // Полоса дня растягивается, если задачи выходят за рабочие часы
-  const from = Math.min(cfg.start, ...timed.map((x) => Math.floor(H.mins(x.start_time!) / 60) * 60));
-  const to = Math.max(cfg.end, ...timed.map((x) => Math.ceil((H.mins(x.start_time!) + H.duration(x)) / 60) * 60));
+  const from = Math.min(cfg.start, ...timed.map((x) => Math.floor(toMin(x.start_time!) / 60) * 60));
+  const to = Math.max(cfg.end, ...timed.map((x) => Math.ceil((toMin(x.start_time!) + H.duration(x)) / 60) * 60));
   const pos = (m: number) => ((Math.min(Math.max(m, from), to) - from) / (to - from)) * 100;
-  const next = timed.find((x) => !H.isDone(x) && H.mins(x.start_time!) + H.duration(x) > nowMin);
+  const next = timed.find((x) => !H.isDone(x) && toMin(x.start_time!) + H.duration(x) > nowMin);
   const hours: number[] = [];
   for (let h = from / 60; h <= to / 60; h++) hours.push(h);
 
@@ -211,7 +211,7 @@ function TodayBlock(props: { tasks: Task[]; cfg: DayConfig; row: RowCtx; onMoveT
       </Head>
       <div className="h-strip">
         {timed.map((x) => {
-          const s = H.mins(x.start_time!), e = s + H.duration(x);
+          const s = toMin(x.start_time!), e = s + H.duration(x);
           const w = pos(e) - pos(s);
           const color = `var(--${row.projectOf(x)?.color ?? "graphite"})`;
           // Блоки правее середины раскрываются влево
@@ -224,7 +224,7 @@ function TodayBlock(props: { tasks: Task[]; cfg: DayConfig; row: RowCtx; onMoveT
             </div>
           );
         })}
-        {nowMin >= from && nowMin <= to && <div className="h-now" style={{ left: `${pos(nowMin)}%` }} title={`Сейчас ${H.fmtMin(nowMin)}`} />}
+        {nowMin >= from && nowMin <= to && <div className="h-now" style={{ left: `${pos(nowMin)}%` }} title={`Сейчас ${fmtMin(nowMin)}`} />}
       </div>
       <div className="h-hours">{hours.map((h) => <span key={h}>{h}</span>)}</div>
 
@@ -299,12 +299,12 @@ function WeekBlock(props: { tasks: Task[]; cfg: DayConfig; row: RowCtx }) {
         {days.map((d, i) => {
           const f = Math.min(1, d.busy / props.cfg.capacity);
           return (
-            <button key={d.day} className={`h-day ${open === d.day ? "on" : ""} ${H.isWeekend(d.day) ? "we" : ""}`}
+            <button key={d.day} className={`h-day ${open === d.day ? "on" : ""} ${isWeekend(d.day) ? "we" : ""}`}
               aria-pressed={open === d.day} onClick={() => setOpen(open === d.day ? null : d.day)}>
-              <span className="dn">{i === 0 ? "Завтра" : H.weekdayShort(d.day)}</span>
+              <span className="dn">{i === 0 ? "Завтра" : weekdayShort(d.day)}</span>
               <span className="dd">{Number(d.day.slice(8))}</span>
               <span className="bar"><i style={{ width: `${Math.max(f * 100, d.items.length ? 6 : 0)}%`, background: `var(--${H.loadColor(f)})` }} /></span>
-              <span className="cnt">{d.items.length} · {d.busy ? H.fmtDur(d.busy) : "—"}</span>
+              <span className="cnt">{d.items.length} · {d.busy ? fmtDuration(d.busy) : "—"}</span>
             </button>
           );
         })}
@@ -391,7 +391,7 @@ function StatsBlock(props: { tasks: Task[]; projects: Project[]; cfg: DayConfig 
         <div className="h-kpi"><b>{s.done}</b><span>сделано за {period === "week" ? "неделю" : "4 недели"}</span></div>
         <div className="h-kpi"><b>{s.onTime == null ? "—" : `${Math.round(s.onTime * 100)}%`}</b><span>сделано в срок</span></div>
         <div className="h-kpi"><b>{s.triage == null ? "—" : H.fmtHours(s.triage)}</b><span>от записи до разбора</span></div>
-        <div className="h-kpi"><b>{s.planned ? H.fmtDur(s.planned) : "0 ч"}</b><span>запланировано {period === "week" ? "на неделе" : "в этом месяце"}</span></div>
+        <div className="h-kpi"><b>{s.planned ? fmtDuration(s.planned) : "0 ч"}</b><span>запланировано {period === "week" ? "на неделе" : "в этом месяце"}</span></div>
       </div>
       <svg className="h-chart" viewBox={`0 0 ${W} ${Hh}`} role="img" aria-label={`Сделано по ${period === "week" ? "дням" : "неделям"}`}
         onPointerLeave={() => setTip(null)}>

@@ -1,6 +1,6 @@
 import * as db from "./db";
 import type { Task } from "./db";
-import { addDays, nowStamp, today } from "./dates";
+import { addDays, nowStamp, stampDay, stampTime, today } from "./dates";
 import { compareBy, VIEWS, type ListItem, type SortBy, type ViewId } from "./views";
 
 /** Как показан список: строками или канбаном. Хранится в settings под ключом layout:<вид> */
@@ -52,7 +52,7 @@ export function stageOf(x: Task): Stage {
 export function boardFor(view: ViewId, tasks: Task[], sort: SortBy): BoardColumn[] {
   const since = addDays(today(), -DONE_DAYS);
   // Канбан про текущую работу: сделанное видно только за последнюю неделю
-  const mine = scoped(view, tasks).filter((x) => isOpen(x) || (!!x.done_at && x.done_at.slice(0, 10) > since));
+  const mine = scoped(view, tasks).filter((x) => isOpen(x) || (!!x.done_at && stampDay(x.done_at) > since));
   const cmp = compareBy(sort);
   return STAGES.map((c) => {
     const xs = mine.filter((x) => stageOf(x) === c.key);
@@ -75,7 +75,7 @@ export async function dropTo(x: Task, key: Stage): Promise<void> {
 
 function withDate(x: Task, d: string | null): Parameters<typeof db.updateTask>[1] {
   // Напоминание едет вместе с датой, время сохраняется
-  const time = x.remind_at?.slice(11, 16);
+  const time = x.remind_at && stampTime(x.remind_at);
   return time && d ? { due_date: d, remind_at: `${d}T${time}`, reminded: 0 } : { due_date: d };
 }
 
@@ -83,7 +83,7 @@ function targetOf(x: Task): Target {
   const t = today();
   if (x.status === "inbox") return "inbox";
   if (x.status === "archived") return "archive";
-  if (x.status === "done") return x.done_at?.slice(0, 10) === t ? "today" : "archive";
+  if (x.status === "done") return !!x.done_at && stampDay(x.done_at) === t ? "today" : "archive";
   return x.due_date && x.due_date <= t ? "today" : "soon";
 }
 

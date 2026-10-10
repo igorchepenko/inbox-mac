@@ -5,13 +5,13 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { invoke } from "@tauri-apps/api/core";
 import * as db from "./db";
 import type { Project, ProjectFields, Task } from "./db";
-import { fmtDay, nowStamp, today } from "./dates";
+import { fmtDay, fmtRange, nowStamp, stampTime, today, toHHMM } from "./dates";
 import { listFor, progressFor, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
 import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
 import { Icon } from "./icons";
 import { ProjectDialog } from "./widgets";
 import { CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat } from "lucide-react";
-import { fmtRange, QuadrantGlyph } from "./extras";
+import { QuadrantGlyph } from "./extras";
 import { boardFor, dropTo, layoutOf, STAGES, stageOf, type Layout, type Stage } from "./boardOps";
 import { BoardView, BulkPanel, LayoutSwitch, SortSwitch, type Pick } from "./Board";
 import { ensurePermission, fireDueReminders, maybeSendDigest } from "./reminders";
@@ -20,7 +20,6 @@ import { labelFromAccel, pref, quickKeyLabel, setQuickKeyLabel } from "./prefs";
 import Home from "./home/Home";
 import { KEY_HIDDEN, KEY_ORDER } from "./home/data";
 import CalendarView from "./CalendarView";
-import { toHHMM } from "./calendar";
 import { PriorityIcon } from "./priority";
 import { FIND_PROJECT_EVENT, Sidebar, viewIcon } from "./Sidebar";
 import ProjectsPage from "./ProjectsPage";
@@ -166,7 +165,7 @@ export default function App() {
   const moveToToday = (xs: Task[]) =>
     run(async () => {
       for (const x of xs) {
-        const rt = x.remind_at?.slice(11, 16);
+        const rt = x.remind_at && stampTime(x.remind_at);
         await db.updateTask(x.id, rt ? { due_date: today(), remind_at: `${today()}T${rt}`, reminded: 0 } : { due_date: today() });
       }
     });
@@ -336,7 +335,7 @@ export default function App() {
           break;
         case "KeyT":
           if (task && task.status !== "archived") {
-            const rt = task.remind_at?.slice(11, 16);
+            const rt = task.remind_at && stampTime(task.remind_at);
             patch(task.id, rt ? { due_date: today(), remind_at: `${today()}T${rt}`, reminded: 0 } : { due_date: today() });
           }
           break;
@@ -546,7 +545,7 @@ function TaskRow(props: {
       {x.recurrence && !done && <span className="meta badge" title="Повторяется"><Repeat size={12} /></span>}
       {x.quadrant && !done && <QuadrantGlyph q={x.quadrant} />}
       {x.start_time && <span className="meta" title="Время">{fmtRange(x.start_time, x.end_time)}</span>}
-      {x.remind_at && !x.reminded && !done && <span className="meta" title="Напоминание">⏰ {x.remind_at.slice(11, 16)}</span>}
+      {x.remind_at && !x.reminded && !done && <span className="meta" title="Напоминание">⏰ {stampTime(x.remind_at)}</span>}
       {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
       {x.status !== "archived" && <StageChip task={x} />}
       {project && <span className="tag" style={{ background: `var(--${project.color})`, color: `var(--${project.color}-ink, var(--on-acc))` }}>{project.name}</span>}

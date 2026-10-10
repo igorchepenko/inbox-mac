@@ -2,14 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { spaceVars } from "./palette";
 import { Bell, CalendarDays, Check, Clock, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat } from "lucide-react";
 import type { Project, Task } from "./db";
-import { addDays, fmtDay, nextMonday, today } from "./dates";
+import { addDays, fmtDay, fmtRange, nextMonday, stampTime, today } from "./dates";
 import { TARGETS, type BoardColumn, type Layout, type Stage } from "./boardOps";
 import * as board from "./boardOps";
 import { plural, SORTS, type SortBy } from "./views";
 import { PRIORITY } from "./components";
 import { Icon } from "./icons";
 import { Calendar, Popover } from "./widgets";
-import { fmtRange, QuadrantGlyph } from "./extras";
+import { QuadrantGlyph } from "./extras";
 import "./board.css";
 import { PriorityIcon } from "./priority";
 
@@ -62,7 +62,7 @@ function Meta({ task: x, project }: { task: Task; project?: Project }) {
     <div className="card-meta">
       {x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`}><CalendarDays size={11} /> {fmtDay(x.due_date)}</span>}
       {x.start_time && <span className="meta"><Clock size={11} /> {fmtRange(x.start_time, x.end_time)}</span>}
-      {x.remind_at && !x.reminded && !done && <span className="meta"><Bell size={11} /> {x.remind_at.slice(11, 16)}</span>}
+      {x.remind_at && !x.reminded && !done && <span className="meta"><Bell size={11} /> {stampTime(x.remind_at)}</span>}
       {x.subtasks.length > 0 && <span className="meta"><ListChecks size={11} /> {checked}/{x.subtasks.length}</span>}
       {x.links.length > 0 && <span className="meta"><Link2 size={11} /> {x.links.length}</span>}
       {x.files.length > 0 && <span className="meta"><Paperclip size={11} /> {x.files.length}</span>}

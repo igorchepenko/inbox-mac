@@ -1,6 +1,6 @@
 import Database from "@tauri-apps/plugin-sql";
 import { invoke } from "@tauri-apps/api/core";
-import { nowStamp, today } from "./dates";
+import { nowStamp, stampDay, stampTime, today } from "./dates";
 import { nextOccurrence, parseRule } from "./recurrence";
 
 export type Status = "inbox" | "active" | "done" | "archived";
@@ -141,11 +141,11 @@ export async function deleteTask(id: number): Promise<void> {
 export async function completeTask(x: Task): Promise<void> {
   const stamp = nowStamp();
   const rule = parseRule(x.recurrence);
-  const next = rule && nextOccurrence(rule, x.due_date, stamp.slice(0, 10));
+  const next = rule && nextOccurrence(rule, x.due_date, stampDay(stamp));
   let nextId: number | null = null;
   if (next) {
     const d = await db();
-    const remind = x.remind_at ? `${next.date}T${x.remind_at.slice(11, 16)}` : null;
+    const remind = x.remind_at ? `${next.date}T${stampTime(x.remind_at)}` : null;
     const r = await d.execute(
       `INSERT INTO tasks (title, note, status, priority, project_id, due_date, remind_at, created_at, triaged_at,
          start_time, end_time, quadrant, recurrence, series_id)

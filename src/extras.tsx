@@ -5,8 +5,8 @@ import { Check, Copy, CalendarDays, FileText, FolderSearch, GripVertical, Link2,
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import * as db from "./db";
 import type { Task } from "./db";
-import { addDays, fmtDay, nextMonday, parseDay, today } from "./dates";
-import { anchorRule, describe, isoWeekday, nthLabel, parseRule, PRESETS, WD_SHORT, type Freq, type Rule } from "./recurrence";
+import { addDays, fmtDay, fmtDuration, nextMonday, parseDay, today, toHHMM, toMin } from "./dates";
+import { anchorRule, describe, nthLabel, nthOf, parseRule, PRESETS, WD_SHORT, type Freq, type Rule } from "./recurrence";
 import { Calendar, Popover, TimeInput, useAutosize } from "./widgets";
 import { PRIORITY, PriorityIcon } from "./priority";
 
@@ -61,19 +61,8 @@ export function DateField(props: { value: string | null; onChange: (d: string | 
 
 // Время «от–до»
 
-const toMin = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
-const toHHMM = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 const LAST = 23 * 60 + 59;
 
-export function fmtDuration(min: number): string {
-  const h = Math.floor(min / 60), m = min % 60;
-  return [h && `${h} ч`, m && `${m} мин`].filter(Boolean).join(" ") || "0 мин";
-}
-
-/** «10:00–11:30» для строки списка */
-export function fmtRange(start: string | null, end: string | null): string {
-  return start ? (end ? `${start}–${end}` : start) : "";
-}
 
 const DURATIONS = [15, 30, 60, 90, 120];
 
@@ -225,8 +214,7 @@ function RuleEditor(props: { rule: Rule | null; due: string; onApply: (r: Rule |
   const setFreq = (freq: Freq) =>
     setR((cur) => anchorRule({ freq, every: cur.every, fromDone: cur.fromDone, until: cur.until, count: cur.count, monthBy: freq === "month" ? "day" : undefined }, due));
   const d = parseDay(due);
-  const nth = Math.min(Math.ceil(d.getDate() / 7), 4);
-  const isLast = d.getDate() + 7 > new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  const { nth, weekday, last: isLast } = nthOf(due);
   const ending = r.until ? "until" : r.count != null ? "count" : "never";
   const valid = r.freq !== "week" || !!r.days?.length;
 
@@ -262,12 +250,12 @@ function RuleEditor(props: { rule: Rule | null; due: string; onApply: (r: Rule |
           <Chip on={r.monthBy !== "nth"} accent="stand" onClick={() => set({ monthBy: "day", day: d.getDate(), nth: undefined, weekday: undefined })}>
             {d.getDate()} числа
           </Chip>
-          <Chip on={r.monthBy === "nth" && r.nth !== -1} accent="stand" onClick={() => set({ monthBy: "nth", nth, weekday: isoWeekday(d), day: undefined })}>
-            {nthLabel(nth, isoWeekday(d))}
+          <Chip on={r.monthBy === "nth" && r.nth !== -1} accent="stand" onClick={() => set({ monthBy: "nth", nth, weekday, day: undefined })}>
+            {nthLabel(nth, weekday)}
           </Chip>
           {isLast && (
-            <Chip on={r.monthBy === "nth" && r.nth === -1} accent="stand" onClick={() => set({ monthBy: "nth", nth: -1, weekday: isoWeekday(d), day: undefined })}>
-              {nthLabel(-1, isoWeekday(d))}
+            <Chip on={r.monthBy === "nth" && r.nth === -1} accent="stand" onClick={() => set({ monthBy: "nth", nth: -1, weekday, day: undefined })}>
+              {nthLabel(-1, weekday)}
             </Chip>
           )}
         </Line>

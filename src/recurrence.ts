@@ -1,7 +1,7 @@
 // Повторяющиеся задачи. Правило хранится в tasks.recurrence как JSON.
 // Когда повторяющуюся задачу отмечают сделанной, она уходит в историю, а рядом создаётся
 // следующая с новой датой (db.completeTask). Так у каждого повтора своя отметка и свой чеклист.
-import { addDays, dayKey, parseDay, today } from "./dates";
+import { addDays, dayKey, dayMonth, daysBetween, daysInMonth, isoWeekday, MONTHS_GEN, parseDay, today, weekStart } from "./dates";
 
 export type Freq = "day" | "week" | "month" | "year";
 
@@ -29,11 +29,8 @@ export function parseRule(json: string | null | undefined): Rule | null {
   }
 }
 
-/** 1 Пн … 7 Вс */
-export const isoWeekday = (d: Date) => ((d.getDay() + 6) % 7) + 1;
-const daysInMonth = (y: number, m0: number) => new Date(y, m0 + 1, 0).getDate();
-
-function nthOf(day: string): { nth: number; weekday: number; last: boolean } {
+/** Какой по счёту этот день недели в месяце (1…4) и последний ли он: «2-й вторник», «последняя пятница» */
+export function nthOf(day: string): { nth: number; weekday: number; last: boolean } {
   const d = parseDay(day);
   const nth = Math.ceil(d.getDate() / 7);
   return { nth: Math.min(nth, 4), weekday: isoWeekday(d), last: d.getDate() + 7 > daysInMonth(d.getFullYear(), d.getMonth()) };
@@ -52,12 +49,6 @@ function nthWeekday(y: number, m0: number, nth: number, weekday: number): Date {
   return d;
 }
 
-const mondayOf = (d: Date) => {
-  const m = new Date(d);
-  m.setDate(m.getDate() - isoWeekday(m) + 1);
-  return m;
-};
-
 /** Ближайший после base день по правилу (без учёта окончания) */
 function step(rule: Rule, base: string): string {
   const every = Math.max(1, rule.every || 1);
@@ -67,11 +58,11 @@ function step(rule: Rule, base: string): string {
       return addDays(base, every);
     case "week": {
       const days = rule.days?.length ? rule.days : [isoWeekday(b)];
-      const w0 = mondayOf(b).getTime();
+      const w0 = weekStart(base);
       for (let i = 1; i <= 7 * every + 7; i++) {
-        const d = parseDay(addDays(base, i));
-        const week = Math.round((mondayOf(d).getTime() - w0) / (7 * 864e5));
-        if (week % every === 0 && days.includes(isoWeekday(d))) return dayKey(d);
+        const day = addDays(base, i);
+        const week = daysBetween(w0, weekStart(day)) / 7;
+        if (week % every === 0 && days.includes(isoWeekday(parseDay(day)))) return day;
       }
       return addDays(base, 7 * every);
     }
@@ -153,7 +144,6 @@ export const PRESETS: { name: string; rule: Rule }[] = [
 
 export const WD_SHORT = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"];
 const WD_ACC = ["понедельник", "вторник", "среду", "четверг", "пятницу", "субботу", "воскресенье"];
-const MON_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
 const NTH = ["", "1-й", "2-й", "3-й", "4-й"];
 
 function unit(n: number, one: string, few: string, many: string) {
@@ -188,12 +178,11 @@ export function describe(rule: Rule): string {
     else if (rule.day) s += `, ${rule.day} числа`;
   } else {
     s = n === 1 ? "Каждый год" : `Каждые ${n} ${unit(n, "год", "года", "лет")}`;
-    if (rule.day && rule.month) s += `, ${rule.day} ${MON_GEN[rule.month - 1]}`;
+    if (rule.day && rule.month) s += `, ${rule.day} ${MONTHS_GEN[rule.month - 1]}`;
   }
   if (rule.fromDone) s += ", от выполнения";
   if (rule.until) {
-    const d = parseDay(rule.until);
-    s += `, до ${d.getDate()} ${MON_GEN[d.getMonth()]}`;
+    s += `, до ${dayMonth(parseDay(rule.until))}`;
   }
   if (rule.count != null) s += `, ещё ${rule.count} ${unit(rule.count, "раз", "раза", "раз")}`;
   return s;
