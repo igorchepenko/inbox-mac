@@ -231,17 +231,24 @@ export default function App() {
   const [dropTarget, setDropTarget] = useState<number | null>(null);
   const [dropOnDetails, setDropOnDetails] = useState(false);
   const live = useRef({ sel, tasks, busy: false });
+  const lastRow = useRef<number | null>(null);
   live.current = { sel, tasks, busy: newOpen || !!projectDlg || helpOpen };
   useEffect(() => {
+    // Над панелью задачи зона горит всё время, пока там курсор: решает панель целиком, а не то, что под курсором внутри неё.
+    // Между строками списка остаётся последняя строка, иначе подсветка моргала бы на каждом зазоре.
     const targetAt = (pos: { x: number; y: number }) => {
       const el = document.elementFromPoint(pos.x / devicePixelRatio, pos.y / devicePixelRatio);
-      const row = el?.closest<HTMLElement>("[data-task-id]");
-      const id = row ? Number(row.dataset.taskId) : live.current.sel;
+      const onPanel = !!el?.closest(".det");
+      const row = onPanel ? null : el?.closest<HTMLElement>("[data-task-id]");
+      if (row) lastRow.current = Number(row.dataset.taskId);
+      const inList = !onPanel && !!el?.closest(".views");
+      const id = onPanel ? live.current.sel : row ? Number(row.dataset.taskId) : inList ? lastRow.current ?? live.current.sel : live.current.sel;
       const t = live.current.tasks.find((x) => x.id === id);
-      return { id: t && t.status !== "archived" && !live.current.busy ? t.id : null, onRow: !!row };
+      return { id: t && t.status !== "archived" && !live.current.busy ? t.id : null, onRow: !onPanel && (!!row || (inList && lastRow.current != null)) };
     };
     const un = getCurrentWebview().onDragDropEvent(({ payload: p }) => {
-      if (p.type === "leave") return setDropTarget(null);
+      if (p.type === "leave") return (lastRow.current = null), setDropTarget(null);
+      if (p.type === "enter") lastRow.current = null;
       const { id, onRow } = targetAt(p.position);
       if (p.type === "drop") {
         setDropTarget(null);

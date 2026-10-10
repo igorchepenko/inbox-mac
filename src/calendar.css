@@ -95,7 +95,7 @@
 .cal-ev { --c: var(--stand); position: absolute; z-index: var(--z, 1); display: flex; flex-direction: column; gap: 1px; padding: 3px 6px 3px 7px; overflow: hidden;
   border-radius: 7px; cursor: grab; font-size: 11.5px; line-height: 15px;
   background: color-mix(in srgb, var(--c) 15%, var(--surface)); border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
-  box-shadow: inset 3px 0 0 var(--c); }
+  box-shadow: inset 3px 0 0 var(--c); container-type: inline-size; }
 .cal-ev:hover { z-index: 9; border-color: color-mix(in srgb, var(--c) 60%, transparent); }
 .cal-ev.short { padding-top: 0; padding-bottom: 0; justify-content: center; }
 .cal-ev.done { box-shadow: inset 3px 0 0 var(--line); }
@@ -104,6 +104,10 @@
 .cal-ev-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cal-ev:not(.short):not(.compact) .cal-ev-t { white-space: normal; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 .cal-ev-time { font-family: var(--mono); font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Узкие колонки (рядом несколько задач): остаётся название и время начала, остальное в подсказке при наведении */
+@container (max-width: 110px) { .cal-ev-rest { display: none; } .cal-ev-head { gap: 3px; } .cal-ev .cal-chk { width: 10px; height: 10px; } }
+@container (max-width: 70px) { .cal-ev-head > svg { display: none; } .cal-ev-head::after { display: none; } .cal-ev-t { font-size: 11px; line-height: 13px; overflow-wrap: anywhere; } }
 
 /* Ручки растягивания сверху и снизу */
 .cal-grip { position: absolute; left: 0; right: 0; height: 7px; cursor: ns-resize; z-index: 1; }

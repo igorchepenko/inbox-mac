@@ -286,9 +286,9 @@ export default function CalendarView(props: {
       ...accent(p?.color),
       top: it.start! * PX + 1,
       height: h,
-      // Пересекающиеся задачи заходят друг на друга, как в Календаре macOS: так каждой хватает ширины на название
+      // Пересекающиеся задачи встают рядом колонками, как в Google Календаре
       left: `calc(${(it.col / it.cols) * 100}% + 2px)`,
-      width: `calc(${it.col === it.cols - 1 ? 100 / it.cols : Math.min(100 - (it.col / it.cols) * 100, (100 / it.cols) * 1.7)}% - 4px)`,
+      width: `calc(${100 / it.cols}% - 4px)`,
       ["--z" as string]: it.col + 1,
     };
     const canResize = movable(it) && !ghost;
@@ -303,7 +303,7 @@ export default function CalendarView(props: {
           <span className="cal-ev-t">{it.task.title}</span>
           {it.virtual && <Repeat size={11} className="cal-rep" />}
         </div>
-        {h >= 30 && <span className="cal-ev-time">{label(it.start!)}–{label(it.end!)}{p ? ` · ${p.name}` : ""}</span>}
+        {h >= 30 && <span className="cal-ev-time">{label(it.start!)}<span className="cal-ev-rest">–{label(it.end!)}{p ? ` · ${p.name}` : ""}</span></span>}
         {canResize && <div className="cal-grip bottom" onPointerDown={(e) => begin(e, it, "end")} />}
       </div>
     );
