@@ -105,6 +105,12 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius
 .row.sel { background: color-mix(in srgb, var(--stand) 10%, var(--surface)); border-color: color-mix(in srgb, var(--stand) 55%, transparent); }
 .row.done { background: transparent; }
 .row .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+/* Строка не вылезает за рамку при широкой правой или левой панели: значки не сжимаются, а в узкой строке второстепенные прячутся */
+.row { container-type: inline-size; min-width: 0; overflow: hidden; }
+.row > :not(.t):not(.meta.who) { flex-shrink: 0; white-space: nowrap; }
+@container (max-width: 560px) { .row > .meta.created, .row > .meta.badge { display: none; } }
+@container (max-width: 440px) { .row > .stage, .row > .tchips { display: none; } }
+@container (max-width: 340px) { .row > .tag, .row > .meta.who { display: none; } }
 .row.done .t { text-decoration: line-through; color: var(--muted); }
 .chk { width: 17px; height: 17px; border-radius: 6px; flex: none; border: 2px solid var(--muted); }
 .chk:hover:not(:disabled) { border-color: var(--exercise); }
