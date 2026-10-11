@@ -137,6 +137,12 @@ fn migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/008_tags_assignee.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 9,
+            description: "task deadline",
+            sql: include_str!("../migrations/009_deadline.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 

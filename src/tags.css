@@ -42,6 +42,8 @@
 .fchip.on { box-shadow: 0 0 0 2px var(--stand); }
 .fchip.person.on { border-color: transparent; background: color-mix(in srgb, var(--stand) 14%, transparent); }
 .fchip.static:hover { box-shadow: none; }
+.fchip.space { gap: 5px; }
+.fsp-ic { display: inline-flex; }
 .filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -4px 0 10px; color: var(--muted); }
 .filter-bar .meta { margin-left: 4px; }
 

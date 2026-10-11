@@ -9,23 +9,24 @@ import { Paperclip } from "lucide-react";
 import { Checklist, Chip, DateField, Files, Line, Links, PriorityPicker, QuadrantPicker, RepeatField, TimeRange, type RunDb } from "./extras";
 import { quickKeyLabel } from "./prefs";
 import { PersonInput, TagInput } from "./TagsUI";
+import { DeadlineField } from "./DeadlineUI";
 import { addTagName, canonicalPerson, parseQuick } from "./tags";
 
 export { PRIORITY } from "./priority";
 
 /** Карточка записи задачи. Используется и в отдельном окне ⌥Space, и внутри приложения по N.
  * Дата, время, проект и остальное по желанию: блок свёрнут, открывается кнопкой или ⌘E */
-export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: string[]; onSave: (title: string, note: string, draft: Draft) => void; onCancel: () => void; profile?: string }) {
+export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: string[]; onSave: (title: string, note: string, draft: Draft) => void; onCancel: () => void; profile?: string; initial?: Draft }) {
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
   const [more, setMore] = useState(false);
-  const [d, setD] = useState<Draft & { remind?: string }>({});
+  const [d, setD] = useState<Draft & { remind?: string }>(props.initial ?? {});
   const titleRef = useRef<HTMLInputElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
   useAutosize(noteRef, note, 260);
   useEffect(() => titleRef.current?.focus(), []);
   const set = (patch: Partial<typeof d>) => setD((cur) => ({ ...cur, ...patch }));
-  const filled = [d.due_date, d.start_time, d.remind, d.recurrence, d.project_id, d.priority, d.quadrant, d.assigned_by].filter((v) => v != null && v !== "").length
+  const filled = [d.due_date, d.deadline, d.start_time, d.remind, d.recurrence, d.project_id, d.priority, d.quadrant, d.assigned_by].filter((v) => v != null && v !== "").length
     + (d.tags?.length ? 1 : 0);
 
   const submit = () => {
@@ -74,6 +75,7 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
           <Line label="Время">
             <TimeRange start={d.start_time ?? null} end={d.end_time ?? null} onChange={(a, b) => set({ start_time: a, end_time: b })} />
           </Line>
+          <Line label="Дедлайн"><DeadlineField inline value={d.deadline ?? null} onChange={(v) => set({ deadline: v })} /></Line>
           <Line label="Напомнить"><TimeInput value={d.remind ?? ""} onCommit={(v) => set({ remind: v || undefined })} /></Line>
           <Line label="Повтор"><RepeatField inline value={d.recurrence ?? null} due={d.due_date ?? null} onChange={(v) => set({ recurrence: v })} /></Line>
           {props.projects.length > 0 && (
@@ -92,8 +94,8 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
         </div>
       )}
       <div className="qi-foot">
-        <button type="button" className={`more-btn ${more ? "on" : ""}`} onClick={() => setMore((m) => !m)} data-tip="Дата, время, пространство, теги" data-key="⌘E">
-          {more ? "Скрыть параметры" : filled ? `Параметры · ${filled}` : "+ Дата, время, теги…"}
+        <button type="button" className={`more-btn ${more ? "on" : ""}`} onClick={() => setMore((m) => !m)} data-tip="Дата, дедлайн, пространство, теги" data-key="⌘E">
+          {more ? "Скрыть параметры" : filled ? `Параметры · ${filled}` : "+ Дата, дедлайн, теги…"}
         </button>
         <span className="grow" />
         <span>Попадёт в «Новые»{props.profile && <> профиля <b className="qi-profile">{props.profile}</b></>}</span>
@@ -120,7 +122,7 @@ export function Ring({ fraction, accent, count }: { fraction: number; accent: st
   );
 }
 
-export type TaskPatch = Partial<Pick<Task, "title" | "note" | "priority" | "project_id" | "due_date" | "remind_at" | "reminded" | "start_time" | "end_time" | "quadrant" | "recurrence" | "assigned_by">>;
+export type TaskPatch = Partial<Pick<Task, "title" | "note" | "priority" | "project_id" | "due_date" | "remind_at" | "reminded" | "start_time" | "end_time" | "quadrant" | "recurrence" | "assigned_by" | "deadline" | "deadline_notified">>;
 
 export function Details(props: {
   task: Task;
@@ -227,6 +229,9 @@ export function Details(props: {
             </>
           )}
         </Line>
+        <Line label="Дедлайн">
+          <DeadlineField value={x.deadline} disabled={locked} onChange={(v) => onPatch({ deadline: v, deadline_notified: 0 })} />
+        </Line>
         <Line label="Повтор">
           <RepeatField value={x.recurrence} due={x.due_date} onChange={setRepeat} disabled={locked} />
         </Line>
@@ -303,7 +308,7 @@ function DropZone({ over, title }: { over: HTMLElement | null; title: string }) 
 export const SHORTCUTS: [string, string][] = [
   ["⌥ Space", "Быстрый ввод из любого приложения"],
   ["N", "Записать задачу"],
-  ["⌘E", "Дата, время, пространство, теги при записи"],
+  ["⌘E", "Дата, дедлайн, пространство, теги при записи"],
   ["#тег @Имя", "В названии: тег и кто назначил"],
   ["↑ ↓", "Выбрать задачу"],
   ["Enter", "Разобрать (в «Новые»)"],

@@ -80,18 +80,24 @@ export function parseQuick(text: string): { title: string; tags: string[]; perso
   return { title, tags, person };
 }
 
-/** Фильтр списка и канбана. Теги: задача с любым из выбранных. Человек: null — все, NO_PERSON — без назначившего */
+/**
+ * Фильтр списка, канбана и календаря. Пространства и теги: задача из любого выбранного (NO_SPACE — без пространства).
+ * Человек: null — все, NO_PERSON — без назначившего
+ */
 export interface TaskFilter {
+  spaces: number[];
   tags: number[];
   person: string | null;
 }
 export const NO_PERSON = "";
-export const EMPTY_FILTER: TaskFilter = { tags: [], person: null };
-export const filterOn = (f: TaskFilter) => f.tags.length > 0 || f.person !== null;
+export const NO_SPACE = 0;
+export const EMPTY_FILTER: TaskFilter = { spaces: [], tags: [], person: null };
+export const filterOn = (f: TaskFilter) => f.spaces.length > 0 || f.tags.length > 0 || f.person !== null;
 
 export function applyFilter(tasks: Task[], f: TaskFilter): Task[] {
   if (!filterOn(f)) return tasks;
   return tasks.filter((x) => {
+    if (f.spaces.length && !f.spaces.includes(x.project_id ?? NO_SPACE)) return false;
     if (f.tags.length && !x.tags.some((t) => f.tags.includes(t.id))) return false;
     if (f.person === NO_PERSON) return !x.assigned_by;
     if (f.person !== null) return !!x.assigned_by && sameName(x.assigned_by, f.person);

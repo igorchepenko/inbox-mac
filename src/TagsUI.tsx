@@ -2,9 +2,10 @@
 // Поля работают и в правой панели, и в форме записи задачи (⌥Space и N)
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ListFilter, UserRound, X } from "lucide-react";
-import type { Tag, TagPatch } from "./db";
+import type { Project, Tag, TagPatch } from "./db";
+import { Icon } from "./icons";
 import { PALETTE } from "./palette";
-import { addTagName, canonicalPerson, filterOn, NO_PERSON, sameName, suggest, TAG_COLORS, TAG_MAX, TAG_MAX_LEN, type TaskFilter } from "./tags";
+import { addTagName, canonicalPerson, EMPTY_FILTER, filterOn, NO_PERSON, NO_SPACE, sameName, suggest, TAG_COLORS, TAG_MAX, TAG_MAX_LEN, type TaskFilter } from "./tags";
 import { ColorGrid, Popover } from "./widgets";
 import { plural } from "./views";
 
@@ -197,22 +198,55 @@ export function TagEditor(props: {
   );
 }
 
-/** Кнопка фильтра в шапке списка: теги (любой из выбранных) и кто назначил */
-export function FilterButton(props: { filter: TaskFilter; tags: Tag[]; people: string[]; lockTag?: number; onChange: (f: TaskFilter) => void }) {
+/** Пространство в фильтре: иконка его цвета и название */
+function SpaceChip({ project: p, on, onClick, onRemove }: { project?: Project; on?: boolean; onClick?: () => void; onRemove?: () => void }) {
+  const body = (
+    <>
+      {p ? <span className="fsp-ic" style={{ color: `var(--${p.color})` }}><Icon name={p.icon} size={12} /></span> : null}
+      {p?.name ?? "Без пространства"}
+    </>
+  );
+  if (onRemove)
+    return (
+      <span className="fchip person space on static">
+        {body}
+        <button type="button" className="tchip-x" aria-label="Убрать" onClick={onRemove}><X size={10} strokeWidth={2.6} /></button>
+      </span>
+    );
+  return <button type="button" className={`fchip person space ${on ? "on" : ""}`} onClick={onClick}>{body}</button>;
+}
+
+const toggle = (xs: number[], id: number) => (xs.includes(id) ? xs.filter((x) => x !== id) : [...xs, id]);
+
+/** Кнопка фильтра в шапке: пространства и теги (любое из выбранных) и кто назначил. Внутри пространства его фильтра нет */
+export function FilterButton(props: {
+  filter: TaskFilter; projects: Project[]; tags: Tag[]; people: string[]; lockTag?: number; noSpaces?: boolean; onChange: (f: TaskFilter) => void;
+}) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const { filter: f } = props;
-  const n = f.tags.length + (f.person !== null ? 1 : 0);
+  const n = f.spaces.length + f.tags.length + (f.person !== null ? 1 : 0);
   const tags = props.tags.filter((t) => t.id !== props.lockTag);
-  const toggleTag = (id: number) => props.onChange({ ...f, tags: f.tags.includes(id) ? f.tags.filter((x) => x !== id) : [...f.tags, id] });
+  const toggleTag = (id: number) => props.onChange({ ...f, tags: toggle(f.tags, id) });
+  const toggleSpace = (id: number) => props.onChange({ ...f, spaces: toggle(f.spaces, id) });
   const setPerson = (p: string | null) => props.onChange({ ...f, person: f.person === p ? null : p });
   return (
     <>
-      <button className={`icon-btn ${n ? "on" : ""}`} data-tip="Фильтр по тегам и тому, кто назначил" onClick={(e) => setAnchor(anchor ? null : e.currentTarget)}>
+      <button className={`icon-btn ${n ? "on" : ""}`} data-tip={props.noSpaces ? "Фильтр по тегам и тому, кто назначил" : "Фильтр по пространствам, тегам и тому, кто назначил"}
+        onClick={(e) => setAnchor(anchor ? null : e.currentTarget)}>
         <ListFilter size={13} /> Фильтр{n > 0 && <span className="fcount">{n}</span>}
       </button>
       {anchor && (
-        <Popover anchor={anchor} onClose={() => setAnchor(null)} width={300}>
-          <div className="lbl">Теги <span className="opt">задачи с любым из выбранных</span></div>
+        <Popover anchor={anchor} onClose={() => setAnchor(null)} width={320}>
+          {!props.noSpaces && (
+            <>
+              <div className="lbl">Пространства <span className="opt">задачи из любого выбранного</span></div>
+              <div className="seg">
+                {props.projects.map((p) => <SpaceChip key={p.id} project={p} on={f.spaces.includes(p.id)} onClick={() => toggleSpace(p.id)} />)}
+                <SpaceChip on={f.spaces.includes(NO_SPACE)} onClick={() => toggleSpace(NO_SPACE)} />
+              </div>
+            </>
+          )}
+          <div className={`lbl ${props.noSpaces ? "" : "sub-lbl"}`}>Теги <span className="opt">задачи с любым из выбранных</span></div>
           <div className="seg">
             {tags.map((t) => (
               <button type="button" key={t.id} className={`fchip ${f.tags.includes(t.id) ? "on" : ""}`} onClick={() => toggleTag(t.id)}>
@@ -230,7 +264,7 @@ export function FilterButton(props: { filter: TaskFilter; tags: Tag[]; people: s
             ))}
             <button type="button" className={`fchip person ${f.person === NO_PERSON ? "on" : ""}`} onClick={() => setPerson(NO_PERSON)}>Сам себе</button>
           </div>
-          {n > 0 && <button type="button" className="link tag-del" onClick={() => props.onChange({ tags: [], person: null })}>Сбросить фильтр</button>}
+          {n > 0 && <button type="button" className="link tag-del" onClick={() => props.onChange(EMPTY_FILTER)}>Сбросить фильтр</button>}
         </Popover>
       )}
     </>
@@ -238,12 +272,16 @@ export function FilterButton(props: { filter: TaskFilter; tags: Tag[]; people: s
 }
 
 /** Что сейчас отфильтровано: под шапкой, у каждого условия крестик */
-export function FilterBar(props: { filter: TaskFilter; tags: Tag[]; shown: number; onChange: (f: TaskFilter) => void }) {
+export function FilterBar(props: { filter: TaskFilter; projects: Project[]; tags: Tag[]; shown?: number; onChange: (f: TaskFilter) => void }) {
   const { filter: f } = props;
   if (!filterOn(f)) return null;
   return (
     <div className="filter-bar">
       <ListFilter size={13} />
+      {f.spaces.map((id) => {
+        const p = props.projects.find((x) => x.id === id);
+        return (id === NO_SPACE || p) && <SpaceChip key={`s${id}`} project={p} onRemove={() => props.onChange({ ...f, spaces: f.spaces.filter((x) => x !== id) })} />;
+      })}
       {f.tags.map((id) => {
         const t = props.tags.find((x) => x.id === id);
         return t && <TagChip key={id} name={t.name} color={t.color} onRemove={() => props.onChange({ ...f, tags: f.tags.filter((x) => x !== id) })} />;
@@ -254,8 +292,8 @@ export function FilterBar(props: { filter: TaskFilter; tags: Tag[]; shown: numbe
           <button type="button" className="tchip-x" aria-label="Убрать" onClick={() => props.onChange({ ...f, person: null })}><X size={10} strokeWidth={2.6} /></button>
         </span>
       )}
-      <span className="meta">{props.shown ? `показано ${plural(props.shown, "задача", "задачи", "задач")}` : "ничего не подходит"}</span>
-      <button type="button" className="link" onClick={() => props.onChange({ tags: [], person: null })}>сбросить</button>
+      {props.shown != null && <span className="meta">{props.shown ? `показано ${plural(props.shown, "задача", "задачи", "задач")}` : "ничего не подходит"}</span>}
+      <button type="button" className="link" onClick={() => props.onChange(EMPTY_FILTER)}>сбросить</button>
     </div>
   );
 }

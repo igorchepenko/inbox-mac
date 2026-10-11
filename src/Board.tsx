@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { spaceVars } from "./palette";
-import { Bell, CalendarDays, Check, Clock, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound } from "lucide-react";
+import { Bell, CalendarDays, Check, Clock, Columns3, FlagTriangleRight, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound } from "lucide-react";
 import { Assignee, TagChip } from "./TagsUI";
+import { DeadlineFlag } from "./DeadlineUI";
 import type { Project, Task } from "./db";
 import { addDays, fmtDay, fmtRange, nextMonday, stampTime, today } from "./dates";
 import { TARGETS, type BoardColumn, type Layout, type Stage } from "./boardOps";
@@ -37,6 +38,7 @@ export function SortSwitch({ value, onChange }: { value: SortBy; onChange: (s: S
     date: <CalendarDays size={14} />,
     priority: <PriorityIcon p={5} size={14} color="currentColor" />,
     matrix: <Grid2x2 size={14} />,
+    deadline: <FlagTriangleRight size={14} />,
     tag: <Tag size={14} />,
     assignee: <UserRound size={14} />,
   };
@@ -62,6 +64,7 @@ function Meta({ task: x, project }: { task: Task; project?: Project }) {
   return (
     <div className="card-meta">
       {x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`}><CalendarDays size={11} /> {fmtDay(x.due_date)}</span>}
+      {!done && <DeadlineFlag task={x} />}
       {x.start_time && <span className="meta"><Clock size={11} /> {fmtRange(x.start_time, x.end_time)}</span>}
       {x.remind_at && !x.reminded && !done && <span className="meta"><Bell size={11} /> {stampTime(x.remind_at)}</span>}
       {x.subtasks.length > 0 && <span className="meta"><ListChecks size={11} /> {checked}/{x.subtasks.length}</span>}
@@ -77,7 +80,7 @@ function Meta({ task: x, project }: { task: Task; project?: Project }) {
 }
 
 function hasMeta(x: Task, project?: Project) {
-  return !!(x.due_date || x.start_time || x.remind_at || x.recurrence || x.quadrant || x.subtasks.length || x.links.length || x.files.length || x.tags.length || x.assigned_by || project);
+  return !!(x.due_date || x.deadline || x.start_time || x.remind_at || x.recurrence || x.quadrant || x.subtasks.length || x.links.length || x.files.length || x.tags.length || x.assigned_by || project);
 }
 
 interface Drag {
