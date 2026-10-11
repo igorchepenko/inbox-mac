@@ -1,17 +1,19 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BellRing, Check, FolderOpen, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, SlidersHorizontal, Type, UserRound, X, type LucideIcon } from "lucide-react";
+import { BellRing, Check, FolderOpen, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, SlidersHorizontal, Type, UserRound, Users, X, type LucideIcon } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as autostartEnabled } from "@tauri-apps/plugin-autostart";
 import { Icon } from "./icons";
 import { plural, VIEWS, type ViewId } from "./views";
-import { alertOf, DEADLINE_DAYS } from "./deadline";
-import { IconGrid, Popover, ThemeSwitch, TimeInput } from "./widgets";
+import { beforeName, defaultBefore, REMIND_BEFORE } from "./remind";
+import { loadPeopleStats, renamePerson } from "./db";
+import { sameName } from "./tags";
+import { IconGrid, Popover, ThemeSwitch, TimeInput, Toggle } from "./widgets";
 import { savedTheme, setTheme } from "./theme";
 import { HomeSettings } from "./HomeSettings";
 import { HomeIcon } from "./home/Home";
 import { QuickKeyTest } from "./QuickKeyCheck";
 import { activeProfile, PROFILES, switchProfile } from "./profile";
-import { ensurePermission, notify } from "./reminders";
+import { notify, permission } from "./reminders";
 import {
   accelFromEvent, DEFAULT_APPEARANCE, DEFAULTS, FONTS, labelFromAccel, pref, savedAppearance, setAppearance, SIZES, SOUNDS, type Appearance,
 } from "./prefs";
@@ -23,6 +25,8 @@ export interface SettingsProps {
   onQuickShortcut: (accel: string) => Promise<string | null>;
   shortcutError: string | null;
   onClose: () => void;
+  /** Перечитать задачи в главном окне после правок в базе из настроек */
+  onData?: () => void;
 }
 
 // Разделы по порядку в левой колонке. Новый раздел достаточно добавить сюда
@@ -31,6 +35,7 @@ const SECTIONS: { id: string; name: string; icon: LucideIcon; render: (p: Settin
   { id: "look", name: "Внешний вид", icon: Type, render: () => <Look /> },
   { id: "quick", name: "Быстрый ввод", icon: Keyboard, render: (p) => <Quick {...p} /> },
   { id: "notify", name: "Уведомления", icon: BellRing, render: (p) => <Notifications {...p} /> },
+  { id: "people", name: "Кто назначил", icon: Users, render: (p) => <People {...p} /> },
   { id: "menu", name: "Меню", icon: PanelLeft, render: (p) => <MenuItems {...p} /> },
   { id: "home", name: "Главная", icon: LayoutDashboard, render: (p) => <HomeSettings settings={p.settings} onSet={p.onSet} /> },
   { id: "profile", name: "Профиль", icon: UserRound, render: () => <Profiles /> },
@@ -113,12 +118,7 @@ export function ResetSection(props: { name: string; changed: boolean; onReset: (
   );
 }
 
-export function Toggle(props: { on: boolean; onChange: (on: boolean) => void; disabled?: boolean; label: string }) {
-  return (
-    <button type="button" role="switch" aria-checked={props.on} aria-label={props.label} disabled={props.disabled}
-      className={`toggle ${props.on ? "on" : ""}`} onClick={() => props.onChange(!props.on)} />
-  );
-}
+export { Toggle } from "./widgets";
 
 function Choice<T extends string>(props: { value: T; options: { id: T; name: ReactNode }[]; onPick: (v: T) => void; accent?: string }) {
   return (
@@ -295,16 +295,22 @@ function Notifications(p: SettingsProps) {
   const sound = pref(p.settings, "remind.sound");
   const digest = pref(p.settings, "digest.enabled") === "1";
   const digestChanged = digest !== (DEFAULTS["digest.enabled"] === "1") || pref(p.settings, "digest.time") !== DEFAULTS["digest.time"];
-  const dl = alertOf(p.settings);
-  const dlKeys = ["deadline.notify", "deadline.days", "deadline.time"] as const;
-  const dlChanged = dlKeys.some((k) => pref(p.settings, k) !== DEFAULTS[k]);
-  const notifChanged = enabled !== (DEFAULTS["remind.enabled"] === "1") || sound !== DEFAULTS["remind.sound"] || digestChanged || dlChanged;
-  const resetNotif = () => (["remind.enabled", "remind.sound", "digest.enabled", "digest.time", ...dlKeys] as const).forEach((k) => p.onSet(k, DEFAULTS[k]));
-  const [tested, setTested] = useState<string | null>(null);
+  const before = defaultBefore(p.settings);
+  const beforeChanged = String(before) !== DEFAULTS["remind.before"];
+  const notifChanged = enabled !== (DEFAULTS["remind.enabled"] === "1") || sound !== DEFAULTS["remind.sound"] || digestChanged || beforeChanged;
+  const resetNotif = () => (["remind.enabled", "remind.sound", "digest.enabled", "digest.time", "remind.before"] as const).forEach((k) => p.onSet(k, DEFAULTS[k]));
+  // Итог проверки: ok — ушло в macOS, иначе текст, что мешает
+  const [tested, setTested] = useState<{ ok: boolean; text: string } | null>(null);
   const test = async () => {
-    if (!(await ensurePermission())) return setTested("macOS не дал разрешения. Включи уведомления для Inbox в Системных настройках → Уведомления");
-    notify(p.settings, "Проверка уведомлений", "Так будут выглядеть напоминания Inbox");
-    setTested(null);
+    try {
+      const st = await permission(true);
+      if (st === "denied") return setTested({ ok: false, text: "macOS запретил уведомления для Inbox. Открой Системные настройки → Уведомления → Inbox и включи «Разрешить уведомления»" });
+      if (st !== "granted") return setTested({ ok: false, text: "macOS ещё не дал разрешения на уведомления. Нажми «Отправить» ещё раз и ответь «Разрешить» в окне macOS" });
+      await notify(p.settings, "Проверка уведомлений", "Так будут выглядеть напоминания Inbox");
+      setTested({ ok: true, text: "Отправлено. Если баннера нет, проверь в Системных настройках → Уведомления → Inbox стиль «Баннеры» и что не включён режим «Не беспокоить»" });
+    } catch (e) {
+      setTested({ ok: false, text: `macOS не принял уведомление: ${String(e).replace(/^Error: /, "")}` });
+    }
   };
   return (
     <div className="set-group">
@@ -313,16 +319,22 @@ function Notifications(p: SettingsProps) {
         <Toggle label="Уведомления" on={enabled} onChange={(on) => p.onSet("remind.enabled", on ? "1" : "0")} />
       </Row>
       <fieldset disabled={!enabled} className="set-group">
+        <Row name="Напоминание у задачи" hint="Какой вариант ставится, когда включаешь напоминание в задаче. Без времени считается от 9:00 её дня"
+          def={{ text: beforeName(Number(DEFAULTS["remind.before"])), changed: beforeChanged, reset: () => p.onSet("remind.before", DEFAULTS["remind.before"]) }}>
+          <select className="field set-select" value={before} aria-label="Напоминание по умолчанию" onChange={(e) => p.onSet("remind.before", e.target.value)}>
+            {REMIND_BEFORE.map((o) => <option key={o.value} value={o.value}>{o.name}</option>)}
+          </select>
+        </Row>
         <Row name="Звук" def={{ text: DEFAULTS["remind.sound"], changed: sound !== DEFAULTS["remind.sound"], reset: () => p.onSet("remind.sound", DEFAULTS["remind.sound"]) }}>
           <select className="field set-select" value={sound} onChange={(e) => p.onSet("remind.sound", e.target.value)}>
             <option value="none">Без звука</option>
             {SOUNDS.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </Row>
-        <Row name="Проверить" hint="Пришлёт пробное уведомление с выбранным звуком">
+        <Row name="Проверить" hint="Пришлёт пробное уведомление с выбранным звуком. В первый раз macOS спросит разрешение">
           <button type="button" className="btn" onClick={test}>Отправить</button>
         </Row>
-        {tested && <div className="error">{tested}</div>}
+        {tested && <div className={tested.ok ? "hint set-note" : "error"}>{tested.text}</div>}
         <Row name="Утренняя сводка" hint="Раз в день: сколько задач на сегодня и сколько ждут разбора"
           def={{ text: `${DEFAULTS["digest.enabled"] === "1" ? "включена" : "выключена"}, ${DEFAULTS["digest.time"]}`, changed: digestChanged,
             reset: () => (p.onSet("digest.enabled", DEFAULTS["digest.enabled"]), p.onSet("digest.time", DEFAULTS["digest.time"])) }}>
@@ -331,22 +343,88 @@ function Notifications(p: SettingsProps) {
             <Toggle label="Утренняя сводка" on={digest} onChange={(on) => p.onSet("digest.enabled", on ? "1" : "0")} />
           </div>
         </Row>
-        <Row name="Дедлайны" hint="Предупредить, что срок задачи подходит. Приходит один раз на задачу"
-          def={{ text: "за 1 день, 10:00", changed: dlChanged, reset: () => dlKeys.forEach((k) => p.onSet(k, DEFAULTS[k])) }}>
-          <div className="seg">
-            {dl.on && (
-              <>
-                <select className="field set-select" value={dl.days} aria-label="За сколько дней" onChange={(e) => p.onSet("deadline.days", e.target.value)}>
-                  {DEADLINE_DAYS.map((n) => <option key={n} value={n}>{n === 0 ? "в тот же день" : `за ${plural(n, "день", "дня", "дней")}`}</option>)}
-                </select>
-                <TimeInput value={dl.time} onCommit={(t) => t && p.onSet("deadline.time", t)} />
-              </>
-            )}
-            <Toggle label="Уведомления о дедлайнах" on={dl.on} onChange={(on) => p.onSet("deadline.notify", on ? "1" : "0")} />
-          </div>
-        </Row>
       </fieldset>
       <ResetSection name="Уведомления" changed={notifChanged} onReset={resetNotif} />
+    </div>
+  );
+}
+
+/** Кто назначал задачи: переименовать, объединить два написания одного человека, убрать */
+function People(p: SettingsProps) {
+  const [rows, setRows] = useState<{ name: string; count: number }[] | null>(null);
+  const [edit, setEdit] = useState<{ name: string; value: string } | null>(null);
+  const [armed, setArmed] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const load = () => loadPeopleStats().then(setRows).catch((e) => setError(String(e)));
+  useEffect(() => void load(), []);
+  const apply = async (from: string, to: string | null) => {
+    try {
+      await renamePerson(from, to);
+      setEdit(null);
+      setArmed(null);
+      setError(null);
+      await load();
+      p.onData?.();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+  const saveEdit = () => {
+    if (!edit) return;
+    const v = edit.value.replace(/\s+/g, " ").trim();
+    if (!v || v === edit.name) return setEdit(null);
+    apply(edit.name, v);
+  };
+  // Новое имя совпало с другим человеком: сохранение объединит их
+  const mergeInto = edit && rows?.find((r) => r.name !== edit.name && sameName(r.name, edit.value.trim()));
+  if (!rows) return <div className="hint">Загружаю…</div>;
+  return (
+    <div className="set-group">
+      <div className="hint">Имена из поля «Кто назначил». Переименование меняет имя во всех задачах. Если вписать имя другого человека, задачи объединятся под ним.</div>
+      {!rows.length && <div className="hint">Пока никто не назначал задач. Имя появится здесь, когда впишешь его в задачу или наберёшь @Имя при записи.</div>}
+      {rows.map((r) => (
+        <div key={r.name} className="set-row person-row">
+          <div className="set-text">
+            {edit?.name === r.name ? (
+              <input className="field" autoFocus value={edit.value} aria-label="Имя"
+                onChange={(e) => setEdit({ ...edit, value: e.target.value })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveEdit();
+                  if (e.key === "Escape") (e.stopPropagation(), setEdit(null));
+                }} />
+            ) : (
+              <div className="set-name">{r.name}</div>
+            )}
+            <div className="hint">
+              {edit?.name === r.name && mergeInto ? `Задачи перейдут к «${mergeInto.name}»` : plural(r.count, "задача", "задачи", "задач")}
+            </div>
+          </div>
+          <div className="set-ctl seg">
+            {edit?.name === r.name ? (
+              <>
+                <button type="button" className="btn small" onClick={saveEdit}>{mergeInto ? "Объединить" : "Сохранить"}</button>
+                <button type="button" className="link" onClick={() => setEdit(null)}>Отмена</button>
+              </>
+            ) : (
+              <>
+                <button type="button" className="btn small" onClick={() => setEdit({ name: r.name, value: r.name })}>Переименовать</button>
+                {rows.length > 1 && (
+                  <select className="field set-select" value="" aria-label={`Объединить ${r.name} с`}
+                    onChange={(e) => e.target.value && apply(r.name, e.target.value)}>
+                    <option value="">Объединить с…</option>
+                    {rows.filter((o) => o.name !== r.name).map((o) => <option key={o.name} value={o.name}>{o.name}</option>)}
+                  </select>
+                )}
+                <button type="button" className={`link danger ${armed === r.name ? "armed" : ""}`}
+                  onClick={() => (armed === r.name ? apply(r.name, null) : setArmed(r.name))} onBlur={() => setArmed(null)}>
+                  {armed === r.name ? "Точно? Задачи станут «Сам себе»" : "Удалить"}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      ))}
+      {error && <div className="error">{error}</div>}
     </div>
   );
 }

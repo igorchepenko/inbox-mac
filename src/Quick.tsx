@@ -3,7 +3,9 @@ import { LogicalSize } from "@tauri-apps/api/dpi";
 import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { addTask, loadPeople, loadProjects, loadTags, type Draft, type Project, type Tag } from "./db";
+import { addTask, loadPeople, loadProjects, loadSettings, loadTags, loadTasks, type Draft, type Project, type Tag } from "./db";
+import { syncPlan } from "./reminders";
+import { defaultBefore } from "./remind";
 import { QuickForm } from "./components";
 import { currentZoom } from "./prefs";
 import { activeProfile, profileName } from "./profile";
@@ -19,11 +21,13 @@ export default function QuickApp() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [people, setPeople] = useState<string[]>([]);
-  // Пространства, теги и люди для подсказок: перечитываем при каждом открытии, их могли поменять в главном окне
+  const [remindBefore, setRemindBefore] = useState(15);
+  // Пространства, теги, люди и напоминание по умолчанию: перечитываем при каждом открытии, их могли поменять в главном окне
   const refreshProjects = () => {
     loadProjects().then(setProjects).catch(() => {});
     loadTags().then(setTags).catch(() => {});
     loadPeople().then(setPeople).catch(() => {});
+    loadSettings().then((st) => setRemindBefore(defaultBefore(st))).catch(() => {});
   };
   const win = getCurrentWindow();
   const root = useRef<HTMLDivElement>(null);
@@ -61,6 +65,8 @@ export default function QuickApp() {
     try {
       await addTask(title, note, draft);
       setError(null);
+      // Напоминание сразу в расписание macOS: главное окно может быть спрятано и прочитает базу не скоро
+      if (draft.remind_at) Promise.all([loadTasks(), loadSettings()]).then(([t, st]) => syncPlan(t, st)).catch(() => {});
       setKey((k) => k + 1);
       await hideQuick();
       await emit("tasks-changed");
@@ -77,7 +83,7 @@ export default function QuickApp() {
 
   return (
     <div ref={root} className="quick-root">
-      <QuickForm key={key} projects={projects} tags={tags} people={people} onSave={save} onCancel={cancel} profile={profileName(activeProfile())} />
+      <QuickForm key={key} projects={projects} tags={tags} people={people} remindBefore={remindBefore} onSave={save} onCancel={cancel} profile={profileName(activeProfile())} />
       {error && <div className="error">Не сохранилось: {error}</div>}
     </div>
   );

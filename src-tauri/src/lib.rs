@@ -1,3 +1,5 @@
+mod notify;
+
 use tauri::{
     image::Image,
     menu::{CheckMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu},
@@ -141,6 +143,12 @@ fn migrations() -> Vec<Migration> {
             version: 9,
             description: "task deadline",
             sql: include_str!("../migrations/009_deadline.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 10,
+            description: "reminder offset, meeting kind, deadline into date",
+            sql: include_str!("../migrations/010_remind_kind.sql"),
             kind: MigrationKind::Up,
         },
     ]
@@ -530,7 +538,6 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .plugin(sql.build())
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
@@ -565,7 +572,10 @@ pub fn run() {
             reveal_path,
             open_url,
             use_profile,
-            open_backups
+            open_backups,
+            notify::notify_status,
+            notify::notify_send,
+            notify::notify_plan
         ])
         // «Настройки…» ⌘, в меню приложения
         .on_menu_event(|app, event| {

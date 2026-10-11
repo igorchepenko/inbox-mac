@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { ChevronLeft, ChevronRight, Repeat } from "lucide-react";
 import type { Project, Task } from "./db";
 import * as db from "./db";
-import { DAY_END, pad, parseDay, stampTime, today, toHHMM, weekdayShort, WEEKDAYS } from "./dates";
+import { DAY_END, pad, parseDay, today, toHHMM, weekdayShort, WEEKDAYS } from "./dates";
 import { Icon } from "./icons";
 import {
   byDayOrder, DEFAULT_LEN, itemsFor, label, layoutDay, movable, rangeFor, shiftAnchor, snap, STEP, titleFor,
@@ -12,6 +12,8 @@ import { edgeScroll, pastThreshold, trackPointer } from "./drag";
 import "./calendar.css";
 import { profileKey } from "./profile";
 import { PriorityIcon } from "./priority";
+import { remindPatch } from "./remind";
+import { MeetingMark } from "./TaskBits";
 
 type Patch = Parameters<typeof db.updateTask>[1];
 
@@ -272,6 +274,7 @@ export default function CalendarView(props: {
         <Check it={it} onToggle={props.onToggle} />
         {it.start != null && <span className="cal-chip-time">{label(it.start)}</span>}
         {it.task.priority > 0 && !it.done && <PriorityIcon p={it.task.priority} size={12} />}
+        <MeetingMark task={it.task} />
         <span className="cal-chip-t">{it.task.title}</span>
         {it.virtual && <Repeat size={11} className="cal-rep" />}
       </div>
@@ -302,7 +305,7 @@ export default function CalendarView(props: {
         <div className="cal-ev-head">
           <Check it={it} onToggle={props.onToggle} />
           {it.task.priority > 0 && !it.done && <PriorityIcon p={it.task.priority} size={12} />}
-          <span className="cal-ev-t">{it.task.title}</span>
+          <span className="cal-ev-t"><MeetingMark task={it.task} />{it.task.title}</span>
           {it.virtual && <Repeat size={11} className="cal-rep" />}
         </div>
         {h >= 30 && <span className="cal-ev-time">{label(it.start!)}<span className="cal-ev-rest">–{label(it.end!)}{p ? ` · ${p.name}` : ""}</span></span>}
@@ -466,12 +469,10 @@ function patchFor(it: Item, to: Spot, kind: Drag["kind"], mode: CalMode): Patch 
       if (et !== x.end_time) p.end_time = et;
     }
   }
-  // Напоминание едет вместе с задачей. Если оно стояло на начало, то и остаётся на начале
+  // Напоминание едет вместе с задачей: «за 15 минут» пересчитывается от нового начала, своё время сдвигается на те же дни
   if (x.remind_at && (p.due_date || p.start_time !== undefined)) {
-    let rt = stampTime(x.remind_at);
-    if (x.start_time && rt === x.start_time && to.start != null && mode !== "month") rt = toHHMM(to.start);
-    const r = `${to.day}T${rt}`;
-    if (r !== x.remind_at) Object.assign(p, { remind_at: r, reminded: 0 });
+    const r = remindPatch(x, { due_date: to.day, start_time: p.start_time !== undefined ? p.start_time : x.start_time });
+    if (r.remind_at !== x.remind_at) Object.assign(p, r);
   }
   return Object.keys(p).length ? p : null;
 }
@@ -495,11 +496,12 @@ function chipClass(it: Item, selected: number | null): string {
     !it.virtual && it.task.id === selected && "sel",
     it.task.priority >= 4 && !it.done && "high",
     !it.done && !it.virtual && it.day < today() && "overdue",
+    it.task.kind === "meeting" && "meeting",
   ].filter(Boolean).join(" ");
 }
 
 function tip(it: Item, p?: Project): string {
-  const parts = [it.task.title];
+  const parts = [it.task.kind === "meeting" ? `Встреча: ${it.task.title}` : it.task.title];
   if (it.start != null) parts.push(`${label(it.start)}–${label(it.end!)}`);
   if (p) parts.push(p.name);
   if (it.virtual) parts.push("будущий повтор, переносится ближайший");

@@ -304,3 +304,11 @@ export function ProjectDialog(props: {
     </div>
   );
 }
+
+/** Переключатель да/нет в стиле macOS */
+export function Toggle(props: { on: boolean; onChange: (on: boolean) => void; disabled?: boolean; label: string }) {
+  return (
+    <button type="button" role="switch" aria-checked={props.on} aria-label={props.label} disabled={props.disabled}
+      className={`toggle ${props.on ? "on" : ""}`} onClick={() => props.onChange(!props.on)} />
+  );
+}
