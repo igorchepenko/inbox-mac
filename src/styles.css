@@ -330,3 +330,12 @@ html.quick, html.quick body { background: transparent; }
 .def-mark { font-style: normal; font-size: 7px; color: var(--stand); margin-left: 4px; vertical-align: 2px; }
 .set-reset { display: flex; align-items: center; gap: 12px; margin-top: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
 .set-reset .btn:disabled { opacity: .45; }
+
+/* Форма записи не выше экрана: название, заметка и низ на месте, параметры прокручиваются.
+   В окне ⌥Space предел задаёт само окно (--qmax, Quick.tsx), в приложении — высота окна */
+.qi > * { flex: none; }
+.qi-more { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.overlay .qi { max-height: calc(86vh - 24px); }
+.quick-root .qi { max-height: calc(var(--qmax, 100vh) - 20px); }
+/* «Пространство» — самая длинная подпись, колонка под неё */
+.qi-more .line { grid-template-columns: 96px minmax(0, 1fr); }
