@@ -5,7 +5,7 @@ import { ListFilter, UserRound, X } from "lucide-react";
 import type { Project, Tag, TagPatch } from "./db";
 import { Icon } from "./icons";
 import { PALETTE } from "./palette";
-import { addTagName, canonicalPerson, EMPTY_FILTER, filterOn, NO_PERSON, NO_SPACE, sameName, suggest, TAG_COLORS, TAG_MAX, TAG_MAX_LEN, type TaskFilter } from "./tags";
+import { addTagName, canonicalPerson, EMPTY_FILTER, filterOn, NO_PERSON, NO_SPACE, pickColor, sameName, suggest, TAG_COLORS, TAG_MAX, TAG_MAX_LEN, type TaskFilter } from "./tags";
 import { ColorGrid, Popover } from "./widgets";
 import { plural } from "./views";
 
@@ -40,7 +40,7 @@ export function TagChips({ tags, max = 3 }: { tags: Tag[]; max?: number }) {
 
 /** Кто назначил: маленькая подпись с иконкой человека */
 export function Assignee({ name }: { name: string }) {
-  return <span className="meta who" title={`Назначил: ${name}`}><UserRound size={11} /> {name}</span>;
+  return <span className="meta who" title={`Назначил: ${name}`}><UserRound size={11} /><span className="who-n">{name}</span></span>;
 }
 
 /** Подсказки под полем. Не всплывают поверх, а занимают место: окно ⌥Space подстраивает высоту под содержимое */
@@ -73,7 +73,7 @@ function useHi(count: number) {
 
 /**
  * Теги задачи: чипсы с крестиком и поле для нового. Enter, запятая или Tab добавляют, Backspace в пустом поле убирает последний.
- * Подсказки из уже существующих тегов; новый тег получит цвет при сохранении
+ * Подсказки из уже существующих тегов; новый тег показывается сразу с тем цветом, который получит при сохранении
  */
 export function TagInput(props: { value: string[]; tags: Tag[]; onChange: (names: string[]) => void; disabled?: boolean }) {
   const [text, setText] = useState("");
@@ -82,6 +82,16 @@ export function TagInput(props: { value: string[]; tags: Tag[]; onChange: (names
   const full = props.value.length >= TAG_MAX;
   const items = focus && !full ? suggest(props.tags.map((t) => t.name), text, props.value) : [];
   const { hi, setHi, onArrow } = useHi(items.length);
+  // Цвет нового тега считается тем же правилом, что при сохранении (db.setTaskTags), поэтому чипс сразу цветной
+  const colors = new Map<string, string>();
+  const used = props.tags.map((t) => t.color);
+  for (const n of props.value) {
+    if (colorOf(props.tags, n)) continue;
+    const c = pickColor(used);
+    used.push(c);
+    colors.set(n, c);
+  }
+  const colorFor = (n: string) => colorOf(props.tags, n) ?? colors.get(n);
   const add = (raw: string) => {
     const next = addTagName(props.value, raw);
     if (next !== props.value) props.onChange(next);
@@ -103,7 +113,7 @@ export function TagInput(props: { value: string[]; tags: Tag[]; onChange: (names
     <div className="tag-field">
       <div className={`tag-input field ${props.disabled ? "disabled" : ""}`} onMouseDown={(e) => e.target === e.currentTarget && (e.preventDefault(), input.current?.focus())}>
         {props.value.map((n) => (
-          <TagChip key={n} name={n} color={colorOf(props.tags, n)} title={colorOf(props.tags, n) ? undefined : "Новый тег, цвет подберётся сам"}
+          <TagChip key={n} name={n} color={colorFor(n)} title={colorOf(props.tags, n) ? undefined : "Новый тег"}
             onRemove={props.disabled ? undefined : () => props.onChange(props.value.filter((x) => x !== n))} />
         ))}
         {!full && !props.disabled && (
@@ -182,7 +192,7 @@ export function TagEditor(props: {
     if (err) setName(props.tag.name);
   };
   return (
-    <Popover anchor={props.anchor} onClose={props.onClose} width={262}>
+    <Popover anchor={props.anchor} onClose={props.onClose} width={292}>
       <div className="lbl">Тег</div>
       <input className="field tag-name" value={name} maxLength={TAG_MAX_LEN} spellCheck={false} autoFocus
         onChange={(e) => (setName(e.target.value), setError(null))} onBlur={saveName}
