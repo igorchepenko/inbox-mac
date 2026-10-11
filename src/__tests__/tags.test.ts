@@ -104,13 +104,13 @@ describe("фильтр", () => {
   const all = [a, b, c];
   const fid = (f: Parameters<typeof applyFilter>[1]) => applyFilter(all, f).map((x) => x.id);
 
-  it("пустой фильтр показывает всё", () => expect(fid({ tags: [], person: null })).toEqual([1, 2, 3]));
-  it("теги: задачи с любым из выбранных", () => expect(fid({ tags: [1, 3], person: null })).toEqual([1, 2]));
-  it("человек без учёта регистра", () => expect(fid({ tags: [], person: "андрей" })).toEqual([1]));
-  it("«Сам себе»: без назначившего", () => expect(fid({ tags: [], person: NO_PERSON })).toEqual([2]));
+  it("пустой фильтр показывает всё", () => expect(fid({ spaces: [], tags: [], person: null })).toEqual([1, 2, 3]));
+  it("теги: задачи с любым из выбранных", () => expect(fid({ spaces: [], tags: [1, 3], person: null })).toEqual([1, 2]));
+  it("человек без учёта регистра", () => expect(fid({ spaces: [], tags: [], person: "андрей" })).toEqual([1]));
+  it("«Сам себе»: без назначившего", () => expect(fid({ spaces: [], tags: [], person: NO_PERSON })).toEqual([2]));
   it("тег и человек вместе", () => {
-    expect(fid({ tags: [1, 2], person: "Андрей" })).toEqual([1]);
-    expect(fid({ tags: [2], person: "Маша" })).toEqual([]);
+    expect(fid({ spaces: [], tags: [1, 2], person: "Андрей" })).toEqual([1]);
+    expect(fid({ spaces: [], tags: [2], person: "Маша" })).toEqual([]);
   });
 });
 

@@ -4,6 +4,7 @@ import { nowStamp, stampDay, stampTime, today } from "./dates";
 import { nextOccurrence, parseRule } from "./recurrence";
 import { activeProfile } from "./profile";
 import { normalizeTag, pickColor, sameName, TAG_MAX, byName } from "./tags";
+import { shiftDeadline } from "./deadline";
 
 export type Status = "inbox" | "active" | "done" | "archived";
 /** Цвета проектов. Системные move, exercise и stand проектам не достаются */
@@ -31,6 +32,8 @@ export interface Task {
   next_id: number | null; // у сделанной повторяющейся: созданный следующий повтор
   started_at: string | null; // когда взяли в работу: этап «В работе» на канбане
   assigned_by: string | null; // кто поставил задачу, имя как ввели (миграция 008)
+  deadline: string | null; // крайний срок: YYYY-MM-DD или YYYY-MM-DDTHH:MM (миграция 009), см. deadline.ts
+  deadline_notified: number; // уведомление о дедлайне уже пришло
   // Не колонки tasks: подтягиваются из своих таблиц в loadTasks
   subtasks: Subtask[];
   links: Link[];
@@ -115,11 +118,11 @@ export async function loadProjects(): Promise<Project[]> {
 }
 
 /** Необязательные поля, которые можно задать сразу при записи задачи. tags — названия, новые теги создаются сами */
-export type Draft = Partial<Pick<Task, "priority" | "project_id" | "due_date" | "remind_at" | "start_time" | "end_time" | "quadrant" | "recurrence" | "assigned_by">> & {
+export type Draft = Partial<Pick<Task, "priority" | "project_id" | "due_date" | "remind_at" | "start_time" | "end_time" | "quadrant" | "recurrence" | "assigned_by" | "deadline">> & {
   tags?: string[];
 };
 
-const DRAFT_KEYS = ["priority", "project_id", "due_date", "remind_at", "start_time", "end_time", "quadrant", "recurrence", "assigned_by"] as const;
+const DRAFT_KEYS = ["priority", "project_id", "due_date", "remind_at", "start_time", "end_time", "quadrant", "recurrence", "assigned_by", "deadline"] as const;
 
 /** Новая задача всегда попадает в «На разбор», даже если поля заполнены сразу */
 export async function addTask(title: string, note: string, draft: Draft = {}): Promise<number> {
@@ -135,7 +138,7 @@ export async function addTask(title: string, note: string, draft: Draft = {}): P
   return id;
 }
 
-type Editable = Pick<Task, "title" | "note" | "priority" | "project_id" | "due_date" | "remind_at" | "status" | "reminded" | "triaged_at" | "done_at" | "start_time" | "end_time" | "quadrant" | "recurrence" | "series_id" | "next_id" | "started_at" | "assigned_by">;
+type Editable = Pick<Task, "title" | "note" | "priority" | "project_id" | "due_date" | "remind_at" | "status" | "reminded" | "triaged_at" | "done_at" | "start_time" | "end_time" | "quadrant" | "recurrence" | "series_id" | "next_id" | "started_at" | "assigned_by" | "deadline" | "deadline_notified">;
 
 export async function updateTask(id: number, patch: Partial<Editable>): Promise<void> {
   const keys = Object.keys(patch) as (keyof Editable)[];
@@ -169,10 +172,10 @@ export async function completeTask(x: Task): Promise<void> {
     const remind = x.remind_at ? `${next.date}T${stampTime(x.remind_at)}` : null;
     const r = await d.execute(
       `INSERT INTO tasks (title, note, status, priority, project_id, due_date, remind_at, created_at, triaged_at,
-         start_time, end_time, quadrant, recurrence, series_id, assigned_by)
-       VALUES ($1, $2, 'active', $3, $4, $5, $6, $7, $7, $8, $9, $10, $11, $12, $13)`,
+         start_time, end_time, quadrant, recurrence, series_id, assigned_by, deadline)
+       VALUES ($1, $2, 'active', $3, $4, $5, $6, $7, $7, $8, $9, $10, $11, $12, $13, $14)`,
       [x.title, x.note, x.priority, x.project_id, next.date, remind, stamp, x.start_time, x.end_time, x.quadrant,
-        JSON.stringify(next.rule), x.series_id ?? x.id, x.assigned_by],
+        JSON.stringify(next.rule), x.series_id ?? x.id, x.assigned_by, shiftDeadline(x.deadline, x.due_date, next.date)],
     );
     nextId = r.lastInsertId ?? null;
     if (nextId) {

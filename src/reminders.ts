@@ -3,6 +3,7 @@ import { setSetting, updateTask, type Task } from "./db";
 import { nowStamp, today } from "./dates";
 import { pref } from "./prefs";
 import { countFor, plural } from "./views";
+import { alertOf, alertTitle, dueDeadlineAlerts } from "./deadline";
 
 const STALE_MS = 12 * 60 * 60 * 1000;
 
@@ -44,6 +45,22 @@ export async function fireDueReminders(tasks: Task[], settings: Record<string, s
     const fresh = Date.now() - new Date(x.remind_at!).getTime() < STALE_MS;
     if (allowed && fresh) notify(settings, x.title, x.note || "Напоминание из Inbox");
     await updateTask(x.id, { reminded: 1 });
+  }
+  return true;
+}
+
+/**
+ * Уведомления о дедлайнах: за сколько дней и во сколько, задаётся в настройках (по умолчанию за день в 10:00).
+ * Каждая задача уведомляет один раз; если дедлайн уже прошёл, пока Мак спал, отмечаем молча.
+ * Возвращает true, если что-то поменялось в базе.
+ */
+export async function fireDeadlineAlerts(tasks: Task[], settings: Record<string, string>): Promise<boolean> {
+  const due = dueDeadlineAlerts(tasks, alertOf(settings));
+  if (!due.length) return false;
+  const allowed = pref(settings, "remind.enabled") === "1" && due.some((d) => !d.silent) && (await ensurePermission());
+  for (const { task: x, silent } of due) {
+    if (allowed && !silent) notify(settings, alertTitle(x.deadline!), x.title);
+    await updateTask(x.id, { deadline_notified: 1 });
   }
   return true;
 }

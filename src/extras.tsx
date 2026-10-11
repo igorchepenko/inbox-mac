@@ -36,7 +36,8 @@ export function Line(props: { label: string; children: ReactNode }) {
  * Быстрые даты и «Другая» с календарём. inline: календарь раскрывается внутри формы,
  * а не всплывает (окно ⌥Space подстраивает высоту под содержимое и обрезало бы всплывающую панель)
  */
-export function DateField(props: { value: string | null; onChange: (d: string | null) => void; inline?: boolean }) {
+export function DateField(props: { value: string | null; onChange: (d: string | null) => void; inline?: boolean; accent?: string }) {
+  const accent = props.accent ?? "stand";
   const [open, setOpen] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
   const t = today();
@@ -47,10 +48,10 @@ export function DateField(props: { value: string | null; onChange: (d: string | 
   return (
     <>
       {chips.map((d) => (
-        <Chip key={d} on={props.value === d} accent="stand" onClick={() => props.onChange(props.value === d ? null : d)}>{fmtDay(d)}</Chip>
+        <Chip key={d} on={props.value === d} accent={accent} onClick={() => props.onChange(props.value === d ? null : d)}>{fmtDay(d)}</Chip>
       ))}
       <button type="button" ref={btn} className={`chip ${other ? "on" : ""}`} onClick={() => setOpen((o) => !o)}
-        style={other ? { background: "var(--stand)" } : undefined}>
+        style={other ? { background: `var(--${accent})` } : undefined}>
         <CalendarDays size={13} /> {other ? fmtDay(props.value!) : "Другая"}
       </button>
       {open && (props.inline ? <div className="inline-pop">{cal}</div> : (

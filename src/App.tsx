@@ -11,12 +11,13 @@ import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
 import { Icon } from "./icons";
 import { ProjectDialog } from "./widgets";
 import { CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Tag as TagIcon } from "lucide-react";
-import { applyFilter, EMPTY_FILTER, filterOn, peopleOf, type TaskFilter } from "./tags";
+import { applyFilter, EMPTY_FILTER, filterOn, NO_SPACE, peopleOf, type TaskFilter } from "./tags";
 import { Assignee, FilterBar, FilterButton, TagChips, TagEditor } from "./TagsUI";
 import { QuadrantGlyph } from "./extras";
+import { DeadlineFlag } from "./DeadlineUI";
 import { boardFor, dropTo, layoutOf, STAGES, stageOf, type Layout, type Stage } from "./boardOps";
 import { BoardView, BulkPanel, LayoutSwitch, SortSwitch, type Pick } from "./Board";
-import { ensurePermission, fireDueReminders, maybeSendDigest } from "./reminders";
+import { ensurePermission, fireDeadlineAlerts, fireDueReminders, maybeSendDigest } from "./reminders";
 import { Settings } from "./Settings";
 import { labelFromAccel, pref, quickKeyLabel, setQuickKeyLabel } from "./prefs";
 import Home from "./home/Home";
@@ -34,7 +35,8 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
-  // Фильтр по тегам и тому, кто назначил. Живёт, пока открыт список: при переходе в другой сбрасывается
+  // Фильтр. Теги и «кто назначил» живут, пока открыт список, при переходе в другой сбрасываются.
+  // Пространства остаются выбранными во всех списках и в календаре, пока их не сбросят
   const [filter, setFilter] = useState<TaskFilter>(EMPTY_FILTER);
   const [tagEdit, setTagEdit] = useState<HTMLElement | null>(null);
   const [settings, setSettings] = useState<Record<string, string>>({});
@@ -97,7 +99,8 @@ export default function App() {
     const id = setInterval(async () => {
       const t = await reload();
       const fired = await fireDueReminders(t, settingsRef.current);
-      if ((await maybeSendDigest(t, settingsRef.current)) || fired) await reload();
+      const alerted = await fireDeadlineAlerts(t, settingsRef.current);
+      if ((await maybeSendDigest(t, settingsRef.current)) || fired || alerted) await reload();
       setTick((n) => n + 1);
     }, 30_000);
     return () => {
@@ -109,9 +112,16 @@ export default function App() {
   const layout = layoutOf(view, settings);
   const sort = sortOf(view, settings);
   const people = useMemo(() => peopleOf(tasks), [tasks]);
-  // Удалённый тег из фильтра выпадает сам
-  const filt = useMemo(() => ({ ...filter, tags: filter.tags.filter((id) => tags.some((g) => g.id === id)) }), [filter, tags]);
+  // Удалённый тег или пространство из фильтра выпадает само. Внутри пространства фильтр по пространствам не действует
+  const inSpace = view.startsWith("p:");
+  const filt = useMemo(() => ({
+    ...filter,
+    spaces: inSpace ? [] : filter.spaces.filter((id) => id === NO_SPACE || projects.some((p) => p.id === id)),
+    tags: filter.tags.filter((id) => tags.some((g) => g.id === id)),
+  }), [filter, tags, projects, inSpace]);
   const shown = useMemo(() => applyFilter(tasks, filt), [tasks, filt]);
+  // В фильтре ровно одно пространство: новые задачи сразу записываются в него
+  const oneSpace = filt.spaces.length === 1 && filt.spaces[0] !== NO_SPACE ? filt.spaces[0] : null;
   const list = useMemo(() => listFor(view, shown, sort), [view, shown, sort]);
   const columns = useMemo(() => (layout === "board" ? boardFor(view, shown, sort) : null), [layout, view, shown, sort]);
   const ids = columns ? columns.flatMap((c) => c.items.map((i) => i.task.id)) : list.map((i) => i.task.id);
@@ -132,7 +142,7 @@ export default function App() {
   const openView = (v: ViewId, from = tasks) => {
     setView(v);
     clearPick();
-    setFilter(EMPTY_FILTER);
+    setFilter((f) => ({ ...EMPTY_FILTER, spaces: f.spaces }));
     setTagEdit(null);
     lastIdx.current = 0;
     setSel(listFor(v, from, sortOf(v, settings))[0]?.task.id ?? null);
@@ -225,11 +235,12 @@ export default function App() {
       for (const x of tasks.filter((x) => moved.includes(x.id))) await dropTo(x, col);
     });
 
-  // Клик по пустому месту календаря: задача на этот день и время, название сразу выделено для правки
+  // Клик по пустому месту календаря: задача на этот день и время, название сразу выделено для правки.
+  // Если в фильтре одно пространство, задача сразу в нём, иначе фильтр бы её спрятал
   const createAt = async (day: string, start: number | null, end: number | null) => {
     try {
       const id = await db.addTask("Новая задача", "", {
-        due_date: day, start_time: start == null ? null : toHHMM(start), end_time: end == null ? null : toHHMM(end),
+        project_id: oneSpace, due_date: day, start_time: start == null ? null : toHHMM(start), end_time: end == null ? null : toHHMM(end),
       });
       await reload();
       setSel(id);
@@ -399,7 +410,9 @@ export default function App() {
         onViewIcon={(id, icon) => run(() => db.setSetting(`icon:${id}`, icon))} />
 
       {view === "calendar" ? (
-        <CalendarView tasks={tasks} projects={projects} selected={sel} onSelect={setSel}
+        <CalendarView tasks={shown} projects={projects} selected={sel} onSelect={setSel}
+          filterButton={<FilterButton filter={filt} projects={projects} tags={tags} people={people} onChange={setFilter} />}
+          filterBar={<FilterBar filter={filt} projects={projects} tags={tags} onChange={setFilter} />}
           onToggle={(x) => run(() => (x.status === "done" ? db.reopenTask(x) : db.completeTask(x)))}
           onMove={(id, p) => {
             if (p.remind_at) ensurePermission();
@@ -447,7 +460,7 @@ export default function App() {
             </button>
           )}
           {view !== "archive" && <SortSwitch value={sort} onChange={setSort} />}
-          <FilterButton filter={filt} tags={tags} people={people} lockTag={tag?.id} onChange={setFilter} />
+          <FilterButton filter={filt} projects={projects} tags={tags} people={people} lockTag={tag?.id} noSpaces={!!project} onChange={setFilter} />
           <LayoutSwitch value={layout} onChange={setLayout} />
           <button className={`icon-btn ${selecting ? "on" : ""}`} data-tip="Выбрать несколько задач, ⌘-клик по строке" data-key="⌘A"
             onClick={() => (selecting ? clearPick() : (setSelecting(true), setPicked(sel != null ? [sel] : [])))}>
@@ -456,7 +469,7 @@ export default function App() {
           <button className="icon-btn" data-tip="Сочетания клавиш" data-key="⌘/" aria-label="Сочетания клавиш" onClick={() => setHelpOpen(true)}><Keyboard size={14} /></button>
         </header>
 
-        <FilterBar filter={filt} tags={tags} shown={ids.length} onChange={setFilter} />
+        <FilterBar filter={filt} projects={projects} tags={tags} shown={ids.length} onChange={setFilter} />
 
         {view !== "archive" && (
           <button className="add field" onClick={() => setNewOpen(true)}>
@@ -504,7 +517,8 @@ export default function App() {
 
       {newOpen && (
         <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && setNewOpen(false)}>
-          <QuickForm projects={projects} tags={tags} people={people} onSave={saveNew} onCancel={() => setNewOpen(false)} />
+          <QuickForm projects={projects} tags={tags} people={people} onSave={saveNew} onCancel={() => setNewOpen(false)}
+            initial={project ? { project_id: project.id } : oneSpace != null ? { project_id: oneSpace } : undefined} />
         </div>
       )}
       {tag && tagEdit && (
@@ -595,6 +609,7 @@ function TaskRow(props: {
       {x.status !== "archived" && <StageChip task={x} />}
       {project && <span className="tag" style={{ background: `var(--${project.color})`, color: `var(--${project.color}-ink, var(--on-acc))` }}>{project.name}</span>}
       {x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`}>{fmtDay(x.due_date)}</span>}
+      {!done && <DeadlineFlag task={x} />}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Repeat } from "lucide-react";
 import type { Project, Task } from "./db";
 import * as db from "./db";
@@ -55,6 +55,8 @@ export default function CalendarView(props: {
   onToggle: (task: Task) => void;
   onMove: (id: number, patch: Patch) => void;
   onCreate: (day: string, start: number | null, end: number | null) => void;
+  filterButton?: ReactNode;
+  filterBar?: ReactNode;
 }) {
   const [mode, setModeState] = useState<CalMode>(() => loadPref("cal:mode", ["day", "week", "month"] as const, "week"));
   const [anchor, setAnchor] = useState(today());
@@ -321,6 +323,7 @@ export default function CalendarView(props: {
           <p>{openCount ? `Открытых задач: ${openCount}` : "Ничего не запланировано"}</p>
         </div>
         <div className="cal-tools">
+          {props.filterButton}
           <div className="cal-stepper">
             <button className="cal-nav" title="Назад (←)" onClick={() => setAnchor(shiftAnchor(mode, anchor, -1))}><ChevronLeft size={16} /></button>
             <button className="cal-today" onClick={() => setAnchor(t)}>Сегодня</button>
@@ -336,6 +339,7 @@ export default function CalendarView(props: {
           </div>
         </div>
       </header>
+      {props.filterBar}
 
       {mode === "month" ? (
         <div className="cal-month">

@@ -3,7 +3,8 @@ import { BellRing, Check, FolderOpen, Keyboard, LayoutDashboard, PanelLeft, Rota
 import { invoke } from "@tauri-apps/api/core";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as autostartEnabled } from "@tauri-apps/plugin-autostart";
 import { Icon } from "./icons";
-import { VIEWS, type ViewId } from "./views";
+import { plural, VIEWS, type ViewId } from "./views";
+import { alertOf, DEADLINE_DAYS } from "./deadline";
 import { IconGrid, Popover, ThemeSwitch, TimeInput } from "./widgets";
 import { savedTheme, setTheme } from "./theme";
 import { HomeSettings } from "./HomeSettings";
@@ -294,8 +295,11 @@ function Notifications(p: SettingsProps) {
   const sound = pref(p.settings, "remind.sound");
   const digest = pref(p.settings, "digest.enabled") === "1";
   const digestChanged = digest !== (DEFAULTS["digest.enabled"] === "1") || pref(p.settings, "digest.time") !== DEFAULTS["digest.time"];
-  const notifChanged = enabled !== (DEFAULTS["remind.enabled"] === "1") || sound !== DEFAULTS["remind.sound"] || digestChanged;
-  const resetNotif = () => (["remind.enabled", "remind.sound", "digest.enabled", "digest.time"] as const).forEach((k) => p.onSet(k, DEFAULTS[k]));
+  const dl = alertOf(p.settings);
+  const dlKeys = ["deadline.notify", "deadline.days", "deadline.time"] as const;
+  const dlChanged = dlKeys.some((k) => pref(p.settings, k) !== DEFAULTS[k]);
+  const notifChanged = enabled !== (DEFAULTS["remind.enabled"] === "1") || sound !== DEFAULTS["remind.sound"] || digestChanged || dlChanged;
+  const resetNotif = () => (["remind.enabled", "remind.sound", "digest.enabled", "digest.time", ...dlKeys] as const).forEach((k) => p.onSet(k, DEFAULTS[k]));
   const [tested, setTested] = useState<string | null>(null);
   const test = async () => {
     if (!(await ensurePermission())) return setTested("macOS не дал разрешения. Включи уведомления для Inbox в Системных настройках → Уведомления");
@@ -325,6 +329,20 @@ function Notifications(p: SettingsProps) {
           <div className="seg">
             {digest && <TimeInput value={pref(p.settings, "digest.time")} onCommit={(t) => t && p.onSet("digest.time", t)} />}
             <Toggle label="Утренняя сводка" on={digest} onChange={(on) => p.onSet("digest.enabled", on ? "1" : "0")} />
+          </div>
+        </Row>
+        <Row name="Дедлайны" hint="Предупредить, что срок задачи подходит. Приходит один раз на задачу"
+          def={{ text: "за 1 день, 10:00", changed: dlChanged, reset: () => dlKeys.forEach((k) => p.onSet(k, DEFAULTS[k])) }}>
+          <div className="seg">
+            {dl.on && (
+              <>
+                <select className="field set-select" value={dl.days} aria-label="За сколько дней" onChange={(e) => p.onSet("deadline.days", e.target.value)}>
+                  {DEADLINE_DAYS.map((n) => <option key={n} value={n}>{n === 0 ? "в тот же день" : `за ${plural(n, "день", "дня", "дней")}`}</option>)}
+                </select>
+                <TimeInput value={dl.time} onCommit={(t) => t && p.onSet("deadline.time", t)} />
+              </>
+            )}
+            <Toggle label="Уведомления о дедлайнах" on={dl.on} onChange={(on) => p.onSet("deadline.notify", on ? "1" : "0")} />
           </div>
         </Row>
       </fieldset>
