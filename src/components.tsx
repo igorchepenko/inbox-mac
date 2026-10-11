@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { Draft, Project, Task } from "./db";
+import * as db from "./db";
+import type { Draft, Project, Tag, Task } from "./db";
 import { fmtDay, stampDay, stampTime, today } from "./dates";
 import { Icon } from "./icons";
 import { TimeInput, useAutosize } from "./widgets";
@@ -7,12 +8,14 @@ import { firstOccurrence, parseRule } from "./recurrence";
 import { Paperclip } from "lucide-react";
 import { Checklist, Chip, DateField, Files, Line, Links, PriorityPicker, QuadrantPicker, RepeatField, TimeRange, type RunDb } from "./extras";
 import { quickKeyLabel } from "./prefs";
+import { PersonInput, TagInput } from "./TagsUI";
+import { addTagName, canonicalPerson, parseQuick } from "./tags";
 
 export { PRIORITY } from "./priority";
 
 /** Карточка записи задачи. Используется и в отдельном окне ⌥Space, и внутри приложения по N.
  * Дата, время, проект и остальное по желанию: блок свёрнут, открывается кнопкой или ⌘E */
-export function QuickForm(props: { projects: Project[]; onSave: (title: string, note: string, draft: Draft) => void; onCancel: () => void; profile?: string }) {
+export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: string[]; onSave: (title: string, note: string, draft: Draft) => void; onCancel: () => void; profile?: string }) {
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
   const [more, setMore] = useState(false);
@@ -22,12 +25,19 @@ export function QuickForm(props: { projects: Project[]; onSave: (title: string, 
   useAutosize(noteRef, note, 260);
   useEffect(() => titleRef.current?.focus(), []);
   const set = (patch: Partial<typeof d>) => setD((cur) => ({ ...cur, ...patch }));
-  const filled = [d.due_date, d.start_time, d.remind, d.recurrence, d.project_id, d.priority, d.quadrant].filter((v) => v != null && v !== "").length;
+  const filled = [d.due_date, d.start_time, d.remind, d.recurrence, d.project_id, d.priority, d.quadrant, d.assigned_by].filter((v) => v != null && v !== "").length
+    + (d.tags?.length ? 1 : 0);
 
   const submit = () => {
-    const t = title.trim();
+    // #тег и @Имя прямо в названии: убираем из текста, добавляем к выбранному в параметрах
+    const q = parseQuick(title);
+    const t = q.title || title.trim();
     if (!t) return titleRef.current?.focus();
     const { remind, ...draft } = d;
+    if (q.title) {
+      draft.tags = q.tags.reduce(addTagName, draft.tags ?? []);
+      if (q.person && !draft.assigned_by) draft.assigned_by = canonicalPerson(q.person, props.people);
+    }
     const rule = parseRule(draft.recurrence);
     if (!draft.due_date && (draft.start_time || remind || rule)) draft.due_date = rule ? firstOccurrence(rule, today()) : today();
     if (remind) draft.remind_at = `${draft.due_date}T${remind}`;
@@ -56,7 +66,7 @@ export function QuickForm(props: { projects: Project[]; onSave: (title: string, 
 
   return (
     <form className="qi" onSubmit={(e) => (e.preventDefault(), submit())} onKeyDown={onKey}>
-      <input ref={titleRef} className="field qi-title" placeholder="Что нужно сделать?" value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="off" spellCheck={false} />
+      <input ref={titleRef} className="field qi-title" placeholder="Что нужно сделать? #тег @кто назначил" value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="off" spellCheck={false} />
       <textarea ref={noteRef} rows={2} className="field qi-note" placeholder="Заметка, если нужна" value={note} onChange={(e) => setNote(e.target.value)} />
       {more && (
         <div className="qi-more lines">
@@ -77,11 +87,13 @@ export function QuickForm(props: { projects: Project[]; onSave: (title: string, 
           )}
           <Line label="Важность"><PriorityPicker value={d.priority} onChange={(p) => set({ priority: p ?? undefined })} /></Line>
           <Line label="Матрица"><QuadrantPicker value={d.quadrant ?? null} onChange={(q) => set({ quadrant: q })} /></Line>
+          <Line label="Теги"><TagInput value={d.tags ?? []} tags={props.tags} onChange={(tags) => set({ tags })} /></Line>
+          <Line label="От кого"><PersonInput value={d.assigned_by ?? null} people={props.people} onChange={(v) => set({ assigned_by: v })} /></Line>
         </div>
       )}
       <div className="qi-foot">
-        <button type="button" className={`more-btn ${more ? "on" : ""}`} onClick={() => setMore((m) => !m)} data-tip="Дата, время, пространство" data-key="⌘E">
-          {more ? "Скрыть параметры" : filled ? `Параметры · ${filled}` : "+ Дата, время, пространство…"}
+        <button type="button" className={`more-btn ${more ? "on" : ""}`} onClick={() => setMore((m) => !m)} data-tip="Дата, время, пространство, теги" data-key="⌘E">
+          {more ? "Скрыть параметры" : filled ? `Параметры · ${filled}` : "+ Дата, время, теги…"}
         </button>
         <span className="grow" />
         <span>Попадёт в «Новые»{props.profile && <> профиля <b className="qi-profile">{props.profile}</b></>}</span>
@@ -108,11 +120,13 @@ export function Ring({ fraction, accent, count }: { fraction: number; accent: st
   );
 }
 
-export type TaskPatch = Partial<Pick<Task, "title" | "note" | "priority" | "project_id" | "due_date" | "remind_at" | "reminded" | "start_time" | "end_time" | "quadrant" | "recurrence">>;
+export type TaskPatch = Partial<Pick<Task, "title" | "note" | "priority" | "project_id" | "due_date" | "remind_at" | "reminded" | "start_time" | "end_time" | "quadrant" | "recurrence" | "assigned_by">>;
 
 export function Details(props: {
   task: Task;
   projects: Project[];
+  tags: Tag[];
+  people: string[];
   onPatch: (patch: TaskPatch) => void;
   run: RunDb;
   onError: (e: string) => void;
@@ -188,6 +202,14 @@ export function Details(props: {
           ))}
           {!projects.length && <span className="hint">Создай пространство в боковой панели</span>}
         </div>
+      </fieldset>
+
+      <fieldset className="det-sec" disabled={locked}>
+        <div className="lbl">Теги{x.tags.length ? <span className="opt"> {x.tags.length} из 6</span> : null}</div>
+        <TagInput value={x.tags.map((g) => g.name)} tags={props.tags} disabled={locked}
+          onChange={(names) => props.run(() => db.setTaskTags(x.id, names))} />
+        <div className="lbl sub-lbl">Кто назначил <span className="opt">необязательно</span></div>
+        <PersonInput value={x.assigned_by} people={props.people} disabled={locked} onChange={(v) => onPatch({ assigned_by: v })} />
       </fieldset>
 
       <fieldset className="det-sec lines" disabled={locked}>
@@ -281,7 +303,8 @@ function DropZone({ over, title }: { over: HTMLElement | null; title: string }) 
 export const SHORTCUTS: [string, string][] = [
   ["⌥ Space", "Быстрый ввод из любого приложения"],
   ["N", "Записать задачу"],
-  ["⌘E", "Дата, время, пространство при записи"],
+  ["⌘E", "Дата, время, пространство, теги при записи"],
+  ["#тег @Имя", "В названии: тег и кто назначил"],
   ["↑ ↓", "Выбрать задачу"],
   ["Enter", "Разобрать (в «Новые»)"],
   ["Space", "Сделано / вернуть"],

@@ -2,8 +2,9 @@ import type { Task } from "./db";
 import { fmtDay, stampDay, stampTime, today } from "./dates";
 import { quickKeyLabel } from "./prefs";
 import { PRIORITY } from "./priority";
+import { compareNames, firstTag } from "./tags";
 
-export type ViewId = "home" | "projects" | "inbox" | "today" | "soon" | "archive" | "calendar" | `p:${number}`;
+export type ViewId = "home" | "projects" | "inbox" | "today" | "soon" | "archive" | "calendar" | `p:${number}` | `t:${number}`;
 
 export const VIEWS: { id: ViewId; name: string; accent: string; icon: string }[] = [
   { id: "inbox", name: "Новые", accent: "move", icon: "inbox" },
@@ -21,11 +22,13 @@ export interface ListItem {
 const doneToday = (x: Task, t: string) => x.status === "done" && !!x.done_at && stampDay(x.done_at) === t;
 
 /** Порядок строк в списке и в столбцах канбана. Хранится отдельно для каждого списка: settings sort:<вид> */
-export type SortBy = "date" | "priority" | "matrix";
+export type SortBy = "date" | "priority" | "matrix" | "tag" | "assignee";
 export const SORTS: { id: SortBy; name: string; hint: string }[] = [
   { id: "date", name: "По дате", hint: "По дате и времени: ближайшие сверху" },
   { id: "priority", name: "По важности", hint: "По важности: самые важные сверху" },
   { id: "matrix", name: "По матрице", hint: "По матрице Эйзенхауэра: срочно и важно сверху" },
+  { id: "tag", name: "По тегам", hint: "По тегам: группы по алфавиту, без тегов в конце" },
+  { id: "assignee", name: "По тому, кто назначил", hint: "По тому, кто назначил: группы по именам, свои задачи в конце" },
 ];
 export const sortOf = (view: ViewId, settings: Record<string, string>): SortBy =>
   SORTS.find((s) => s.id === settings[`sort:${view}`])?.id ?? "date";
@@ -50,12 +53,20 @@ function byDate(a: Task, b: Task): number {
 export function compareBy(sort: SortBy): (a: Task, b: Task) => number {
   if (sort === "priority") return (a, b) => b.priority - a.priority || byDate(a, b);
   if (sort === "matrix") return (a, b) => quadRank(a) - quadRank(b) || byDate(a, b);
+  if (sort === "tag") return (a, b) => compareNames(firstTag(a), firstTag(b)) || byDate(a, b);
+  if (sort === "assignee") return (a, b) => compareNames(a.assigned_by, b.assigned_by) || byDate(a, b);
   return byDate;
 }
 
-/** Заголовок группы при сортировке по важности или матрице: видно, где кончается один уровень и начинается другой */
+export const NO_TAG_GROUP = "Без тегов";
+export const NO_PERSON_GROUP = "Сам себе";
+
+/** Заголовок группы при сортировке не по дате: видно, где кончается один уровень и начинается другой.
+ * Задача с несколькими тегами стоит в группе первого по алфавиту */
 function groupName(x: Task, sort: SortBy): string {
   if (x.status === "done") return "Сделано";
+  if (sort === "tag") return firstTag(x) ?? NO_TAG_GROUP;
+  if (sort === "assignee") return x.assigned_by ?? NO_PERSON_GROUP;
   if (sort === "priority") return PRIORITY.find((p) => p.value === x.priority)?.name ?? "Важность не задана";
   return x.quadrant ? QUAD_NAMES[x.quadrant] : "Вне матрицы";
 }
@@ -98,6 +109,11 @@ export function listFor(view: ViewId, tasks: Task[], sort: SortBy = "date"): Lis
     return out;
   }
   if (view === "calendar") return []; // у календаря своя сетка, см. CalendarView
+  if (view.startsWith("t:")) {
+    // Тег: все его задачи в работе, включая неразобранные, и сделанные сегодня
+    const tid = Number(view.slice(2));
+    return arrange(tasks.filter((x) => x.tags.some((g) => g.id === tid) && (x.status === "inbox" || x.status === "active" || doneToday(x, t))), sort);
+  }
   const pid = Number(view.slice(2));
   return arrange(tasks.filter((x) => x.project_id === pid && (x.status === "active" || doneToday(x, t))), sort);
 }

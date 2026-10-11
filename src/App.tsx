@@ -4,13 +4,15 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { invoke } from "@tauri-apps/api/core";
 import * as db from "./db";
-import type { Project, ProjectFields, Task } from "./db";
+import type { Project, ProjectFields, Tag, Task } from "./db";
 import { fmtDay, fmtRange, nowStamp, stampTime, today, toHHMM } from "./dates";
 import { listFor, progressFor, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
 import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
 import { Icon } from "./icons";
 import { ProjectDialog } from "./widgets";
-import { CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat } from "lucide-react";
+import { CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Tag as TagIcon } from "lucide-react";
+import { applyFilter, EMPTY_FILTER, filterOn, peopleOf, type TaskFilter } from "./tags";
+import { Assignee, FilterBar, FilterButton, TagChips, TagEditor } from "./TagsUI";
 import { QuadrantGlyph } from "./extras";
 import { boardFor, dropTo, layoutOf, STAGES, stageOf, type Layout, type Stage } from "./boardOps";
 import { BoardView, BulkPanel, LayoutSwitch, SortSwitch, type Pick } from "./Board";
@@ -31,6 +33,10 @@ import { Frame } from "./Frame";
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  // Фильтр по тегам и тому, кто назначил. Живёт, пока открыт список: при переходе в другой сбрасывается
+  const [filter, setFilter] = useState<TaskFilter>(EMPTY_FILTER);
+  const [tagEdit, setTagEdit] = useState<HTMLElement | null>(null);
   const [settings, setSettings] = useState<Record<string, string>>({});
   // null закрыто, "new" новый проект, иначе редактируемый
   const [projectDlg, setProjectDlg] = useState<Project | "new" | null>(null);
@@ -52,9 +58,10 @@ export default function App() {
   const reload = useCallback(async () => {
     try {
       await db.archiveOldDone();
-      const [t, p, st] = await Promise.all([db.loadTasks(), db.loadProjects(), db.loadSettings()]);
+      const [t, p, st, g] = await Promise.all([db.loadTasks(), db.loadProjects(), db.loadSettings(), db.loadTags()]);
       setTasks(t);
       setProjects(p);
+      setTags(g);
       setSettings(st);
       settingsRef.current = st;
       setError(null);
@@ -101,8 +108,12 @@ export default function App() {
 
   const layout = layoutOf(view, settings);
   const sort = sortOf(view, settings);
-  const list = useMemo(() => listFor(view, tasks, sort), [view, tasks, sort]);
-  const columns = useMemo(() => (layout === "board" ? boardFor(view, tasks, sort) : null), [layout, view, tasks, sort]);
+  const people = useMemo(() => peopleOf(tasks), [tasks]);
+  // Удалённый тег из фильтра выпадает сам
+  const filt = useMemo(() => ({ ...filter, tags: filter.tags.filter((id) => tags.some((g) => g.id === id)) }), [filter, tags]);
+  const shown = useMemo(() => applyFilter(tasks, filt), [tasks, filt]);
+  const list = useMemo(() => listFor(view, shown, sort), [view, shown, sort]);
+  const columns = useMemo(() => (layout === "board" ? boardFor(view, shown, sort) : null), [layout, view, shown, sort]);
   const ids = columns ? columns.flatMap((c) => c.items.map((i) => i.task.id)) : list.map((i) => i.task.id);
   const pickedTasks = tasks.filter((x) => picked.includes(x.id) && ids.includes(x.id));
   const bulk = selecting || pickedTasks.length > 1;
@@ -121,6 +132,8 @@ export default function App() {
   const openView = (v: ViewId, from = tasks) => {
     setView(v);
     clearPick();
+    setFilter(EMPTY_FILTER);
+    setTagEdit(null);
     lastIdx.current = 0;
     setSel(listFor(v, from, sortOf(v, settings))[0]?.task.id ?? null);
     db.setSetting("last.view", v).catch(() => {}); // для начального экрана «Где остановился»
@@ -155,6 +168,16 @@ export default function App() {
   const patch = (id: number, p: TaskPatch) => {
     if (p.remind_at) ensurePermission();
     run(() => db.updateTask(id, p));
+  };
+  // Правка тега: ошибку (имя уже занято) показывает сама панель тега
+  const saveTag = async (id: number, p: db.TagPatch): Promise<string | null> => {
+    try {
+      await db.updateTag(id, p);
+      await reload();
+      return null;
+    } catch (e) {
+      return String(e).replace(/^Error: /, "");
+    }
   };
   const triage = (x: Task) => run(() => db.updateTask(x.id, { status: "active", triaged_at: nowStamp() }));
   // Через completeTask: у повторяющейся задачи она создаёт следующий повтор, reopenTask его убирает
@@ -354,7 +377,10 @@ export default function App() {
   const wide = view === "home" || view === "projects";
   const current = VIEWS.find((v) => v.id === view);
   const project = view.startsWith("p:") ? projects.find((p) => `p:${p.id}` === view) : undefined;
-  if (!wide && ((!current && !project && projects.length) || hidden(view))) queueMicrotask(() => openView("inbox"));
+  const tag = view.startsWith("t:") ? tags.find((g) => `t:${g.id}` === view) : undefined;
+  // Удалённый тег тоже уводит в «Новые». Пока база не прочитана, тегов ещё нет, поэтому ждём первой загрузки
+  const lostTag = view.startsWith("t:") && !tag && started.current;
+  if (!wide && ((!current && !project && !tag && (projects.length || lostTag)) || hidden(view))) queueMicrotask(() => openView("inbox"));
   const progress = progressFor(view, tasks);
 
   return (
@@ -362,7 +388,8 @@ export default function App() {
       style={{ "--side-w": `${panes.side.collapsed ? 0 : panes.side.width}px`, "--det-w": `${panes.det.collapsed ? 0 : panes.det.width}px` } as CSSProperties}>
       <div className="titlebar" data-tauri-drag-region />
       <Frame panes={panes} hasDetails={!wide} onWidth={setPaneWidth} onToggle={togglePane} onReset={resetPane} />
-      <Sidebar view={view} tasks={tasks} projects={projects} settings={settings} onOpen={openView}
+      <Sidebar view={view} tasks={tasks} projects={projects} tags={tags} settings={settings} onOpen={openView}
+        onTagSave={saveTag} onTagDelete={(id) => run(() => db.deleteTag(id))}
         onNewProject={() => setProjectDlg("new")} onEditProject={(p) => setProjectDlg(p)}
         onSettings={() => setSettingsOpen(true)} onShortcuts={() => setHelpOpen(true)}
         onSetting={(key, value) => {
@@ -398,13 +425,15 @@ export default function App() {
             }} />
         ) : (<>
         <header className="head" data-tauri-drag-region>
-          {progress ? <Ring fraction={progress.fraction} accent={progress.accent} count={progress.count} /> : (
+          {progress ? <Ring fraction={progress.fraction} accent={progress.accent} count={progress.count} /> : tag ? (
+            <span className="head-icon" style={{ color: `var(--${tag.color})` }}><TagIcon size={22} /></span>
+          ) : (
             <span className="head-icon" style={{ color: `var(--${project?.color ?? current?.accent ?? "muted"})` }}>
               <Icon name={project?.icon ?? viewIcon(current?.id ?? "inbox", settings)} size={24} />
             </span>
           )}
           <div className="head-text">
-            <h2>{project?.name ?? current?.name ?? ""}</h2>
+            <h2>{project?.name ?? tag?.name ?? current?.name ?? ""}</h2>
             <p className="head-sub" data-tip={project?.description || undefined} data-tip-full="">{project?.description || progress?.subtitle || subtitleFor(view, list.length)}</p>
           </div>
           {project && (
@@ -412,7 +441,13 @@ export default function App() {
               <Pencil size={13} /> Изменить
             </button>
           )}
+          {tag && (
+            <button className="icon-btn" data-tip="Переименовать, сменить цвет, удалить" onClick={(e) => setTagEdit(tagEdit ? null : e.currentTarget)}>
+              <Pencil size={13} /> Изменить
+            </button>
+          )}
           {view !== "archive" && <SortSwitch value={sort} onChange={setSort} />}
+          <FilterButton filter={filt} tags={tags} people={people} lockTag={tag?.id} onChange={setFilter} />
           <LayoutSwitch value={layout} onChange={setLayout} />
           <button className={`icon-btn ${selecting ? "on" : ""}`} data-tip="Выбрать несколько задач, ⌘-клик по строке" data-key="⌘A"
             onClick={() => (selecting ? clearPick() : (setSelecting(true), setPicked(sel != null ? [sel] : [])))}>
@@ -420,6 +455,8 @@ export default function App() {
           </button>
           <button className="icon-btn" data-tip="Сочетания клавиш" data-key="⌘/" aria-label="Сочетания клавиш" onClick={() => setHelpOpen(true)}><Keyboard size={14} /></button>
         </header>
+
+        <FilterBar filter={filt} tags={tags} shown={ids.length} onChange={setFilter} />
 
         {view !== "archive" && (
           <button className="add field" onClick={() => setNewOpen(true)}>
@@ -443,7 +480,7 @@ export default function App() {
                     picked={picked.includes(x.id)} dropping={dropTarget === x.id && !dropOnDetails} onSelect={(m) => pick(x.id, m)} onToggle={() => toggleDone(x)} />
                 </div>
               ))}
-              {!list.length && <div className="empty">{emptyText(view)}</div>}
+              {!list.length && <div className="empty">{filterOn(filt) ? "С таким фильтром задач нет." : emptyText(view)}</div>}
             </div>
           )}
         </div>
@@ -455,7 +492,7 @@ export default function App() {
         <BulkPanel tasks={pickedTasks} total={ids.length} projects={projects} selecting={selecting} run={run}
           onSelectAll={() => setPicked(ids)} onClear={clearPick} />
       ) : task ? (
-        <Details key={task.id} task={task} projects={projects}
+        <Details key={task.id} task={task} projects={projects} tags={tags} people={people}
           onPatch={(p) => patch(task.id, p)} run={run} onError={setError}
           dropping={dropTarget === task.id && dropOnDetails}
           onTriage={() => triage(task)} onToggleDone={() => toggleDone(task)}
@@ -467,8 +504,12 @@ export default function App() {
 
       {newOpen && (
         <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && setNewOpen(false)}>
-          <QuickForm projects={projects} onSave={saveNew} onCancel={() => setNewOpen(false)} />
+          <QuickForm projects={projects} tags={tags} people={people} onSave={saveNew} onCancel={() => setNewOpen(false)} />
         </div>
+      )}
+      {tag && tagEdit && (
+        <TagEditor key={tag.id} tag={tag} anchor={tagEdit} onClose={() => setTagEdit(null)}
+          onSave={(p) => saveTag(tag.id, p)} onDelete={() => (setTagEdit(null), run(() => db.deleteTag(tag.id)))} />
       )}
       {helpOpen && <Help onClose={() => setHelpOpen(false)} />}
       <Tooltips />
@@ -539,6 +580,8 @@ function TaskRow(props: {
       <button className="chk" title={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
         onMouseDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), props.onToggle())} />
       <span className="t">{x.title}</span>
+      <TagChips tags={x.tags} max={2} />
+      {x.assigned_by && <Assignee name={x.assigned_by} />}
       {x.subtasks.length > 0 && (
         <span className="meta badge" title="Чеклист"><ListChecks size={12} /> {x.subtasks.filter((s) => s.done).length}/{x.subtasks.length}</span>
       )}

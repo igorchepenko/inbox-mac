@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { spaceVars } from "./palette";
-import { Bell, CalendarDays, Check, Clock, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat } from "lucide-react";
+import { Bell, CalendarDays, Check, Clock, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound } from "lucide-react";
+import { Assignee, TagChip } from "./TagsUI";
 import type { Project, Task } from "./db";
 import { addDays, fmtDay, fmtRange, nextMonday, stampTime, today } from "./dates";
 import { TARGETS, type BoardColumn, type Layout, type Stage } from "./boardOps";
@@ -36,6 +37,8 @@ export function SortSwitch({ value, onChange }: { value: SortBy; onChange: (s: S
     date: <CalendarDays size={14} />,
     priority: <PriorityIcon p={5} size={14} color="currentColor" />,
     matrix: <Grid2x2 size={14} />,
+    tag: <Tag size={14} />,
+    assignee: <UserRound size={14} />,
   };
   return (
     <div className="theme-switch layout-switch" role="radiogroup" aria-label="Сортировка">
@@ -67,12 +70,14 @@ function Meta({ task: x, project }: { task: Task; project?: Project }) {
       {x.recurrence && !done && <span className="meta" title="Повторяется"><Repeat size={11} /></span>}
       {x.quadrant && !done && <QuadrantGlyph q={x.quadrant} />}
       {project && <span className="tag" style={{ background: `var(--${project.color})`, color: `var(--${project.color}-ink, var(--on-acc))` }}>{project.name}</span>}
+      {x.assigned_by && <Assignee name={x.assigned_by} />}
+      {x.tags.map((t) => <TagChip key={t.id} name={t.name} color={t.color} />)}
     </div>
   );
 }
 
 function hasMeta(x: Task, project?: Project) {
-  return !!(x.due_date || x.start_time || x.remind_at || x.recurrence || x.quadrant || x.subtasks.length || x.links.length || x.files.length || project);
+  return !!(x.due_date || x.start_time || x.remind_at || x.recurrence || x.quadrant || x.subtasks.length || x.links.length || x.files.length || x.tags.length || x.assigned_by || project);
 }
 
 interface Drag {

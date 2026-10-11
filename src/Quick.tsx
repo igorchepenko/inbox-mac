@@ -3,7 +3,7 @@ import { LogicalSize } from "@tauri-apps/api/dpi";
 import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { addTask, loadProjects, type Draft, type Project } from "./db";
+import { addTask, loadPeople, loadProjects, loadTags, type Draft, type Project, type Tag } from "./db";
 import { QuickForm } from "./components";
 import { currentZoom } from "./prefs";
 import { activeProfile, profileName } from "./profile";
@@ -17,7 +17,14 @@ export default function QuickApp() {
   const [key, setKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
-  const refreshProjects = () => loadProjects().then(setProjects).catch(() => {});
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [people, setPeople] = useState<string[]>([]);
+  // Пространства, теги и люди для подсказок: перечитываем при каждом открытии, их могли поменять в главном окне
+  const refreshProjects = () => {
+    loadProjects().then(setProjects).catch(() => {});
+    loadTags().then(setTags).catch(() => {});
+    loadPeople().then(setPeople).catch(() => {});
+  };
   const win = getCurrentWindow();
   const root = useRef<HTMLDivElement>(null);
 
@@ -67,7 +74,7 @@ export default function QuickApp() {
 
   return (
     <div ref={root} className="quick-root">
-      <QuickForm key={key} projects={projects} onSave={save} onCancel={cancel} profile={profileName(activeProfile())} />
+      <QuickForm key={key} projects={projects} tags={tags} people={people} onSave={save} onCancel={cancel} profile={profileName(activeProfile())} />
       {error && <div className="error">Не сохранилось: {error}</div>}
     </div>
   );

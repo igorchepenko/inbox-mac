@@ -131,6 +131,12 @@ fn migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/007_task_started.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 8,
+            description: "tags and assigned_by",
+            sql: include_str!("../migrations/008_tags_assignee.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 

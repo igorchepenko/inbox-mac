@@ -22,7 +22,7 @@ body.pane-resizing * { cursor: col-resize !important; }
 .main { container-type: inline-size; }
 .head { flex-wrap: wrap; row-gap: 8px; }
 .head-text { flex: 1 1 140px; }
-@container (max-width: 620px) {
+@container (max-width: 800px) {
   .head { gap: 10px; }
   .head .icon-btn { font-size: 0; gap: 0; }
   .head .icon-btn svg { margin: 0; }
