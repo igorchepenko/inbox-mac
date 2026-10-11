@@ -335,7 +335,13 @@ html.quick, html.quick body { background: transparent; }
    В окне ⌥Space предел задаёт само окно (--qmax, Quick.tsx), в приложении — высота окна */
 .qi > * { flex: none; }
 .qi-more { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-.overlay .qi { max-height: calc(86vh - 24px); }
+/* Форма по N выше, чем другие окна поверх: ей нужна вся высота, иначе параметры сразу уходят в прокрутку */
+.overlay:has(> .qi) { padding-top: 5vh; }
+.overlay .qi { max-height: 90vh; }
+/* Параметры плотнее: длинный список пространств и матрица не растягивают форму */
+.qi-more.lines { gap: 6px; }
+.qi-more .chip { padding: 4px 9px; }
+.qi-more .quad-cell { padding: 4px 9px; }
 .quick-root .qi { max-height: calc(var(--qmax, 100vh) - 20px); }
 /* «Пространство» — самая длинная подпись, колонка под неё */
 .qi-more .line { grid-template-columns: 96px minmax(0, 1fr); }
