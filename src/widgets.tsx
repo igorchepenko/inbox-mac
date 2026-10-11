@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Monitor, Moon, Sun } from "lucide-react";
 import { dayKey, MONTHS, pad, parseDay, today, WEEKDAYS, weekdayIndex } from "./dates";
 import { Icon, ICONS } from "./icons";
 import type { ProjectFields } from "./db";
-import { PALETTE, swatchOf } from "./palette";
+import { PALETTE, swatchOf, type Swatch } from "./palette";
 import { setTheme, savedTheme, type Theme } from "./theme";
 
 /** Высота textarea растёт вместе с текстом. Пересчитывается и при смене ширины окна */
@@ -239,20 +239,20 @@ export function ThemeSwitch(props: { wide?: boolean }) {
 
 /** Создание и редактирование проекта: название, описание, цвет, иконка */
 /** Палитра проектов сеткой 8×4. Стрелки двигают выбор, имя цвета в подсказке и над сеткой */
-export function ColorGrid({ value, onPick }: { value: string; onPick: (id: string) => void }) {
+export function ColorGrid({ value, onPick, colors = PALETTE, label = "Цвет пространства" }: { value: string; onPick: (id: string) => void; colors?: Swatch[]; label?: string }) {
   const move = (e: ReactKeyboardEvent, i: number) => {
     const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 8, ArrowUp: -8 }[e.key];
     if (!step) return;
     e.preventDefault();
-    const next = PALETTE[(i + step + PALETTE.length) % PALETTE.length];
+    const next = colors[(i + step + colors.length) % colors.length];
     onPick(next.id);
-    (e.currentTarget.parentElement?.children[PALETTE.indexOf(next)] as HTMLElement | undefined)?.focus();
+    (e.currentTarget.parentElement?.children[colors.indexOf(next)] as HTMLElement | undefined)?.focus();
   };
   return (
-    <div className="color-grid" role="radiogroup" aria-label="Цвет пространства">
-      {PALETTE.map((c, i) => (
+    <div className="color-grid" role="radiogroup" aria-label={label}>
+      {colors.map((c, i) => (
         <button type="button" key={c.id} role="radio" aria-checked={value === c.id} aria-label={c.name} data-tip={c.name}
-          tabIndex={value === c.id || (!swatchOf(value) && i === 0) ? 0 : -1}
+          tabIndex={value === c.id || (!colors.some((x) => x.id === value) && i === 0) ? 0 : -1}
           className={`color-dot ${value === c.id ? "on" : ""}`} style={{ "--c": `var(--${c.id})` } as CSSProperties}
           onClick={() => onPick(c.id)} onKeyDown={(e) => move(e, i)} />
       ))}

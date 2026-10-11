@@ -1,0 +1,57 @@
+/* Теги и «Кто назначил»: чипсы, поля ввода, фильтр */
+
+/* Чипс тега: точка цвета тега и название на лёгкой заливке того же цвета, чтобы не путать с заливкой пространства */
+.tchip { display: inline-flex; align-items: center; gap: 5px; max-width: 150px; padding: 1px 7px 1px 6px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; line-height: 16px; color: var(--fg); white-space: nowrap;
+  background: color-mix(in srgb, var(--c) 16%, transparent); border: 1px solid color-mix(in srgb, var(--c) 38%, transparent); }
+.tchip.new { background: transparent; border-style: dashed; border-color: var(--border); }
+.tdot { width: 7px; height: 7px; border-radius: 50%; background: var(--c); flex: none; }
+.tchip-n { overflow: hidden; text-overflow: ellipsis; }
+.tchip-x { display: grid; place-items: center; width: 14px; height: 14px; margin-right: -3px; border-radius: 50%; color: var(--muted); flex: none; }
+.tchip-x:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, transparent); }
+.tchips { display: inline-flex; align-items: center; gap: 4px; flex: none; max-width: 45%; overflow: hidden; }
+.meta.who { display: inline-flex; align-items: center; gap: 3px; font-family: inherit; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+.card-meta .tchip { max-width: 100%; }
+
+/* Поле тегов: чипсы и ввод в одной строке, переносятся */
+.tag-field { display: flex; flex-direction: column; gap: 6px; width: 100%; min-width: 0; }
+.tag-input { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 5px 7px; min-height: 32px; cursor: text; }
+.tag-input:focus-within, .person-input:focus-within { border-color: var(--stand); }
+.tag-input input { flex: 1; min-width: 90px; border: 0; background: none; outline: none; font-size: 13px; padding: 2px 0; }
+.tag-input.disabled, .person-input.disabled { opacity: .6; cursor: default; }
+.tag-full { font-size: 11px; color: var(--muted); margin-left: auto; }
+.person-input { display: flex; align-items: center; gap: 7px; padding: 0 9px; height: 32px; color: var(--muted); }
+.person-input input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 13px; color: var(--fg); padding: 0; }
+
+/* Подсказки под полем: в потоке, а не поверх */
+.sugg { display: flex; flex-wrap: wrap; gap: 4px; }
+.sugg-i { display: inline-flex; align-items: center; gap: 4px; padding: 2px; border-radius: 999px; font-size: 12px; color: var(--muted); }
+.sugg-i:has(svg:first-child) { padding: 2px 8px; border: 1px solid var(--line); }
+.sugg-i:hover, .sugg-i.hi { box-shadow: 0 0 0 1.5px var(--stand); color: var(--fg); }
+
+/* Правка тега */
+.tag-name { width: 100%; padding: 7px 10px; font-weight: 600; }
+.tag-err { font-size: 12px; color: var(--move); margin-top: 6px; }
+.popover .sub-lbl { margin-top: 12px; }
+.tag-del { display: block; margin-top: 12px; }
+
+/* Фильтр */
+.fchip { display: inline-flex; align-items: center; gap: 4px; padding: 2px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--fg); }
+.fchip.person { padding: 3px 9px; border: 1px solid var(--border); }
+.fchip:hover { box-shadow: 0 0 0 1px var(--muted); }
+.fchip.on { box-shadow: 0 0 0 2px var(--stand); }
+.fchip.person.on { border-color: transparent; background: color-mix(in srgb, var(--stand) 14%, transparent); }
+.fchip.static:hover { box-shadow: none; }
+.filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -4px 0 10px; color: var(--muted); }
+.filter-bar .meta { margin-left: 4px; }
+
+/* Теги в левом меню: точка вместо иконки */
+.nav.tagnav .nav-icon .tdot { width: 9px; height: 9px; }
+.nav.tagnav.on { background: color-mix(in srgb, var(--c) 16%, transparent); }
+.proj-list.tag-list { min-height: 0; }
+.side-hint { font-size: 12px; color: var(--muted); padding: 4px 10px 6px; line-height: 1.4; }
+.fcount { display: inline-grid; place-items: center; min-width: 15px; height: 15px; padding: 0 4px; margin-left: 4px; border-radius: 999px;
+  font-size: 10px; font-weight: 700; color: var(--on-acc); background: var(--stand); }
+/* Название в строке важнее тегов: им достаётся то, что осталось */
+.row .t { min-width: 120px; }
+.row .tchip { max-width: 96px; }

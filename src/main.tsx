@@ -8,6 +8,7 @@ import "./nav.css";
 import "./frame.css";
 import "./space.css";
 import "./profile.css";
+import "./tags.css";
 import { installPalette } from "./palette";
 import { applyTheme, followThemeChanges, savedTheme } from "./theme";
 import { applyAppearance, followAppearanceChanges, savedAppearance } from "./prefs";

@@ -131,6 +131,12 @@ fn migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/007_task_started.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 8,
+            description: "tags and assigned_by",
+            sql: include_str!("../migrations/008_tags_assignee.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
@@ -148,11 +154,25 @@ fn toggle_quick(app: &AppHandle) {
         .and_then(|m| m.is_focused().ok())
         .unwrap_or(false);
     MAIN_WAS_FOCUSED.store(main_focused, Ordering::Relaxed);
-    let _ = w.center();
+    place_quick(&w);
     let _ = w.show();
     let _ = w.set_focus();
     // Окно сбрасывает поля и ставит курсор в название
     let _ = app.emit_to("quick", "quick-open", ());
+}
+
+/// Как Spotlight: по центру по горизонтали, верх на шестой части высоты экрана без Dock и строки меню.
+/// Окно растёт вниз под длину формы, поэтому по центру по вертикали его не ставим: длинная форма уходила под Dock.
+/// Сколько можно расти вниз, считает само окно (Quick.tsx, maxHeight)
+fn place_quick(w: &tauri::WebviewWindow) {
+    let (Ok(Some(m)), Ok(size)) = (w.current_monitor(), w.outer_size()) else {
+        let _ = w.center();
+        return;
+    };
+    let area = m.work_area();
+    let x = area.position.x + (area.size.width as i32 - size.width as i32) / 2;
+    let y = area.position.y + area.size.height as i32 / 6;
+    let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
 }
 
 /// Спрятать быстрый ввод после сохранения или Esc

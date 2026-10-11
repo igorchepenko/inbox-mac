@@ -26,11 +26,12 @@ export interface BoardColumn {
 /** «Готово» на канбане показывает сделанное за неделю, старое живёт в архиве */
 const DONE_DAYS = 7;
 
-/** В проекте канбан показывает только его задачи, в остальных списках все */
+/** В проекте и теге канбан показывает только их задачи, в остальных списках все */
 function scoped(view: ViewId, tasks: Task[]): Task[] {
-  if (!view.startsWith("p:")) return tasks;
-  const pid = Number(view.slice(2));
-  return tasks.filter((x) => x.project_id === pid);
+  const id = Number(view.slice(2));
+  if (view.startsWith("p:")) return tasks.filter((x) => x.project_id === id);
+  if (view.startsWith("t:")) return tasks.filter((x) => x.tags.some((g) => g.id === id));
+  return tasks;
 }
 
 const isOpen = (x: Task) => x.status === "inbox" || x.status === "active";

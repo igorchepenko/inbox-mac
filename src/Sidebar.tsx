@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronsUpDown, Keyboard, LayoutGrid, Plus, Search, Settings as Gear, X } from "lucide-react";
-import type { Project, Task } from "./db";
+import type { Project, Tag, TagPatch, Task } from "./db";
+import { TagEditor } from "./TagsUI";
 import { countFor, VIEWS, type ViewId } from "./views";
 import { Icon } from "./icons";
 import { IconGrid, Popover, ThemeSwitch } from "./widgets";
@@ -9,6 +10,7 @@ import { spaceVars } from "./palette";
 import { activeProfile, PROFILES, profileName, switchProfile } from "./profile";
 
 export const KEY_PROJECTS_COLLAPSED = "side.projects.collapsed";
+export const KEY_TAGS_COLLAPSED = "side.tags.collapsed";
 /** ⌘P из любого места: развернуть проекты и поставить курсор в поиск */
 export const FIND_PROJECT_EVENT = "inbox:find-project";
 
@@ -58,8 +60,11 @@ export function Sidebar(props: {
   view: ViewId;
   tasks: Task[];
   projects: Project[];
+  tags: Tag[];
   settings: Record<string, string>;
   onOpen: (v: ViewId) => void;
+  onTagSave: (id: number, patch: TagPatch) => Promise<string | null>;
+  onTagDelete: (id: number) => void;
   onNewProject: () => void;
   onEditProject: (p: Project) => void;
   onViewIcon: (id: ViewId, icon: string) => void;
@@ -71,6 +76,9 @@ export function Sidebar(props: {
   const [picker, setPicker] = useState<{ id: ViewId; el: HTMLElement } | null>(null);
   const [collapsed, setCollapsed] = useState(props.settings[KEY_PROJECTS_COLLAPSED] === "1");
   useEffect(() => setCollapsed(props.settings[KEY_PROJECTS_COLLAPSED] === "1"), [props.settings[KEY_PROJECTS_COLLAPSED]]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tagsFolded = props.settings[KEY_TAGS_COLLAPSED] === "1";
+  const [tagEdit, setTagEdit] = useState<{ id: number; el: HTMLElement } | null>(null);
+  const editing = tagEdit && props.tags.find((t) => t.id === tagEdit.id);
   const [query, setQuery] = useState("");
   const [hi, setHi] = useState(0);
   const search = useRef<HTMLInputElement>(null);
@@ -166,6 +174,38 @@ export function Sidebar(props: {
           {query && !found.length && <div className="proj-none">Ничего не нашлось</div>}
         </div>
       </>)}
+
+      <div className="side-div" role="separator" />
+      <div className="sec-row">
+        <button className="sec-toggle" aria-expanded={!tagsFolded} onClick={() => props.onSetting(KEY_TAGS_COLLAPSED, tagsFolded ? "0" : "1")}
+          data-tip={tagsFolded ? "Показать теги" : "Свернуть теги"}>
+          <ChevronDown size={13} className={`chev ${tagsFolded ? "folded" : ""}`} />
+          <span>Теги</span>
+          {tagsFolded && props.tags.length > 0 && <span className="sec-n">{props.tags.length}</span>}
+        </button>
+      </div>
+      {!tagsFolded && (
+        <div className="proj-list tag-list">
+          {props.tags.map((t) => {
+            const id: ViewId = `t:${t.id}`;
+            return (
+              <div key={t.id} className={`nav tagnav ${props.view === id ? "on" : ""}`} role="button" onClick={() => props.onOpen(id)}
+                style={{ "--c": `var(--${t.color})` } as React.CSSProperties}>
+                <button className="nav-icon" data-tip="Изменить тег" onClick={(e) => (e.stopPropagation(), setTagEdit({ id: t.id, el: e.currentTarget }))}>
+                  <i className="tdot" />
+                </button>
+                <span className="nav-name">{t.name}</span>
+                <span className="n">{countFor(id, props.tasks) || ""}</span>
+              </div>
+            );
+          })}
+          {!props.tags.length && <div className="side-hint">Появятся здесь, когда поставишь тег задаче. Можно прямо в названии: #созвон</div>}
+        </div>
+      )}
+      {editing && tagEdit && (
+        <TagEditor key={editing.id} tag={editing} anchor={tagEdit.el} onClose={() => setTagEdit(null)}
+          onSave={(p) => props.onTagSave(editing.id, p)} onDelete={() => (setTagEdit(null), props.onTagDelete(editing.id))} />
+      )}
 
       <ProfileSwitch />
       <div className="side-foot">
