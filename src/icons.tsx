@@ -1,5 +1,5 @@
 import {
-  Archive, Baby, Bell, BookOpen, Briefcase, CalendarClock, CalendarDays, Camera, Car, Code, Coffee, Dumbbell, Flag, Folder, Gift,
+  Archive, Baby, Banknote, Bell, BookOpen, Briefcase, CalendarClock, CalendarDays, Camera, Car, Code, Coffee, Coins, DollarSign, Dumbbell, Flag, Folder, Gift,
   GraduationCap, Heart, House, Inbox, Leaf, Lightbulb, Music, Palette, Plane, Rocket, ShoppingCart, Star, Sun, Target,
   Users, Wallet, Zap, type LucideIcon,
 } from "lucide-react";
@@ -11,6 +11,7 @@ export const ICONS: Record<string, LucideIcon> = {
   rocket: Rocket, coffee: Coffee, dumbbell: Dumbbell, music: Music, plane: Plane, cart: ShoppingCart,
   wallet: Wallet, study: GraduationCap, idea: Lightbulb, bell: Bell, zap: Zap, leaf: Leaf, car: Car, baby: Baby,
   camera: Camera, gift: Gift, palette: Palette, schedule: CalendarClock,
+  money: Banknote, dollar: DollarSign, coins: Coins,
 };
 
 export function Icon({ name, size = 16, color }: { name: string; size?: number; color?: string }) {

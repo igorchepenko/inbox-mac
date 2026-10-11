@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { spaceVars } from "./palette";
+import { nextSpaceColor, spaceVars } from "./palette";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { invoke } from "@tauri-apps/api/core";
@@ -253,6 +253,13 @@ export default function App() {
     }
   };
 
+  // Пространство прямо из задачи: только название, цвет первый свободный, иконку и остальное можно поменять потом
+  const createProject = async (name: string) => {
+    const id = await db.addProject({ name, description: "", color: nextSpaceColor(projects.map((p) => p.color)), icon: "folder" }, projects.length + 1);
+    await reload();
+    return id;
+  };
+
   const saveNew = (title: string, note: string, draft: db.Draft) => {
     setNewOpen(false);
     if (draft.remind_at) ensurePermission();
@@ -502,7 +509,7 @@ export default function App() {
           onSelectAll={() => setPicked(ids)} onClear={clearPick} />
       ) : task ? (
         <Details key={task.id} task={task} projects={projects} tags={tags} people={people} remindBefore={defaultBefore(settings)}
-          onPatch={(p) => patch(task.id, p)} run={run} onError={setError}
+          onPatch={(p) => patch(task.id, p)} onCreateProject={createProject} run={run} onError={setError}
           dropping={dropTarget === task.id && dropOnDetails}
           onTriage={() => triage(task)} onToggleDone={() => toggleDone(task)}
           onArchive={() => archive(task)} onRestore={() => restore(task)}
@@ -513,7 +520,7 @@ export default function App() {
 
       {newOpen && (
         <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && setNewOpen(false)}>
-          <QuickForm projects={projects} tags={tags} people={people} remindBefore={defaultBefore(settings)} onSave={saveNew} onCancel={() => setNewOpen(false)}
+          <QuickForm projects={projects} tags={tags} people={people} remindBefore={defaultBefore(settings)} onSave={saveNew} onCancel={() => setNewOpen(false)} onCreateProject={createProject}
             initial={project ? { project_id: project.id } : oneSpace != null ? { project_id: oneSpace } : undefined} />
         </div>
       )}
@@ -542,10 +549,13 @@ export default function App() {
             setProjectDlg(null);
             run(() => (target === "new" ? db.addProject(fields, projects.length + 1) : db.updateProject(target.id, fields)));
           }}
-          onDelete={projectDlg === "new" ? undefined : () => {
+          taskCount={projectDlg === "new" ? 0 : tasks.filter((x) => x.project_id === projectDlg.id).length}
+          others={projects.filter((p) => projectDlg === "new" || p.id !== projectDlg.id)}
+          onDelete={projectDlg === "new" ? undefined : (fate) => {
             const id = projectDlg.id;
             setProjectDlg(null);
-            run(() => db.deleteProject(id));
+            if (view === `p:${id}`) openView("projects");
+            run(() => db.deleteProject(id, fate));
           }}
         />
       )}

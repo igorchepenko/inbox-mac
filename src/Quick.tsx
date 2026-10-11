@@ -3,12 +3,13 @@ import { LogicalSize } from "@tauri-apps/api/dpi";
 import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { addTask, loadPeople, loadProjects, loadSettings, loadTags, loadTasks, type Draft, type Project, type Tag } from "./db";
+import { addProject, addTask, loadPeople, loadProjects, loadSettings, loadTags, loadTasks, type Draft, type Project, type Tag } from "./db";
 import { syncPlan } from "./reminders";
 import { defaultBefore } from "./remind";
 import { QuickForm } from "./components";
 import { currentZoom } from "./prefs";
 import { activeProfile, profileName } from "./profile";
+import { nextSpaceColor } from "./palette";
 
 const hideQuick = () => invoke("hide_quick");
 
@@ -75,6 +76,14 @@ export default function QuickApp() {
     }
   };
 
+  // Новое пространство из окна быстрого ввода: главное окно тоже должно его увидеть
+  const createProject = async (name: string) => {
+    const id = await addProject({ name, description: "", color: nextSpaceColor(projects.map((p) => p.color)), icon: "folder" }, projects.length + 1);
+    setProjects(await loadProjects());
+    await emit("tasks-changed");
+    return id;
+  };
+
   // Esc стирает черновик. Если просто кликнуть мимо, окно спрячется, а набранное останется
   const cancel = () => {
     setKey((k) => k + 1);
@@ -83,7 +92,7 @@ export default function QuickApp() {
 
   return (
     <div ref={root} className="quick-root">
-      <QuickForm key={key} projects={projects} tags={tags} people={people} remindBefore={remindBefore} onSave={save} onCancel={cancel} profile={profileName(activeProfile())} />
+      <QuickForm key={key} projects={projects} tags={tags} people={people} remindBefore={remindBefore} onSave={save} onCancel={cancel} onCreateProject={createProject} profile={profileName(activeProfile())} />
       {error && <div className="error">Не сохранилось: {error}</div>}
     </div>
   );

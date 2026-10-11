@@ -101,3 +101,8 @@ export function installPalette() {
   el.textContent = css();
   document.head.appendChild(el);
 }
+
+/** Цвет нового пространства, когда его создают прямо из задачи: первый из палитры, которого ещё нет у других */
+export function nextSpaceColor(used: string[]): string {
+  return (PALETTE.find((s) => !used.includes(s.id)) ?? PALETTE[used.length % PALETTE.length]).id;
+}

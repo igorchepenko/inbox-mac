@@ -2,22 +2,22 @@ import { useEffect, useRef, useState } from "react";
 import * as db from "./db";
 import type { Draft, Project, Tag, Task } from "./db";
 import { stampTime, today } from "./dates";
-import { Icon } from "./icons";
 import { useAutosize } from "./widgets";
 import { firstOccurrence, parseRule } from "./recurrence";
 import { Paperclip } from "lucide-react";
-import { Checklist, Chip, DateField, Files, Line, Links, PriorityPicker, QuadrantPicker, RepeatField, TimeRange, type RunDb } from "./extras";
+import { Checklist, DateField, Files, Line, Links, PriorityPicker, QuadrantPicker, RepeatField, TimeRange, type RunDb } from "./extras";
 import { quickKeyLabel } from "./prefs";
 import { PersonInput, TagInput } from "./TagsUI";
 import { fmtCreated, KindSwitch, RemindField } from "./TaskBits";
 import { remindPatch, remindAtFor } from "./remind";
+import { SpacePicker } from "./SpaceUI";
 import { addTagName, canonicalPerson, parseQuick } from "./tags";
 
 export { PRIORITY } from "./priority";
 
 /** Карточка записи задачи. Используется и в отдельном окне ⌥Space, и внутри приложения по N.
  * Дата, время, проект и остальное по желанию: блок свёрнут, открывается кнопкой или ⌘E */
-export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: string[]; onSave: (title: string, note: string, draft: Draft) => void; onCancel: () => void; profile?: string; initial?: Draft; remindBefore: number }) {
+export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: string[]; onSave: (title: string, note: string, draft: Draft) => void; onCancel: () => void; profile?: string; initial?: Draft; remindBefore: number; onCreateProject?: (name: string) => Promise<number> }) {
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
   const [more, setMore] = useState(false);
@@ -87,13 +87,9 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
               onChange={(p) => set({ ...("due_date" in p ? { due_date: p.due_date } : {}), remind_at: p.remind_at, remind_before: p.remind_before })} />
           </Line>
           <Line label="Повтор"><RepeatField inline value={d.recurrence ?? null} due={d.due_date ?? null} onChange={(v) => set({ recurrence: v })} /></Line>
-          {props.projects.length > 0 && (
+          {(props.projects.length > 0 || props.onCreateProject) && (
             <Line label="Пространство">
-              {props.projects.map((p) => (
-                <Chip key={p.id} on={d.project_id === p.id} accent={p.color} onClick={() => set({ project_id: d.project_id === p.id ? null : p.id })}>
-                  <Icon name={p.icon} size={12} /> {p.name}
-                </Chip>
-              ))}
+              <SpacePicker projects={props.projects} value={d.project_id ?? null} onChange={(id) => set({ project_id: id })} onCreate={props.onCreateProject} />
             </Line>
           )}
           <Line label="Тип"><KindSwitch value={d.kind ?? "task"} onChange={(kind) => set({ kind })} /></Line>
@@ -141,6 +137,7 @@ export function Details(props: {
   people: string[];
   remindBefore: number;
   onPatch: (patch: TaskPatch) => void;
+  onCreateProject?: (name: string) => Promise<number>;
   run: RunDb;
   onError: (e: string) => void;
   dropping?: boolean;
@@ -206,13 +203,7 @@ export function Details(props: {
       <fieldset className="det-sec" disabled={locked}>
         <div className="lbl">Пространство</div>
         <div className="seg">
-          {projects.map((p) => (
-            <Chip key={p.id} on={x.project_id === p.id} accent={p.color}
-              onClick={() => onPatch({ project_id: x.project_id === p.id ? null : p.id })}>
-              <Icon name={p.icon} size={12} /> {p.name}
-            </Chip>
-          ))}
-          {!projects.length && <span className="hint">Создай пространство в боковой панели</span>}
+          <SpacePicker projects={projects} value={x.project_id} onChange={(id) => onPatch({ project_id: id })} onCreate={props.onCreateProject} />
         </div>
       </fieldset>
 
