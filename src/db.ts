@@ -333,11 +333,12 @@ async function dropFileIfUnused(path: string): Promise<void> {
 export const openFile = (path: string) => invoke("open_path", { path });
 export const revealFile = (path: string) => invoke("reveal_path", { path });
 
-export async function addProject(p: ProjectFields, position: number): Promise<void> {
-  await (await db()).execute(
+export async function addProject(p: ProjectFields, position: number): Promise<number> {
+  const r = await (await db()).execute(
     "INSERT INTO projects (name, description, color, icon, position) VALUES ($1, $2, $3, $4, $5)",
     [p.name, p.description, p.color, p.icon, position],
   );
+  return Number(r.lastInsertId);
 }
 
 export async function updateProject(id: number, p: ProjectFields): Promise<void> {
@@ -359,9 +360,17 @@ export async function setSetting(key: string, value: string): Promise<void> {
   );
 }
 
-export async function deleteProject(id: number): Promise<void> {
+/** Что делать с задачами удаляемого пространства: перенести в другое, оставить без пространства или удалить */
+export type ProjectTasksFate = { move: number } | "keep" | "delete";
+
+export async function deleteProject(id: number, fate: ProjectTasksFate = "keep"): Promise<void> {
   const d = await db();
-  await d.execute("UPDATE tasks SET project_id = NULL WHERE project_id = $1", [id]);
+  if (fate === "delete") {
+    const ids = await d.select<{ id: number }[]>("SELECT id FROM tasks WHERE project_id = $1", [id]);
+    for (const x of ids) await deleteTask(x.id);
+  } else {
+    await d.execute("UPDATE tasks SET project_id = $1 WHERE project_id = $2", [fate === "keep" ? null : fate.move, id]);
+  }
   await d.execute("DELETE FROM projects WHERE id = $1", [id]);
 }
 
