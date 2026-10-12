@@ -51,11 +51,11 @@ export function stageOf(x: Task): Stage {
   return "todo";
 }
 
-export function boardFor(view: ViewId, tasks: Task[], sort: SortBy): BoardColumn[] {
+export function boardFor(view: ViewId, tasks: Task[], sort: SortBy, rev = false): BoardColumn[] {
   const since = addDays(today(), -DONE_DAYS);
   // Канбан про текущую работу: сделанное видно только за последнюю неделю
   const mine = scoped(view, tasks).filter((x) => isOpen(x) || (!!x.done_at && stampDay(x.done_at) > since));
-  const cmp = compareBy(sort);
+  const cmp = compareBy(sort, rev);
   return STAGES.map((c) => {
     const xs = mine.filter((x) => stageOf(x) === c.key);
     xs.sort(c.key === "done" ? (a, b) => ((a.done_at ?? "") < (b.done_at ?? "") ? 1 : -1) : cmp);
