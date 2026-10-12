@@ -3,7 +3,6 @@ import { fmtDay, stampDay, stampTime, today } from "./dates";
 import { quickKeyLabel } from "./prefs";
 import { PRIORITY } from "./priority";
 import { compareNames, firstTag } from "./tags";
-import { compareDeadline, deadlineState } from "./deadline";
 
 export type ViewId = "home" | "projects" | "inbox" | "today" | "soon" | "archive" | "calendar" | `p:${number}` | `t:${number}`;
 
@@ -23,10 +22,10 @@ export interface ListItem {
 const doneToday = (x: Task, t: string) => x.status === "done" && !!x.done_at && stampDay(x.done_at) === t;
 
 /** Порядок строк в списке и в столбцах канбана. Хранится отдельно для каждого списка: settings sort:<вид> */
-export type SortBy = "date" | "deadline" | "priority" | "matrix" | "tag" | "assignee";
+export type SortBy = "date" | "created" | "priority" | "matrix" | "tag" | "assignee";
 export const SORTS: { id: SortBy; name: string; hint: string }[] = [
   { id: "date", name: "По дате", hint: "По дате и времени: ближайшие сверху" },
-  { id: "deadline", name: "По дедлайну", hint: "По дедлайну: ближайшие сверху, без дедлайна в конце" },
+  { id: "created", name: "По дате создания", hint: "По дате создания: новые сверху" },
   { id: "priority", name: "По важности", hint: "По важности: самые важные сверху" },
   { id: "matrix", name: "По матрице", hint: "По матрице Эйзенхауэра: срочно и важно сверху" },
   { id: "tag", name: "По тегам", hint: "По тегам: группы по алфавиту, без тегов в конце" },
@@ -53,7 +52,7 @@ function byDate(a: Task, b: Task): number {
 }
 
 export function compareBy(sort: SortBy): (a: Task, b: Task) => number {
-  if (sort === "deadline") return (a, b) => compareDeadline(a, b) || byDate(a, b);
+  if (sort === "created") return (a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0);
   if (sort === "priority") return (a, b) => b.priority - a.priority || byDate(a, b);
   if (sort === "matrix") return (a, b) => quadRank(a) - quadRank(b) || byDate(a, b);
   if (sort === "tag") return (a, b) => compareNames(firstTag(a), firstTag(b)) || byDate(a, b);
@@ -63,13 +62,12 @@ export function compareBy(sort: SortBy): (a: Task, b: Task) => number {
 
 export const NO_TAG_GROUP = "Без тегов";
 export const NO_PERSON_GROUP = "Сам себе";
-export const NO_DEADLINE_GROUP = "Без дедлайна";
 
 /** Заголовок группы при сортировке не по дате: видно, где кончается один уровень и начинается другой.
  * Задача с несколькими тегами стоит в группе первого по алфавиту */
 function groupName(x: Task, sort: SortBy): string {
   if (x.status === "done") return "Сделано";
-  if (sort === "deadline") return x.deadline ? (deadlineState(x) === "overdue" ? "Дедлайн прошёл" : `Дедлайн ${fmtDay(stampDay(x.deadline)).toLowerCase()}`) : NO_DEADLINE_GROUP;
+  if (sort === "created") return `Создано ${fmtDay(stampDay(x.created_at)).toLowerCase()}`;
   if (sort === "tag") return firstTag(x) ?? NO_TAG_GROUP;
   if (sort === "assignee") return x.assigned_by ?? NO_PERSON_GROUP;
   if (sort === "priority") return PRIORITY.find((p) => p.value === x.priority)?.name ?? "Важность не задана";

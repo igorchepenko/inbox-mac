@@ -105,6 +105,12 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius
 .row.sel { background: color-mix(in srgb, var(--stand) 10%, var(--surface)); border-color: color-mix(in srgb, var(--stand) 55%, transparent); }
 .row.done { background: transparent; }
 .row .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+/* Строка не вылезает за рамку при широкой правой или левой панели: значки не сжимаются, а в узкой строке второстепенные прячутся */
+.row { container-type: inline-size; min-width: 0; overflow: hidden; }
+.row > :not(.t):not(.meta.who) { flex-shrink: 0; white-space: nowrap; }
+@container (max-width: 560px) { .row > .meta.created, .row > .meta.badge { display: none; } }
+@container (max-width: 440px) { .row > .stage, .row > .tchips { display: none; } }
+@container (max-width: 340px) { .row > .tag, .row > .meta.who { display: none; } }
 .row.done .t { text-decoration: line-through; color: var(--muted); }
 .chk { width: 17px; height: 17px; border-radius: 6px; flex: none; border: 2px solid var(--muted); }
 .chk:hover:not(:disabled) { border-color: var(--exercise); }
@@ -132,6 +138,10 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius
 .time-in span { color: var(--muted); }
 .time-in.disabled { opacity: .6; }
 .det-actions { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+/* «Разобрано» и остальные действия всегда внизу панели, даже когда содержимое длиннее окна */
+.det-actions { position: sticky; bottom: 0; z-index: 2; margin-bottom: -16px; padding: 12px 0 16px; background: var(--surface); box-shadow: 0 -1px 0 var(--line); }
+/* Полоса под кнопкой сворачивания: прокручиваемое содержимое уходит под неё, а не под кнопку */
+.det::before { content: ""; position: sticky; top: 0; flex: none; height: 40px; margin: -40px -16px -14px; background: var(--surface); z-index: 3; }
 .row-btns { display: flex; gap: 8px; }
 .row-btns > * { flex: 1; }
 

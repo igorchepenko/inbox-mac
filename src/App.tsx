@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { spaceVars } from "./palette";
+import { nextSpaceColor, spaceVars } from "./palette";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { invoke } from "@tauri-apps/api/core";
@@ -14,10 +14,11 @@ import { CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Tag
 import { applyFilter, EMPTY_FILTER, filterOn, NO_SPACE, peopleOf, type TaskFilter } from "./tags";
 import { Assignee, FilterBar, FilterButton, TagChips, TagEditor } from "./TagsUI";
 import { QuadrantGlyph } from "./extras";
-import { DeadlineFlag } from "./DeadlineUI";
+import { CreatedMeta, MeetingMark } from "./TaskBits";
+import { defaultBefore, remindPatch } from "./remind";
 import { boardFor, dropTo, layoutOf, STAGES, stageOf, type Layout, type Stage } from "./boardOps";
 import { BoardView, BulkPanel, LayoutSwitch, SortSwitch, type Pick } from "./Board";
-import { ensurePermission, fireDeadlineAlerts, fireDueReminders, maybeSendDigest } from "./reminders";
+import { ensurePermission, fireDueReminders, maybeSendDigest, syncPlan } from "./reminders";
 import { Settings } from "./Settings";
 import { labelFromAccel, pref, quickKeyLabel, setQuickKeyLabel } from "./prefs";
 import Home from "./home/Home";
@@ -67,6 +68,8 @@ export default function App() {
       setSettings(st);
       settingsRef.current = st;
       setError(null);
+      // Будущие напоминания сразу в расписание macOS: придут, даже если окно спрячут
+      syncPlan(t, st);
       if (!started.current) {
         started.current = true;
         startUp(t, st);
@@ -99,8 +102,7 @@ export default function App() {
     const id = setInterval(async () => {
       const t = await reload();
       const fired = await fireDueReminders(t, settingsRef.current);
-      const alerted = await fireDeadlineAlerts(t, settingsRef.current);
-      if ((await maybeSendDigest(t, settingsRef.current)) || fired || alerted) await reload();
+      if ((await maybeSendDigest(t, settingsRef.current)) || fired) await reload();
       setTick((n) => n + 1);
     }, 30_000);
     return () => {
@@ -199,10 +201,7 @@ export default function App() {
   const toggleFromHome = (x: Task) => run(() => (x.status === "done" ? db.reopenTask(x) : db.completeTask(x)));
   const moveToToday = (xs: Task[]) =>
     run(async () => {
-      for (const x of xs) {
-        const rt = x.remind_at && stampTime(x.remind_at);
-        await db.updateTask(x.id, rt ? { due_date: today(), remind_at: `${today()}T${rt}`, reminded: 0 } : { due_date: today() });
-      }
+      for (const x of xs) await db.updateTask(x.id, { due_date: today(), ...remindPatch(x, { due_date: today() }) });
     });
   // Задача с главной открывается в своём списке
   const openTask = (x: Task) => {
@@ -252,6 +251,13 @@ export default function App() {
     } catch (e) {
       setError(String(e));
     }
+  };
+
+  // Пространство прямо из задачи: только название, цвет первый свободный, иконку и остальное можно поменять потом
+  const createProject = async (name: string) => {
+    const id = await db.addProject({ name, description: "", color: nextSpaceColor(projects.map((p) => p.color)), icon: "folder" }, projects.length + 1);
+    await reload();
+    return id;
   };
 
   const saveNew = (title: string, note: string, draft: db.Draft) => {
@@ -370,10 +376,7 @@ export default function App() {
           if (task && task.status !== "archived") patch(task.id, { priority: Number(e.code.slice(5)) });
           break;
         case "KeyT":
-          if (task && task.status !== "archived") {
-            const rt = task.remind_at && stampTime(task.remind_at);
-            patch(task.id, rt ? { due_date: today(), remind_at: `${today()}T${rt}`, reminded: 0 } : { due_date: today() });
-          }
+          if (task && task.status !== "archived") patch(task.id, { due_date: today(), ...remindPatch(task, { due_date: today() }) });
           break;
         case "Escape":
           (document.activeElement as HTMLElement | null)?.blur();
@@ -505,8 +508,8 @@ export default function App() {
         <BulkPanel tasks={pickedTasks} total={ids.length} projects={projects} selecting={selecting} run={run}
           onSelectAll={() => setPicked(ids)} onClear={clearPick} />
       ) : task ? (
-        <Details key={task.id} task={task} projects={projects} tags={tags} people={people}
-          onPatch={(p) => patch(task.id, p)} run={run} onError={setError}
+        <Details key={task.id} task={task} projects={projects} tags={tags} people={people} remindBefore={defaultBefore(settings)}
+          onPatch={(p) => patch(task.id, p)} onCreateProject={createProject} run={run} onError={setError}
           dropping={dropTarget === task.id && dropOnDetails}
           onTriage={() => triage(task)} onToggleDone={() => toggleDone(task)}
           onArchive={() => archive(task)} onRestore={() => restore(task)}
@@ -517,7 +520,7 @@ export default function App() {
 
       {newOpen && (
         <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && setNewOpen(false)}>
-          <QuickForm projects={projects} tags={tags} people={people} onSave={saveNew} onCancel={() => setNewOpen(false)}
+          <QuickForm projects={projects} tags={tags} people={people} remindBefore={defaultBefore(settings)} onSave={saveNew} onCancel={() => setNewOpen(false)} onCreateProject={createProject}
             initial={project ? { project_id: project.id } : oneSpace != null ? { project_id: oneSpace } : undefined} />
         </div>
       )}
@@ -529,7 +532,7 @@ export default function App() {
       <Tooltips />
       {!settingsOpen && <QuickKeyBanner error={shortcutError} onSettings={() => setSettingsOpen(true)} />}
       {settingsOpen && (
-        <Settings settings={settings} shortcutError={shortcutError} onClose={() => setSettingsOpen(false)}
+        <Settings settings={settings} shortcutError={shortcutError} onClose={() => setSettingsOpen(false)} onData={reload}
           onSet={(key, value) => run(() => db.setSetting(key, value))}
           onQuickShortcut={async (accel) => {
             const err = await applyShortcut(accel);
@@ -546,10 +549,13 @@ export default function App() {
             setProjectDlg(null);
             run(() => (target === "new" ? db.addProject(fields, projects.length + 1) : db.updateProject(target.id, fields)));
           }}
-          onDelete={projectDlg === "new" ? undefined : () => {
+          taskCount={projectDlg === "new" ? 0 : tasks.filter((x) => x.project_id === projectDlg.id).length}
+          others={projects.filter((p) => projectDlg === "new" || p.id !== projectDlg.id)}
+          onDelete={projectDlg === "new" ? undefined : (fate) => {
             const id = projectDlg.id;
             setProjectDlg(null);
-            run(() => db.deleteProject(id));
+            if (view === `p:${id}`) openView("projects");
+            run(() => db.deleteProject(id, fate));
           }}
         />
       )}
@@ -588,11 +594,12 @@ function TaskRow(props: {
   const overdue = x.status === "active" && !!x.due_date && x.due_date < today();
   return (
     <div ref={ref} role="option" aria-selected={props.selected} data-task-id={x.id}
-      className={`row ${props.selected ? "sel" : ""} ${props.picked ? "picked" : ""} ${done ? "done" : ""} ${props.dropping ? "drop" : ""} ${project ? "pc" : ""}`}
+      className={`row ${x.kind === "meeting" ? "meeting" : ""} ${props.selected ? "sel" : ""} ${props.picked ? "picked" : ""} ${done ? "done" : ""} ${props.dropping ? "drop" : ""} ${project ? "pc" : ""}`}
       style={spaceVars(project?.color)}
       onMouseDown={(e) => props.onSelect({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey })}>
       <button className="chk" title={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
         onMouseDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), props.onToggle())} />
+      <MeetingMark task={x} />
       <span className="t">{x.title}</span>
       <TagChips tags={x.tags} max={2} />
       {x.assigned_by && <Assignee name={x.assigned_by} />}
@@ -609,7 +616,7 @@ function TaskRow(props: {
       {x.status !== "archived" && <StageChip task={x} />}
       {project && <span className="tag" style={{ background: `var(--${project.color})`, color: `var(--${project.color}-ink, var(--on-acc))` }}>{project.name}</span>}
       {x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`}>{fmtDay(x.due_date)}</span>}
-      {!done && <DeadlineFlag task={x} />}
+      <CreatedMeta task={x} />
     </div>
   );
 }

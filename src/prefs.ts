@@ -85,9 +85,7 @@ export const DEFAULTS = {
   "remind.sound": "Glass", // системный звук macOS или none
   "digest.enabled": "0", // утренняя сводка: сколько задач на сегодня и на разбор
   "digest.time": "09:00",
-  "deadline.notify": "1", // уведомление о приближении дедлайна
-  "deadline.days": "1", // за сколько дней, 0 — в тот же день
-  "deadline.time": "10:00",
+  "remind.before": "15", // за сколько минут напоминать, когда включают напоминание у задачи: 5, 15, 30, 60, 1440
 };
 export type PrefKey = keyof typeof DEFAULTS;
 

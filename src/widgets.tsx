@@ -2,7 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { ChevronLeft, ChevronRight, Monitor, Moon, Sun } from "lucide-react";
 import { dayKey, MONTHS, pad, parseDay, today, WEEKDAYS, weekdayIndex } from "./dates";
 import { Icon, ICONS } from "./icons";
-import type { ProjectFields } from "./db";
+import type { Project, ProjectFields, ProjectTasksFate } from "./db";
+import { Chip } from "./extras";
+import { plural } from "./views";
 import { PALETTE, swatchOf, type Swatch } from "./palette";
 import { setTheme, savedTheme, type Theme } from "./theme";
 
@@ -263,14 +265,22 @@ export function ColorGrid({ value, onPick, colors = PALETTE, label = "Цвет �
 export function ProjectDialog(props: {
   initial?: ProjectFields;
   onSave: (p: ProjectFields) => void;
-  onDelete?: () => void;
+  /** Задач в пространстве (вместе со сделанными и архивом): если они есть, при удалении спросим, что с ними делать */
+  taskCount?: number;
+  /** Куда можно перенести задачи при удалении */
+  others?: Project[];
+  onDelete?: (fate: ProjectTasksFate) => void;
   onClose: () => void;
 }) {
   const [p, setP] = useState<ProjectFields>(props.initial ?? { name: "", description: "", color: "violet", icon: "folder" });
   const [armed, setArmed] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const desc = useRef<HTMLTextAreaElement>(null);
   useAutosize(desc, p.description, 200);
   const save = () => p.name.trim() && props.onSave({ ...p, name: p.name.trim(), description: p.description.trim() });
+  const count = props.taskCount ?? 0;
+  if (deleting && props.onDelete) return <DeleteSpace name={props.initial?.name ?? ""} count={count} others={props.others ?? []}
+    onDelete={props.onDelete} onBack={() => setDeleting(false)} onClose={props.onClose} />;
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
       <form className="dialog" onSubmit={(e) => (e.preventDefault(), save())}
@@ -291,14 +301,63 @@ export function ProjectDialog(props: {
         <div className="dlg-foot">
           {props.onDelete && (
             <button type="button" className={`link danger ${armed ? "armed" : ""}`} onBlur={() => setArmed(false)}
-              title="Задачи пространства останутся, просто без пространства"
-              onClick={() => (armed ? props.onDelete!() : setArmed(true))}>
-              {armed ? "Точно удалить? Задачи останутся" : "Удалить пространство"}
+              onClick={() => (count ? setDeleting(true) : armed ? props.onDelete!("keep") : setArmed(true))}>
+              {armed ? "Точно удалить?" : "Удалить пространство"}
             </button>
           )}
           <span className="grow" />
           <button type="button" className="btn" onClick={props.onClose}>Отмена</button>
           <button type="submit" className="cta stand narrow" disabled={!p.name.trim()}>Сохранить</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/** Переключатель да/нет в стиле macOS */
+export function Toggle(props: { on: boolean; onChange: (on: boolean) => void; disabled?: boolean; label: string }) {
+  return (
+    <button type="button" role="switch" aria-checked={props.on} aria-label={props.label} disabled={props.disabled}
+      className={`toggle ${props.on ? "on" : ""}`} onClick={() => props.onChange(!props.on)} />
+  );
+}
+
+/** Шаг удаления пространства с задачами: перенести их в другое, оставить без пространства или удалить вместе с ним */
+function DeleteSpace(props: { name: string; count: number; others: Project[]; onDelete: (fate: ProjectTasksFate) => void; onBack: () => void; onClose: () => void }) {
+  const [fate, setFate] = useState<"move" | "keep" | "delete">(props.others.length ? "move" : "keep");
+  const [target, setTarget] = useState<number | null>(props.others[0]?.id ?? null);
+  const n = plural(props.count, "задача", "задачи", "задач");
+  const ready = fate !== "move" || target != null;
+  const go = () => ready && props.onDelete(fate === "move" ? { move: target! } : fate);
+  const opt = (v: typeof fate, title: string, extra?: ReactNode, danger?: boolean) => (
+    <label className={`${fate === v ? "on" : ""} ${danger ? "danger" : ""}`}>
+      <input type="radio" name="fate" checked={fate === v} onChange={() => setFate(v)} />
+      <div><b>{title}</b>{extra}</div>
+    </label>
+  );
+  return (
+    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
+      <form className="dialog" onSubmit={(e) => (e.preventDefault(), go())}
+        onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), props.onBack())}>
+        <h3>Удалить «{props.name}»?</h3>
+        <p className="hint">В пространстве {n}. Что с ними сделать?</p>
+        <div className="del-fate" role="radiogroup">
+          {props.others.length > 0 && opt("move", "Перенести в другое пространство", fate === "move" && (
+            <div className="seg">
+              {props.others.map((o) => (
+                <Chip key={o.id} on={target === o.id} accent={o.color} onClick={() => setTarget(o.id)}>
+                  <Icon name={o.icon} size={12} /> {o.name}
+                </Chip>
+              ))}
+            </div>
+          ))}
+          {opt("keep", "Оставить без пространства", <span className="hint">Задачи останутся в своих списках</span>)}
+          {opt("delete", `Удалить задачи (${props.count})`, <span className="hint">Вместе с чеклистами, ссылками и файлами. Отменить нельзя</span>, true)}
+        </div>
+        <div className="dlg-foot">
+          <span className="grow" />
+          <button type="button" className="btn" onClick={props.onBack}>Назад</button>
+          <button type="submit" className="btn danger-cta" disabled={!ready} autoFocus>Удалить пространство</button>
         </div>
       </form>
     </div>

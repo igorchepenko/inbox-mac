@@ -1,12 +1,14 @@
 import Database from "@tauri-apps/plugin-sql";
 import { invoke } from "@tauri-apps/api/core";
-import { nowStamp, stampDay, stampTime, today } from "./dates";
+import { nowStamp, stampDay, today } from "./dates";
 import { nextOccurrence, parseRule } from "./recurrence";
 import { activeProfile } from "./profile";
 import { normalizeTag, pickColor, sameName, TAG_MAX, byName } from "./tags";
-import { shiftDeadline } from "./deadline";
+import { remindPatch } from "./remind";
 
 export type Status = "inbox" | "active" | "done" | "archived";
+/** Тип задачи: обычная или встреча (звонок с клиентом, с командой) */
+export type TaskKind = "task" | "meeting";
 /** Цвета проектов. Системные move, exercise и stand проектам не достаются */
 // id цвета из палитры проектов, см. src/palette.ts
 export type ProjectColor = string;
@@ -32,8 +34,8 @@ export interface Task {
   next_id: number | null; // у сделанной повторяющейся: созданный следующий повтор
   started_at: string | null; // когда взяли в работу: этап «В работе» на канбане
   assigned_by: string | null; // кто поставил задачу, имя как ввели (миграция 008)
-  deadline: string | null; // крайний срок: YYYY-MM-DD или YYYY-MM-DDTHH:MM (миграция 009), см. deadline.ts
-  deadline_notified: number; // уведомление о дедлайне уже пришло
+  remind_before: number | null; // напоминание за столько минут до задачи (миграция 010), NULL — своё время, см. remind.ts
+  kind: TaskKind;
   // Не колонки tasks: подтягиваются из своих таблиц в loadTasks
   subtasks: Subtask[];
   links: Link[];
@@ -118,11 +120,11 @@ export async function loadProjects(): Promise<Project[]> {
 }
 
 /** Необязательные поля, которые можно задать сразу при записи задачи. tags — названия, новые теги создаются сами */
-export type Draft = Partial<Pick<Task, "priority" | "project_id" | "due_date" | "remind_at" | "start_time" | "end_time" | "quadrant" | "recurrence" | "assigned_by" | "deadline">> & {
+export type Draft = Partial<Pick<Task, "priority" | "project_id" | "due_date" | "remind_at" | "start_time" | "end_time" | "quadrant" | "recurrence" | "assigned_by" | "remind_before" | "kind">> & {
   tags?: string[];
 };
 
-const DRAFT_KEYS = ["priority", "project_id", "due_date", "remind_at", "start_time", "end_time", "quadrant", "recurrence", "assigned_by", "deadline"] as const;
+const DRAFT_KEYS = ["priority", "project_id", "due_date", "remind_at", "start_time", "end_time", "quadrant", "recurrence", "assigned_by", "remind_before", "kind"] as const;
 
 /** Новая задача всегда попадает в «На разбор», даже если поля заполнены сразу */
 export async function addTask(title: string, note: string, draft: Draft = {}): Promise<number> {
@@ -138,7 +140,7 @@ export async function addTask(title: string, note: string, draft: Draft = {}): P
   return id;
 }
 
-type Editable = Pick<Task, "title" | "note" | "priority" | "project_id" | "due_date" | "remind_at" | "status" | "reminded" | "triaged_at" | "done_at" | "start_time" | "end_time" | "quadrant" | "recurrence" | "series_id" | "next_id" | "started_at" | "assigned_by" | "deadline" | "deadline_notified">;
+type Editable = Pick<Task, "title" | "note" | "priority" | "project_id" | "due_date" | "remind_at" | "status" | "reminded" | "triaged_at" | "done_at" | "start_time" | "end_time" | "quadrant" | "recurrence" | "series_id" | "next_id" | "started_at" | "assigned_by" | "remind_before" | "kind">;
 
 export async function updateTask(id: number, patch: Partial<Editable>): Promise<void> {
   const keys = Object.keys(patch) as (keyof Editable)[];
@@ -169,13 +171,13 @@ export async function completeTask(x: Task): Promise<void> {
   let nextId: number | null = null;
   if (next) {
     const d = await db();
-    const remind = x.remind_at ? `${next.date}T${stampTime(x.remind_at)}` : null;
+    const remind = remindPatch(x, { due_date: next.date }).remind_at ?? null;
     const r = await d.execute(
       `INSERT INTO tasks (title, note, status, priority, project_id, due_date, remind_at, created_at, triaged_at,
-         start_time, end_time, quadrant, recurrence, series_id, assigned_by, deadline)
-       VALUES ($1, $2, 'active', $3, $4, $5, $6, $7, $7, $8, $9, $10, $11, $12, $13, $14)`,
+         start_time, end_time, quadrant, recurrence, series_id, assigned_by, remind_before, kind)
+       VALUES ($1, $2, 'active', $3, $4, $5, $6, $7, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
       [x.title, x.note, x.priority, x.project_id, next.date, remind, stamp, x.start_time, x.end_time, x.quadrant,
-        JSON.stringify(next.rule), x.series_id ?? x.id, x.assigned_by, shiftDeadline(x.deadline, x.due_date, next.date)],
+        JSON.stringify(next.rule), x.series_id ?? x.id, x.assigned_by, x.remind_before, x.kind],
     );
     nextId = r.lastInsertId ?? null;
     if (nextId) {
@@ -217,6 +219,35 @@ export async function loadPeople(): Promise<string[]> {
   const out: string[] = [];
   for (const { name } of rows) if (!out.some((p) => sameName(p, name))) out.push(name);
   return out.sort(byName);
+}
+
+/** Все, кто назначал задачи, и сколько задач у каждого: раздел «Кто назначил» в настройках.
+ * Одно имя в разном регистре считается одним человеком, показываем самое частое написание */
+export async function loadPeopleStats(): Promise<{ name: string; count: number }[]> {
+  const rows = await (await db()).select<{ name: string; n: number }[]>(
+    "SELECT assigned_by AS name, COUNT(*) AS n FROM tasks WHERE assigned_by IS NOT NULL AND assigned_by <> '' GROUP BY assigned_by ORDER BY n DESC",
+  );
+  const out: { name: string; count: number }[] = [];
+  for (const r of rows) {
+    const same = out.find((p) => sameName(p.name, r.name));
+    if (same) same.count += r.n;
+    else out.push({ name: r.name, count: r.n });
+  }
+  return out.sort((a, b) => byName(a.name, b.name));
+}
+
+/**
+ * Переименовать человека во всех задачах. Если новое имя уже есть у другого, это объединение: задачи переходят к нему
+ * в его написании. to = null убирает человека, задачи становятся «Сам себе»
+ */
+export async function renamePerson(from: string, to: string | null): Promise<void> {
+  const d = await db();
+  const names = (await d.select<{ name: string }[]>("SELECT DISTINCT assigned_by AS name FROM tasks WHERE assigned_by IS NOT NULL"))
+    .map((r) => r.name);
+  const clean = to?.replace(/\s+/g, " ").trim() || null;
+  // Написание того, к кому объединяем: берём уже существующее, если это другой человек
+  const target = clean && !sameName(clean, from) ? names.find((n) => sameName(n, clean)) ?? clean : clean;
+  for (const n of names.filter((n) => sameName(n, from))) await d.execute("UPDATE tasks SET assigned_by = $1 WHERE assigned_by = $2", [target, n]);
 }
 
 /** Заменить теги задачи. Названия сверяются без учёта регистра, лишние сверх шести отбрасываются */
@@ -333,11 +364,12 @@ async function dropFileIfUnused(path: string): Promise<void> {
 export const openFile = (path: string) => invoke("open_path", { path });
 export const revealFile = (path: string) => invoke("reveal_path", { path });
 
-export async function addProject(p: ProjectFields, position: number): Promise<void> {
-  await (await db()).execute(
+export async function addProject(p: ProjectFields, position: number): Promise<number> {
+  const r = await (await db()).execute(
     "INSERT INTO projects (name, description, color, icon, position) VALUES ($1, $2, $3, $4, $5)",
     [p.name, p.description, p.color, p.icon, position],
   );
+  return Number(r.lastInsertId);
 }
 
 export async function updateProject(id: number, p: ProjectFields): Promise<void> {
@@ -359,9 +391,17 @@ export async function setSetting(key: string, value: string): Promise<void> {
   );
 }
 
-export async function deleteProject(id: number): Promise<void> {
+/** Что делать с задачами удаляемого пространства: перенести в другое, оставить без пространства или удалить */
+export type ProjectTasksFate = { move: number } | "keep" | "delete";
+
+export async function deleteProject(id: number, fate: ProjectTasksFate = "keep"): Promise<void> {
   const d = await db();
-  await d.execute("UPDATE tasks SET project_id = NULL WHERE project_id = $1", [id]);
+  if (fate === "delete") {
+    const ids = await d.select<{ id: number }[]>("SELECT id FROM tasks WHERE project_id = $1", [id]);
+    for (const x of ids) await deleteTask(x.id);
+  } else {
+    await d.execute("UPDATE tasks SET project_id = $1 WHERE project_id = $2", [fate === "keep" ? null : fate.move, id]);
+  }
   await d.execute("DELETE FROM projects WHERE id = $1", [id]);
 }
 

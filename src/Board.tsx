@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { spaceVars } from "./palette";
-import { Bell, CalendarDays, Check, Clock, Columns3, FlagTriangleRight, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound } from "lucide-react";
+import { Bell, CalendarDays, CalendarPlus, Check, Clock, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound } from "lucide-react";
 import { Assignee, TagChip } from "./TagsUI";
-import { DeadlineFlag } from "./DeadlineUI";
+import { CreatedMeta, MeetingMark } from "./TaskBits";
 import type { Project, Task } from "./db";
 import { addDays, fmtDay, fmtRange, nextMonday, stampTime, today } from "./dates";
 import { TARGETS, type BoardColumn, type Layout, type Stage } from "./boardOps";
@@ -38,7 +38,7 @@ export function SortSwitch({ value, onChange }: { value: SortBy; onChange: (s: S
     date: <CalendarDays size={14} />,
     priority: <PriorityIcon p={5} size={14} color="currentColor" />,
     matrix: <Grid2x2 size={14} />,
-    deadline: <FlagTriangleRight size={14} />,
+    created: <CalendarPlus size={14} />,
     tag: <Tag size={14} />,
     assignee: <UserRound size={14} />,
   };
@@ -64,7 +64,6 @@ function Meta({ task: x, project }: { task: Task; project?: Project }) {
   return (
     <div className="card-meta">
       {x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`}><CalendarDays size={11} /> {fmtDay(x.due_date)}</span>}
-      {!done && <DeadlineFlag task={x} />}
       {x.start_time && <span className="meta"><Clock size={11} /> {fmtRange(x.start_time, x.end_time)}</span>}
       {x.remind_at && !x.reminded && !done && <span className="meta"><Bell size={11} /> {stampTime(x.remind_at)}</span>}
       {x.subtasks.length > 0 && <span className="meta"><ListChecks size={11} /> {checked}/{x.subtasks.length}</span>}
@@ -75,12 +74,9 @@ function Meta({ task: x, project }: { task: Task; project?: Project }) {
       {project && <span className="tag" style={{ background: `var(--${project.color})`, color: `var(--${project.color}-ink, var(--on-acc))` }}>{project.name}</span>}
       {x.assigned_by && <Assignee name={x.assigned_by} />}
       {x.tags.map((t) => <TagChip key={t.id} name={t.name} color={t.color} />)}
+      <CreatedMeta task={x} />
     </div>
   );
-}
-
-function hasMeta(x: Task, project?: Project) {
-  return !!(x.due_date || x.deadline || x.start_time || x.remind_at || x.recurrence || x.quadrant || x.subtasks.length || x.links.length || x.files.length || x.tags.length || x.assigned_by || project);
 }
 
 interface Drag {
@@ -212,15 +208,16 @@ export function BoardView(props: {
                   <div key={x.id}>
                     {group && <div className="group col-group">{group}</div>}
                     <article data-card={x.id} data-task-id={x.id} onPointerDown={(e) => start(e, x, col)}
-                      className={`kcard ${props.sel === x.id ? "sel" : ""} ${props.fileDrop === x.id ? "filedrop" : ""} ${props.picked.includes(x.id) ? "picked" : ""} ${done ? "done" : ""} ${lifted ? "lifted" : ""} ${project ? "pc" : ""}`}
+                      className={`kcard ${x.kind === "meeting" ? "meeting" : ""} ${props.sel === x.id ? "sel" : ""} ${props.fileDrop === x.id ? "filedrop" : ""} ${props.picked.includes(x.id) ? "picked" : ""} ${done ? "done" : ""} ${lifted ? "lifted" : ""} ${project ? "pc" : ""}`}
                       style={spaceVars(project?.color)}>
                       <div className="kcard-top">
                         <button className="chk kchk" aria-label={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
                           onClick={(e) => (e.stopPropagation(), props.onToggle(x))}><Check size={11} strokeWidth={3.2} /></button>
+                        <MeetingMark task={x} />
                         <span className="t">{x.title}</span>
                         {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
                       </div>
-                      {hasMeta(x, project) && <Meta task={x} project={project} />}
+                      <Meta task={x} project={project} />
                     </article>
                   </div>
                 );

@@ -1,7 +1,8 @@
 import * as db from "./db";
 import type { Task } from "./db";
-import { addDays, nowStamp, stampDay, stampTime, today } from "./dates";
+import { addDays, nowStamp, stampDay, today } from "./dates";
 import { compareBy, VIEWS, type ListItem, type SortBy, type ViewId } from "./views";
+import { remindPatch } from "./remind";
 
 /** Как показан список: строками или канбаном. Хранится в settings под ключом layout:<вид> */
 export type Layout = "list" | "board";
@@ -75,9 +76,8 @@ export async function dropTo(x: Task, key: Stage): Promise<void> {
 }
 
 function withDate(x: Task, d: string | null): Parameters<typeof db.updateTask>[1] {
-  // Напоминание едет вместе с датой, время сохраняется
-  const time = x.remind_at && stampTime(x.remind_at);
-  return time && d ? { due_date: d, remind_at: `${d}T${time}`, reminded: 0 } : { due_date: d };
+  // Напоминание едет вместе с датой: «за 15 минут» пересчитывается, своё время сдвигается на те же дни
+  return d ? { due_date: d, ...remindPatch(x, { due_date: d }) } : { due_date: d };
 }
 
 function targetOf(x: Task): Target {

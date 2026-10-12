@@ -10,7 +10,9 @@
 .tchip-x { display: grid; place-items: center; width: 14px; height: 14px; margin-right: -3px; border-radius: 50%; color: var(--muted); flex: none; }
 .tchip-x:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 10%, transparent); }
 .tchips { display: inline-flex; align-items: center; gap: 4px; flex: none; max-width: 45%; overflow: hidden; }
-.meta.who { display: inline-flex; align-items: center; gap: 3px; font-family: inherit; max-width: 120px; overflow: hidden; text-overflow: ellipsis; }
+.meta.who { display: inline-flex; align-items: center; gap: 3px; font-family: inherit; max-width: 120px; min-width: 0; }
+.meta.who svg { flex: none; }
+.who-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-meta .tchip { max-width: 100%; }
 
 /* Поле тегов: чипсы и ввод в одной строке, переносятся */
