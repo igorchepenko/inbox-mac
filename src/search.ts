@@ -10,31 +10,11 @@ export const fold = (s: string) => s.toLocaleLowerCase("ru").replace(/ё/g, "е"
 export const needle = (q: string) => fold(q).replace(/\s+/g, " ").trim();
 const has = (text: string, n: string) => fold(text).replace(/\s+/g, " ").includes(n);
 
-/** Где у задачи нашёлся запрос. Адреса ссылок не смотрим: в них случайные буквы и цифры, совпадение там не видно */
-export type Where = "title" | "note" | "checklist" | "tags" | "assignee" | "participants" | "space" | "links";
-export const WHERE_NAMES: Record<Where, string> = {
-  title: "в названии", note: "в заметке", checklist: "в чеклисте", tags: "в тегах", assignee: "в «Кто назначил»",
-  participants: "в участниках", space: "в пространстве", links: "в названии ссылки",
-};
-
-function fieldsOf(x: Task, space?: Project): [Where, string[]][] {
-  return [
-    ["title", [x.title]], ["note", [x.note]], ["checklist", x.subtasks.map((s) => s.title)], ["tags", x.tags.map((t) => t.name)],
-    ["assignee", [x.assigned_by ?? ""]], ["participants", x.participants], ["space", [space?.name ?? ""]], ["links", x.links.map((l) => l.title)],
-  ];
-}
-
-/** Первое поле, где нашёлся запрос, или null. Пустой запрос находится в названии */
-export function foundIn(x: Task, query: string, space?: Project): Where | null {
+/** Поиск внутри списка, доски и календаря: только по названию задачи, запрос целиком. Порядок не меняется */
+export function searchTasks(query: string, tasks: Task[]): Task[] {
   const n = needle(query);
-  if (!n) return "title";
-  return fieldsOf(x, space).find(([, texts]) => texts.some((t) => has(t, n)))?.[0] ?? null;
-}
-
-/** Поиск внутри списка, доски и календаря: задачи, где нашёлся запрос целиком. Порядок не меняется */
-export function searchTasks(query: string, tasks: Task[], projects: Project[] = []): Task[] {
-  if (!needle(query)) return tasks;
-  return tasks.filter((x) => foundIn(x, query, projects.find((p) => p.id === x.project_id)) != null);
+  if (!n) return tasks;
+  return tasks.filter((x) => has(x.title, n));
 }
 
 /** Поиск пространств на странице «Пространства»: по названию и описанию */

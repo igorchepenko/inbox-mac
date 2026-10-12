@@ -16,7 +16,7 @@ import { Check, CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repe
 import { applyFilter, EMPTY_FILTER, filterOn, NO_SPACE, peopleOf, type TaskFilter } from "./tags";
 import { Assignee, FilterBar, FilterButton, FIND_EVENT, SearchField, TagChips, TagEditor, type SmartFilter } from "./TagsUI";
 import { QuadrantGlyph } from "./extras";
-import { CreatedMeta, DueFlag, FoundIn, MeetingMark } from "./TaskBits";
+import { CreatedMeta, DueFlag, MeetingMark } from "./TaskBits";
 import { defaultBefore, remindPatch } from "./remind";
 import { boardFor, canMove, CLOSING, dropTo, layoutOf, STAGES, stageOf, type Layout, type Stage } from "./boardOps";
 import { SummaryDialog, type Closing } from "./Summary";
@@ -48,6 +48,8 @@ export default function App() {
   // null закрыто, "new" новый проект, иначе редактируемый
   const [projectDlg, setProjectDlg] = useState<Project | "new" | null>(null);
   const [view, setView] = useState<ViewId>("home");
+  // Несколько умных списков сразу (два и больше): вид при этом «Задачи», подборка хранится здесь
+  const [multi, setMulti] = useState<ViewId[]>([]);
   const { panes, setWidth: setPaneWidth, toggle: togglePane, reset: resetPane } = usePanes();
   const [sel, setSel] = useState<number | null>(null);
   // Выделение для массовых действий и режим «Выбрать», в котором клик добавляет задачу к выделению
@@ -131,11 +133,17 @@ export default function App() {
     spaces: inSpace ? [] : filter.spaces.filter((id) => id === NO_SPACE || projects.some((p) => p.id === id)),
     tags: filter.tags.filter((id) => tags.some((g) => g.id === id)),
   }), [filter, tags, projects, inSpace]);
-  const shown = useMemo(() => applyFilter(tasks, filt, projects), [tasks, filt, projects]);
+  const shown = useMemo(() => applyFilter(tasks, filt), [tasks, filt]);
   // В фильтре ровно одно пространство: новые задачи сразу записываются в него
   const oneSpace = filt.spaces.length === 1 && filt.spaces[0] !== NO_SPACE ? filt.spaces[0] : null;
-  const list = useMemo(() => listFor(view, shown, sort, rev), [view, shown, sort, rev]);
-  const columns = useMemo(() => (layout === "board" ? boardFor(view, shown, sort, rev) : null), [layout, view, shown, sort, rev]);
+  // Несколько умных списков: задачи, которые попадают хотя бы в один из них
+  const inSmarts = useMemo(() => {
+    if (view !== "tasks" || multi.length < 2) return shown;
+    const ids = new Set(multi.flatMap((v) => listFor(v, shown).map((i) => i.task.id)));
+    return shown.filter((x) => ids.has(x.id));
+  }, [view, multi, shown]);
+  const list = useMemo(() => listFor(view, inSmarts, sort, rev), [view, inSmarts, sort, rev]);
+  const columns = useMemo(() => (layout === "board" ? boardFor(view, inSmarts, sort, rev) : null), [layout, view, inSmarts, sort, rev]);
   const ids = columns ? columns.flatMap((c) => c.items.map((i) => i.task.id)) : list.map((i) => i.task.id);
   const pickedTasks = tasks.filter((x) => picked.includes(x.id) && ids.includes(x.id));
   const bulk = selecting || pickedTasks.length > 1;
@@ -159,6 +167,7 @@ export default function App() {
   const clearPick = () => (setPicked([]), setSelecting(false));
   const openView = (v: ViewId) => {
     setView(v);
+    setMulti([]);
     clearPick();
     setFilter((f) => ({ ...EMPTY_FILTER, spaces: f.spaces }));
     setTagEdit(null);
@@ -170,14 +179,20 @@ export default function App() {
 
   const hidden = (v: ViewId) => !ALWAYS.includes(v) && settings[`hidden:${v}`] === "1";
   // Умный список в фильтрах «Задач»: тот же раздел, поиск и остальные фильтры остаются
-  const switchSmart = (v: ViewId | null) => {
-    setView(v ?? "tasks");
+  const smartOn: ViewId[] = isSmart(view) ? [view] : view === "tasks" ? multi : [];
+  const setSmarts = (next: ViewId[]) => {
+    // Один выбранный — это обычный умный список, два и больше — «Задачи» с подборкой
+    const v = next.length === 1 ? next[0] : "tasks";
+    setView(v);
+    setMulti(next.length > 1 ? next : []);
     clearPick();
     lastIdx.current = 0;
     setSel(null);
-    db.setSetting("last.view", v ?? "tasks").catch(() => {});
+    db.setSetting("last.view", v).catch(() => {});
   };
-  const smart: SmartFilter | undefined = inTasks(view) ? { value: isSmart(view) ? view : null, onChange: switchSmart } : undefined;
+  const smart: SmartFilter | undefined = inTasks(view)
+    ? { value: smartOn, onToggle: (v) => setSmarts(smartOn.includes(v) ? smartOn.filter((x) => x !== v) : [...smartOn, v]), onClear: () => setSmarts([]) }
+    : undefined;
   const fieldsButton = (
     <button className="icon-btn" data-tip="Какие поля задачи видны: отдельно для списка, канбана и календаря"
       onClick={() => (setSettingsTab("fields"), setSettingsOpen(true))}>
@@ -700,7 +715,6 @@ function TaskRow(props: {
       <span className="t" data-tip={x.title} data-tip-full="">
         {props.query ? marks(x.title, props.query).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part)) : x.title}
       </span>
-      <FoundIn task={x} query={props.query} project={project} />
       {show("tags") && <TagChips tags={x.tags} max={2} />}
       {show("assignee") && x.assigned_by && <Assignee name={x.assigned_by} />}
       {show("participants") && x.participants.length > 0 && (
