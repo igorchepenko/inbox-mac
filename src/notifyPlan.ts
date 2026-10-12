@@ -28,7 +28,9 @@ export const reminderKey = (x: Task) => `r:${x.id}:${x.remind_at}`;
 /** Текст уведомления: встреча помечена, «за 15 минут» превращается в «Через 15 минут, в 14:00» */
 export function reminderText(x: Task): { title: string; body: string } {
   const title = x.kind === "meeting" ? `Встреча: ${x.title}` : x.title;
-  const when = x.remind_before != null && x.start_time ? `Через ${beforeName(x.remind_before).slice(3)}, в ${x.start_time}` : "";
+  const when = x.remind_before == null ? ""
+    : x.start_time ? `Через ${beforeName(x.remind_before).slice(3)}, в ${x.start_time}`
+      : x.end_time ? `Срок через ${beforeName(x.remind_before).slice(3)}, до ${x.end_time}` : "";
   const body = [when, x.note.trim().split("\n")[0]].filter(Boolean).join(" · ") || "Напоминание из Inbox";
   return { title, body };
 }

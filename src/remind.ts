@@ -20,6 +20,9 @@ export const REMIND_BEFORE: { value: number; name: string }[] = [
 /** У задачи без времени напоминание считается от 9:00 её дня */
 export const DAY_ANCHOR = "09:00";
 
+/** От какого времени считать «за 15 минут»: от начала, а если указан только конец (срок) — от него */
+export const anchorOf = (x: { start_time: string | null; end_time?: string | null }) => x.start_time ?? x.end_time ?? null;
+
 /** За сколько минут напоминать, когда включают напоминание: из настроек, по умолчанию 15 */
 export function defaultBefore(settings: Record<string, string>): number {
   const n = Number(pref(settings, "remind.before"));
@@ -39,18 +42,19 @@ export function minusMinutes(stamp: string, m: number): string {
 /** Когда напомнить, если напоминание «за m минут» до задачи в этот день и время */
 export const remindAtFor = (due: string, start: string | null, before: number) => minusMinutes(`${due}T${start ?? DAY_ANCHOR}`, before);
 
-export type When = Pick<Task, "due_date" | "start_time" | "remind_at" | "remind_before">;
+export type When = Pick<Task, "due_date" | "start_time" | "remind_at" | "remind_before"> & { end_time?: string | null };
 export type RemindPatch = Partial<Pick<Task, "remind_at" | "remind_before" | "reminded">>;
 
 /**
  * Напоминание после того, как у задачи сменили дату или начало. «За 15 минут» пересчитывается от нового времени,
  * своё время сдвигается на столько же дней, на сколько сдвинулась дата. Без напоминания пустой объект
  */
-export function remindPatch(x: When, next: Partial<Pick<Task, "due_date" | "start_time">>): RemindPatch {
+export function remindPatch(x: When, next: Partial<Pick<Task, "due_date" | "start_time" | "end_time">>): RemindPatch {
   if (!x.remind_at) return {};
   const day = (next.due_date !== undefined ? next.due_date : x.due_date) ?? today();
   const start = next.start_time !== undefined ? next.start_time : x.start_time;
-  if (x.remind_before != null) return { remind_at: remindAtFor(day, start, x.remind_before), reminded: 0 };
+  const end = next.end_time !== undefined ? next.end_time : x.end_time;
+  if (x.remind_before != null) return { remind_at: remindAtFor(day, anchorOf({ start_time: start, end_time: end }), x.remind_before), reminded: 0 };
   const rDay = x.due_date ? addDays(stampDay(x.remind_at), daysBetween(x.due_date, day)) : day;
   return { remind_at: `${rDay}T${stampTime(x.remind_at)}`, reminded: 0 };
 }
@@ -58,14 +62,14 @@ export function remindPatch(x: When, next: Partial<Pick<Task, "due_date" | "star
 /** Включить напоминание «за m минут» или сменить вариант. Задача без даты получает сегодняшнюю */
 export function setBefore(x: When, before: number): RemindPatch & Partial<Pick<Task, "due_date">> {
   const day = x.due_date ?? today();
-  return { ...(x.due_date ? {} : { due_date: day }), remind_before: before, remind_at: remindAtFor(day, x.start_time, before), reminded: 0 };
+  return { ...(x.due_date ? {} : { due_date: day }), remind_before: before, remind_at: remindAtFor(day, anchorOf(x), before), reminded: 0 };
 }
 
-/** Своё время: момент остаётся тем же, что был посчитан, дальше его правят вручную */
-export function setCustom(x: When, time?: string): RemindPatch & Partial<Pick<Task, "due_date">> {
-  const day = x.due_date ?? today();
-  const at = x.remind_at ?? `${day}T${x.start_time ?? DAY_ANCHOR}`;
-  return { ...(x.due_date ? {} : { due_date: day }), remind_before: null, remind_at: time ? `${stampDay(at)}T${time}` : at, reminded: 0 };
+/** Своё время: момент остаётся тем же, что был посчитан, дальше его день и время правят вручную */
+export function setCustom(x: When, time?: string, day?: string): RemindPatch & Partial<Pick<Task, "due_date">> {
+  const due = x.due_date ?? today();
+  const at = x.remind_at ?? `${due}T${anchorOf(x) ?? DAY_ANCHOR}`;
+  return { ...(x.due_date ? {} : { due_date: due }), remind_before: null, remind_at: `${day ?? stampDay(at)}T${time ?? stampTime(at)}`, reminded: 0 };
 }
 
 export const REMIND_OFF: RemindPatch = { remind_at: null, remind_before: null, reminded: 0 };

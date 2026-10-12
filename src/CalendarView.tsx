@@ -471,7 +471,7 @@ function patchFor(it: Item, to: Spot, kind: Drag["kind"], mode: CalMode): Patch 
   }
   // Напоминание едет вместе с задачей: «за 15 минут» пересчитывается от нового начала, своё время сдвигается на те же дни
   if (x.remind_at && (p.due_date || p.start_time !== undefined)) {
-    const r = remindPatch(x, { due_date: to.day, start_time: p.start_time !== undefined ? p.start_time : x.start_time });
+    const r = remindPatch(x, { due_date: to.day, start_time: p.start_time !== undefined ? p.start_time : x.start_time, end_time: p.end_time !== undefined ? p.end_time : x.end_time });
     if (r.remind_at !== x.remind_at) Object.assign(p, r);
   }
   return Object.keys(p).length ? p : null;

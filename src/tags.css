@@ -59,3 +59,7 @@
 /* Название в строке важнее тегов: им достаётся то, что осталось */
 .row .t { min-width: 120px; }
 .row .tchip { max-width: 96px; }
+
+/* Участник встречи: чипс без цвета тега, с иконкой человека */
+.tchip.person { color: var(--fg); background: color-mix(in srgb, var(--fg) 7%, transparent); border-color: transparent; }
+.tchip.person svg { color: var(--muted); flex: none; }

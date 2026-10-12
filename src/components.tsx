@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import * as db from "./db";
 import type { Draft, Project, Tag, Task } from "./db";
-import { stampTime, today } from "./dates";
+import { fmtStamp, today } from "./dates";
 import { useAutosize } from "./widgets";
 import { firstOccurrence, parseRule } from "./recurrence";
 import { Paperclip } from "lucide-react";
-import { Checklist, DateField, Files, Line, Links, PriorityPicker, QuadrantPicker, RepeatField, TimeRange, type RunDb } from "./extras";
+import { Checklist, DateField, Files, Line, Links, normalizeUrl, PriorityPicker, QuadrantPicker, RepeatField, TimeRange, type RunDb } from "./extras";
 import { quickKeyLabel } from "./prefs";
-import { PersonInput, TagInput } from "./TagsUI";
+import { PeopleInput, PersonInput, TagInput } from "./TagsUI";
 import { fmtCreated, KindSwitch, RemindField } from "./TaskBits";
-import { remindPatch, remindAtFor } from "./remind";
+import { anchorOf, remindPatch, remindAtFor, type When } from "./remind";
 import { SpacePicker } from "./SpaceUI";
 import { addTagName, canonicalPerson, parseQuick } from "./tags";
 
@@ -22,31 +22,48 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
   const [note, setNote] = useState("");
   const [more, setMore] = useState(false);
   const [d, setD] = useState<Draft>(props.initial ?? {});
+  const [link, setLink] = useState("");
+  const [badLink, setBadLink] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
+  const linkRef = useRef<HTMLInputElement>(null);
   useAutosize(noteRef, note, 260);
   useEffect(() => titleRef.current?.focus(), []);
   const set = (patch: Partial<typeof d>) => setD((cur) => ({ ...cur, ...patch }));
-  const filled = [d.due_date, d.start_time, d.remind_at, d.recurrence, d.project_id, d.priority, d.quadrant, d.assigned_by].filter((v) => v != null && v !== "").length
-    + (d.tags?.length ? 1 : 0) + (d.kind === "meeting" ? 1 : 0);
+  const meeting = d.kind === "meeting";
+  const filled = [d.due_date, d.start_time ?? d.end_time, d.remind_at, d.recurrence, d.project_id, d.priority, d.quadrant, d.assigned_by].filter((v) => v != null && v !== "").length
+    + (d.tags?.length ? 1 : 0) + (meeting ? 1 : 0) + (d.participants?.length ? 1 : 0) + (link.trim() ? 1 : 0);
+  const when: When = { due_date: d.due_date ?? null, start_time: d.start_time ?? null, end_time: d.end_time ?? null, remind_at: d.remind_at ?? null, remind_before: d.remind_before ?? null };
+  // Напоминание едет вместе с датой и временем, как в панели задачи
+  const moveRemind = (next: Parameters<typeof remindPatch>[1]) => {
+    const { reminded: _, ...r } = remindPatch(when, next);
+    return r;
+  };
+  // У встречи нет матрицы: она про срочность и важность дел, а не созвонов
+  const setKind = (kind: Draft["kind"]) => set(kind === "meeting" ? { kind, quadrant: null } : { kind });
 
   const submit = () => {
     // #тег и @Имя прямо в названии: убираем из текста, добавляем к выбранному в параметрах
     const q = parseQuick(title);
     const t = q.title || title.trim();
     if (!t) return titleRef.current?.focus();
-    const draft = { ...d };
+    const url = meeting && link.trim() ? normalizeUrl(link) : null;
+    if (meeting && link.trim() && !url) {
+      setMore(true);
+      setBadLink(true);
+      return linkRef.current?.focus();
+    }
+    const draft: Draft = { ...d, ...(url ? { link: url } : {}) };
+    if (!meeting) delete draft.participants;
     if (q.title) {
       draft.tags = q.tags.reduce(addTagName, draft.tags ?? []);
       if (q.person && !draft.assigned_by) draft.assigned_by = canonicalPerson(q.person, props.people);
     }
     const rule = parseRule(draft.recurrence);
-    if (!draft.due_date && (draft.start_time || draft.remind_at || rule)) draft.due_date = rule ? firstOccurrence(rule, today()) : today();
-    // Напоминание считаем от окончательных даты и времени: их могли поменять после того, как включили напоминание
-    if (draft.remind_at && draft.due_date) {
-      draft.remind_at = draft.remind_before != null
-        ? remindAtFor(draft.due_date, draft.start_time ?? null, draft.remind_before)
-        : `${draft.due_date}T${stampTime(draft.remind_at)}`;
+    if (!draft.due_date && (draft.start_time || draft.end_time || draft.remind_at || rule)) draft.due_date = rule ? firstOccurrence(rule, today()) : today();
+    // «За 15 минут» считаем от окончательных даты и времени. Свой день и время напоминания остаются как выбрали
+    if (draft.remind_at && draft.due_date && draft.remind_before != null) {
+      draft.remind_at = remindAtFor(draft.due_date, anchorOf({ start_time: draft.start_time ?? null, end_time: draft.end_time }), draft.remind_before);
     }
     props.onSave(t, note.trim(), draft);
   };
@@ -77,13 +94,27 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
       <textarea ref={noteRef} rows={2} className="field qi-note" placeholder="Заметка, если нужна" value={note} onChange={(e) => setNote(e.target.value)} />
       {more && (
         <div className="qi-more lines">
-          <Line label="Дата"><DateField inline value={d.due_date ?? null} onChange={(v) => set({ due_date: v })} /></Line>
+          <Line label="Тип"><KindSwitch value={d.kind ?? "task"} onChange={setKind} /></Line>
+          <Line label="Важность"><PriorityPicker value={d.priority} onChange={(p) => set({ priority: p ?? undefined })} /></Line>
+          {meeting ? (
+            <>
+              <Line label="Участники"><PeopleInput value={d.participants ?? []} people={props.people} onChange={(participants) => set({ participants })} /></Line>
+              <Line label="Ссылка">
+                <input ref={linkRef} className={`field qi-link ${badLink ? "bad" : ""}`} value={link} placeholder="Zoom, Meet, Телемост…" spellCheck={false} autoComplete="off"
+                  onChange={(e) => (setLink(e.target.value), setBadLink(false))} />
+                {badLink && <span className="hint">Не похоже на ссылку</span>}
+              </Line>
+            </>
+          ) : (
+            <Line label="Матрица"><QuadrantPicker value={d.quadrant ?? null} onChange={(q) => set({ quadrant: q })} /></Line>
+          )}
+          <Line label="Дата"><DateField inline value={d.due_date ?? null} onChange={(v) => set({ due_date: v, ...moveRemind({ due_date: v }) })} /></Line>
           <Line label="Время">
-            <TimeRange start={d.start_time ?? null} end={d.end_time ?? null} onChange={(a, b) => set({ start_time: a, end_time: b })} />
+            <TimeRange start={d.start_time ?? null} end={d.end_time ?? null}
+              onChange={(a, b) => set({ start_time: a, end_time: b, ...moveRemind({ start_time: a, end_time: b }) })} />
           </Line>
           <Line label="Напомнить">
-            <RemindField defaultBefore={props.remindBefore}
-              value={{ due_date: d.due_date ?? null, start_time: d.start_time ?? null, remind_at: d.remind_at ?? null, remind_before: d.remind_before ?? null }}
+            <RemindField defaultBefore={props.remindBefore} inline value={when}
               onChange={(p) => set({ ...("due_date" in p ? { due_date: p.due_date } : {}), remind_at: p.remind_at, remind_before: p.remind_before })} />
           </Line>
           <Line label="Повтор"><RepeatField inline value={d.recurrence ?? null} due={d.due_date ?? null} onChange={(v) => set({ recurrence: v })} /></Line>
@@ -92,9 +123,6 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
               <SpacePicker projects={props.projects} value={d.project_id ?? null} onChange={(id) => set({ project_id: id })} onCreate={props.onCreateProject} />
             </Line>
           )}
-          <Line label="Тип"><KindSwitch value={d.kind ?? "task"} onChange={(kind) => set({ kind })} /></Line>
-          <Line label="Важность"><PriorityPicker value={d.priority} onChange={(p) => set({ priority: p ?? undefined })} /></Line>
-          <Line label="Матрица"><QuadrantPicker value={d.quadrant ?? null} onChange={(q) => set({ quadrant: q })} /></Line>
           <Line label="Теги"><TagInput value={d.tags ?? []} tags={props.tags} onChange={(tags) => set({ tags })} /></Line>
           <Line label="От кого"><PersonInput value={d.assigned_by ?? null} people={props.people} onChange={(v) => set({ assigned_by: v })} /></Line>
         </div>
@@ -167,8 +195,9 @@ export function Details(props: {
   const setDate = (d: string | null) => onPatch({ due_date: d, ...remindPatch(x, { due_date: d }) });
   // Время и повтор без даты не имеют смысла: дату ставим сами, если её нет
   const setTimes = (start: string | null, end: string | null) => {
-    const p: TaskPatch = start && !x.due_date ? { start_time: start, end_time: end, due_date: t } : { start_time: start, end_time: end };
-    onPatch({ ...p, ...(start !== x.start_time ? remindPatch(x, p) : {}) });
+    const p: TaskPatch = (start || end) && !x.due_date ? { start_time: start, end_time: end, due_date: t } : { start_time: start, end_time: end };
+    // От конца напоминание считается, только когда это срок (без начала)
+    onPatch({ ...p, ...(anchorOf({ start_time: start, end_time: end }) !== anchorOf(x) ? remindPatch(x, p) : {}) });
   };
   const setRepeat = (json: string | null) => {
     const rule = parseRule(json);
@@ -186,18 +215,43 @@ export function Details(props: {
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLElement).blur(); } }} />
       </div>
 
-      <div className="det-created hint" title={x.created_at}>Создана {fmtCreated(x.created_at).toLowerCase()}</div>
+      <div className="det-created hint" data-tip={`Создана ${fmtStamp(x.created_at)}`}>Создана {fmtCreated(x.created_at).toLowerCase()}</div>
 
       <fieldset className="det-sec" disabled={locked}>
         <div className="lbl">Тип</div>
         <div className="seg"><KindSwitch value={x.kind} onChange={(kind) => onPatch({ kind })} /></div>
+        {x.kind === "meeting" && (
+          <>
+            <div className="lbl sub-lbl">Участники{x.participants.length ? <span className="opt"> {x.participants.length}</span> : null}</div>
+            <PeopleInput value={x.participants} people={props.people} disabled={locked}
+              onChange={(names) => props.run(() => db.setTaskPeople(x.id, names))} />
+          </>
+        )}
       </fieldset>
 
       <fieldset className="det-sec" disabled={locked}>
         <div className="lbl">Важность</div>
         <PriorityPicker value={x.priority} onChange={(p) => onPatch({ priority: p ?? 0 })} />
-        <div className="lbl sub-lbl">Матрица Эйзенхауэра <span className="opt">необязательно</span></div>
-        <QuadrantPicker value={x.quadrant} onChange={(q) => onPatch({ quadrant: q })} />
+        {(x.kind !== "meeting" || x.quadrant != null) && (
+          <>
+            <div className="lbl sub-lbl">Матрица Эйзенхауэра <span className="opt">необязательно</span></div>
+            <QuadrantPicker value={x.quadrant} onChange={(q) => onPatch({ quadrant: q })} />
+          </>
+        )}
+      </fieldset>
+
+      <fieldset className="det-sec lines" disabled={locked}>
+        <div className="lbl">Когда</div>
+        <div className="seg"><DateField value={x.due_date} onChange={setDate} /></div>
+        <Line label="Время">
+          <TimeRange start={x.start_time} end={x.end_time} disabled={locked} onChange={setTimes} />
+        </Line>
+        <Line label="Напомнить">
+          <RemindField value={x} reminded={!!x.reminded} defaultBefore={props.remindBefore} disabled={locked} onChange={onPatch} />
+        </Line>
+        <Line label="Повтор">
+          <RepeatField value={x.recurrence} due={x.due_date} onChange={setRepeat} disabled={locked} />
+        </Line>
       </fieldset>
 
       <fieldset className="det-sec" disabled={locked}>
@@ -213,20 +267,6 @@ export function Details(props: {
           onChange={(names) => props.run(() => db.setTaskTags(x.id, names))} />
         <div className="lbl sub-lbl">Кто назначил <span className="opt">необязательно</span></div>
         <PersonInput value={x.assigned_by} people={props.people} disabled={locked} onChange={(v) => onPatch({ assigned_by: v })} />
-      </fieldset>
-
-      <fieldset className="det-sec lines" disabled={locked}>
-        <div className="lbl">Когда</div>
-        <div className="seg"><DateField value={x.due_date} onChange={setDate} /></div>
-        <Line label="Время">
-          <TimeRange start={x.start_time} end={x.end_time} disabled={locked} onChange={setTimes} />
-        </Line>
-        <Line label="Напомнить">
-          <RemindField value={x} reminded={!!x.reminded} defaultBefore={props.remindBefore} disabled={locked} onChange={onPatch} />
-        </Line>
-        <Line label="Повтор">
-          <RepeatField value={x.recurrence} due={x.due_date} onChange={setRepeat} disabled={locked} />
-        </Line>
       </fieldset>
 
       <div className="det-sec">

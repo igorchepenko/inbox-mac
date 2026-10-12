@@ -171,6 +171,56 @@ export function PersonInput(props: { value: string | null; people: string[]; onC
   );
 }
 
+/** Участники встречи: несколько имён чипсами. Подсказки из того же списка, что «Кто назначил», новое имя попадает туда же */
+export function PeopleInput(props: { value: string[]; people: string[]; onChange: (names: string[]) => void; disabled?: boolean }) {
+  const [text, setText] = useState("");
+  const [focus, setFocus] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const items = focus ? suggest(props.people, text, props.value) : [];
+  const { hi, setHi, onArrow } = useHi(items.length);
+  const add = (raw: string) => {
+    const v = canonicalPerson(raw, props.people);
+    setText("");
+    setHi(-1);
+    if (v && !props.value.some((n) => sameName(n, v))) props.onChange([...props.value, v]);
+  };
+  const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (onArrow(e)) return;
+    const pick = hi >= 0 ? items[hi] : e.key === "Tab" && text.trim() && items[0] ? items[0] : text;
+    if ((e.key === "Enter" || e.key === "," || (e.key === "Tab" && pick.trim())) && pick.trim()) {
+      e.preventDefault();
+      e.stopPropagation(); // Enter в поле участников не сохраняет всю форму
+      add(pick);
+    } else if (e.key === "Backspace" && !text && props.value.length) props.onChange(props.value.slice(0, -1));
+    else if (e.key === "Escape" && text) (e.stopPropagation(), e.preventDefault(), setText(""));
+  };
+  return (
+    <div className="tag-field">
+      <div className={`tag-input field people-input ${props.disabled ? "disabled" : ""}`} onMouseDown={(e) => e.target === e.currentTarget && (e.preventDefault(), input.current?.focus())}>
+        {props.value.map((n) => (
+          <span key={n} className="tchip person">
+            <UserRound size={11} />
+            <span className="tchip-n">{n}</span>
+            {!props.disabled && (
+              <button type="button" className="tchip-x" aria-label={`Убрать ${n}`} onMouseDown={(e) => e.preventDefault()}
+                onClick={(e) => (e.stopPropagation(), props.onChange(props.value.filter((x) => x !== n)))}><X size={10} strokeWidth={2.6} /></button>
+            )}
+          </span>
+        ))}
+        {!props.disabled && (
+          <input ref={input} value={text} maxLength={40} spellCheck={false} autoComplete="off"
+            placeholder={props.value.length ? "" : "Кто будет, например Андрей"}
+            onChange={(e) => (setText(e.target.value.replace(/,/g, "")), setHi(-1))}
+            onFocus={() => setFocus(true)}
+            onBlur={() => (setFocus(false), text.trim() && add(text))}
+            onKeyDown={onKey} />
+        )}
+      </div>
+      <Suggestions items={items} hi={hi} onPick={add} person />
+    </div>
+  );
+}
+
 const TAG_SWATCHES = TAG_COLORS.map((id) => PALETTE.find((s) => s.id === id)!);
 
 /** Правка тега во всплывающей панели: название, цвет из 24, удаление */

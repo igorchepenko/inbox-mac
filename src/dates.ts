@@ -104,10 +104,27 @@ export function fmtDuration(min: number): string {
   return [h && `${h} ч`, m && `${m} мин`].filter(Boolean).join(" ") || "0 мин";
 }
 
-/** «10:00–11:30» для строки списка; без конца — просто начало */
+/** «10:00–11:30» для строки списка; без конца — просто начало, без начала — срок «до 18:00» */
 export function fmtRange(start: string | null, end: string | null): string {
-  return start ? (end ? `${start}–${end}` : start) : "";
+  return start ? (end ? `${start}–${end}` : start) : end ? `до ${end}` : "";
 }
+
+/**
+ * Ввод цифры в поле часов или минут, как в часах macOS. fresh — поле только что выделено целиком:
+ * цифра начинает значение заново, а не вставляется в середину. Если с этой цифры не начинается ни одно
+ * двузначное значение (часы 3–9, минуты 6–9), она сразу становится «04», «07», и поле готово (done).
+ * Вторая цифра, с которой значение выходит за предел (25 часов), начинает его заново: «2», «5» → «05»
+ */
+export function typeTimeDigit(cur: string, fresh: boolean, digit: number, max: 23 | 59): { value: string; done: boolean } {
+  const first = (d: number) => (d * 10 > max ? { value: `0${d}`, done: true } : { value: String(d), done: false });
+  if (fresh || cur.length !== 1) return first(digit);
+  const v = Number(cur) * 10 + digit;
+  return v <= max ? { value: pad(v), done: true } : { value: `0${digit}`, done: true };
+}
+
+/** Момент «YYYY-MM-DDTHH:MM[:SS]» → «16.10.2026 14:30» */
+export const fmtStamp = (stamp: string) =>
+  `${stamp.slice(8, 10)}.${stamp.slice(5, 7)}.${stamp.slice(0, 4)} ${stamp.slice(11, 16)}`;
 
 // Названия
 

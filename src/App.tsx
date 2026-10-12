@@ -14,7 +14,7 @@ import { CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Tag
 import { applyFilter, EMPTY_FILTER, filterOn, NO_SPACE, peopleOf, type TaskFilter } from "./tags";
 import { Assignee, FilterBar, FilterButton, TagChips, TagEditor } from "./TagsUI";
 import { QuadrantGlyph } from "./extras";
-import { CreatedMeta, MeetingMark } from "./TaskBits";
+import { CreatedMeta, DueFlag, MeetingMark } from "./TaskBits";
 import { defaultBefore, remindPatch } from "./remind";
 import { boardFor, dropTo, layoutOf, STAGES, stageOf, type Layout, type Stage } from "./boardOps";
 import { BoardView, BulkPanel, LayoutSwitch, SortSwitch, type Pick } from "./Board";
@@ -611,6 +611,7 @@ function TaskRow(props: {
       {x.recurrence && !done && <span className="meta badge" title="Повторяется"><Repeat size={12} /></span>}
       {x.quadrant && !done && <QuadrantGlyph q={x.quadrant} />}
       {x.start_time && <span className="meta" title="Время">{fmtRange(x.start_time, x.end_time)}</span>}
+      <DueFlag task={x} />
       {x.remind_at && !x.reminded && !done && <span className="meta" title="Напоминание">⏰ {stampTime(x.remind_at)}</span>}
       {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
       {x.status !== "archived" && <StageChip task={x} />}

@@ -81,7 +81,7 @@ export function duration(x: Task): number {
 }
 
 
-export const timeRange = (x: Task) => (x.start_time ? `${x.start_time}–${fmtMin(toMin(x.start_time) + duration(x))}` : "");
+export const timeRange = (x: Task) => (x.start_time ? `${x.start_time}–${fmtMin(toMin(x.start_time) + duration(x))}` : x.end_time ? `до ${x.end_time}` : "");
 
 // Состояния задач
 
