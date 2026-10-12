@@ -44,6 +44,18 @@ input, textarea { font: inherit; color: var(--fg); user-select: text; }
 :focus-visible { outline: 2px solid var(--stand); outline-offset: 2px; }
 kbd { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius: 6px; color: var(--muted); background: var(--field); border: 1px solid var(--line); }
 
+/* Тонкие светлые полосы прокрутки: ползунок 4px, без дорожки; светлее на светлой теме */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(22, 27, 38, .16); border: 3px solid transparent; background-clip: content-box; border-radius: 5px; min-height: 32px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(22, 27, 38, .3); background-clip: content-box; }
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .2); background-clip: content-box; }
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, .36); background-clip: content-box; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .2); background-clip: content-box; }
+  :root:not([data-theme="light"]) ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, .36); background-clip: content-box; }
+}
+
 /* Поля чуть темнее фона, кнопки различаются рамкой */
 .field { background: var(--field); border: 1px solid var(--line); border-radius: 10px; outline: none; }
 .field:focus { border-color: var(--stand); }
@@ -120,7 +132,9 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius
 .meta.overdue { color: var(--move); }
 .empty { color: var(--muted); padding: 24px 10px; }
 
-.det { background: var(--surface); border-left: 1px solid var(--line); padding: 40px 16px 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; overflow-y: auto; }
+.det { background: linear-gradient(var(--line), var(--line)) left top / 1px 100% no-repeat border-box, var(--surface); background-origin: border-box;
+  /* Полоса под кнопкой сворачивания — рамка, а не часть прокрутки: содержимое обрезается под ней, а не лезет под кнопку */
+  border-top: 40px solid transparent; padding: 0 16px 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; overflow-y: auto; }
 /* Тонкий разделитель между блоками правой панели, отступающий от краёв */
 .det-sec { position: relative; padding-top: 14px; }
 .det-sec::before { content: ""; position: absolute; top: 0; left: 2px; right: 2px; height: 1px; background: linear-gradient(90deg, transparent, var(--border) 12%, var(--border) 88%, transparent); }
@@ -138,10 +152,7 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius
 .time-in span { color: var(--muted); }
 .time-in.disabled { opacity: .6; }
 .det-actions { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
-/* «Разобрано» и остальные действия всегда внизу панели, даже когда содержимое длиннее окна */
-.det-actions { position: sticky; bottom: 0; z-index: 2; margin-bottom: -16px; padding: 12px 0 16px; background: var(--surface); box-shadow: 0 -1px 0 var(--line); }
-/* Полоса под кнопкой сворачивания: прокручиваемое содержимое уходит под неё, а не под кнопку */
-.det::before { content: ""; position: sticky; top: 0; flex: none; height: 40px; margin: -40px -16px -14px; background: var(--surface); z-index: 3; }
+/* «Разобрано» и остальные действия всегда внизу панели: отдельной полосой под прокруткой (.det.split в status.css), а не поверх содержимого */
 .row-btns { display: flex; gap: 8px; }
 .row-btns > * { flex: 1; }
 
@@ -355,3 +366,4 @@ html.quick, html.quick body { background: transparent; }
 .quick-root .qi { max-height: calc(var(--qmax, 100vh) - 20px); }
 /* «Пространство» — самая длинная подпись, колонка под неё */
 .qi-more .line { grid-template-columns: 96px minmax(0, 1fr); }
+.qi-more .qi-link { flex: 1; min-width: 0; height: 30px; padding: 0 10px; }

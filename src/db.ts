@@ -27,7 +27,7 @@ export interface Task {
   triaged_at: string | null;
   done_at: string | null;
   start_time: string | null; // HH:MM, начало в день due_date
-  end_time: string | null; // HH:MM, конец в тот же день; без start_time не бывает
+  end_time: string | null; // HH:MM, конец в тот же день; без start_time это срок задачи «до 18:00», см. due.ts
   quadrant: number | null; // матрица Эйзенхауэра: 1 срочно и важно, 2 важно, 3 срочно, 4 ни то ни другое
   recurrence: string | null; // правило повтора, JSON из recurrence.ts
   series_id: number | null; // первая задача серии повторов
@@ -36,12 +36,22 @@ export interface Task {
   assigned_by: string | null; // кто поставил задачу, имя как ввели (миграция 008)
   remind_before: number | null; // напоминание за столько минут до задачи (миграция 010), NULL — своё время, см. remind.ts
   kind: TaskKind;
+  cancelled: number; // 1 — закрыта отменой, а не сделана (миграция 012). Статус при этом done или archived
+  summary: string; // итоги: почему отменил или что получилось, в свободной форме (миграция 012)
   // Не колонки tasks: подтягиваются из своих таблиц в loadTasks
   subtasks: Subtask[];
   links: Link[];
   files: Attachment[];
   tags: Tag[]; // в порядке, в каком добавлены
+  participants: string[]; // участники встречи, из списка «Кто назначил» (миграция 011)
 }
+
+/** Закрыта: сделана или отменена, в том числе уже в архиве */
+export const isClosed = (x: Pick<Task, "status">) => x.status === "done" || x.status === "archived";
+/** Закрыта отменой */
+export const isCancelled = (x: Pick<Task, "status" | "cancelled">) => isClosed(x) && !!x.cancelled;
+/** Сделана по-настоящему: для счётчиков «сделано», отменённые туда не идут */
+export const isDoneReal = (x: Pick<Task, "status" | "cancelled">) => isClosed(x) && !x.cancelled;
 
 export interface Tag {
   id: number;
@@ -94,7 +104,7 @@ function db(): Promise<Database> {
 
 export async function loadTasks(): Promise<Task[]> {
   const d = await db();
-  const [tasks, subs, links, files, tags] = await Promise.all([
+  const [tasks, subs, links, files, tags, people] = await Promise.all([
     d.select<Task[]>("SELECT * FROM tasks ORDER BY created_at DESC"),
     d.select<Subtask[]>("SELECT * FROM subtasks ORDER BY position, id"),
     d.select<Link[]>("SELECT * FROM links ORDER BY position, id"),
@@ -102,16 +112,18 @@ export async function loadTasks(): Promise<Task[]> {
     d.select<(Tag & { task_id: number })[]>(
       "SELECT tt.task_id, t.id, t.name, t.color FROM task_tags tt JOIN tags t ON t.id = tt.tag_id ORDER BY tt.position, t.id",
     ),
+    d.select<{ task_id: number; name: string }[]>("SELECT task_id, name FROM task_people ORDER BY position"),
   ]);
   const byTask = <T extends { task_id: number }>(rows: T[]) => {
     const m = new Map<number, T[]>();
     for (const r of rows) m.set(r.task_id, [...(m.get(r.task_id) ?? []), r]);
     return m;
   };
-  const s = byTask(subs), l = byTask(links), f = byTask(files), g = byTask(tags);
+  const s = byTask(subs), l = byTask(links), f = byTask(files), g = byTask(tags), p = byTask(people);
   return tasks.map((t) => ({
     ...t, subtasks: s.get(t.id) ?? [], links: l.get(t.id) ?? [], files: f.get(t.id) ?? [],
     tags: (g.get(t.id) ?? []).map(({ id, name, color }) => ({ id, name, color })),
+    participants: (p.get(t.id) ?? []).map((r) => r.name),
   }));
 }
 
@@ -119,28 +131,42 @@ export async function loadProjects(): Promise<Project[]> {
   return (await db()).select<Project[]>("SELECT * FROM projects ORDER BY position, id");
 }
 
-/** Необязательные поля, которые можно задать сразу при записи задачи. tags — названия, новые теги создаются сами */
+/** Необязательные поля, которые можно задать сразу при записи задачи. tags — названия, новые теги создаются сами.
+ * participants — участники встречи, link — ссылка на встречу (уже проверенный адрес) */
 export type Draft = Partial<Pick<Task, "priority" | "project_id" | "due_date" | "remind_at" | "start_time" | "end_time" | "quadrant" | "recurrence" | "assigned_by" | "remind_before" | "kind">> & {
+  /** Этап при записи: new — в «Новые» (по умолчанию), todo — сразу разобрана, done — сразу сделана */
+  stage?: "new" | "todo" | "done";
   tags?: string[];
+  participants?: string[];
+  link?: string;
 };
 
 const DRAFT_KEYS = ["priority", "project_id", "due_date", "remind_at", "start_time", "end_time", "quadrant", "recurrence", "assigned_by", "remind_before", "kind"] as const;
 
-/** Новая задача всегда попадает в «На разбор», даже если поля заполнены сразу */
+/** Новая задача попадает в «Новые», если при записи не выбрали другой этап */
 export async function addTask(title: string, note: string, draft: Draft = {}): Promise<number> {
   const keys = DRAFT_KEYS.filter((k) => draft[k] != null);
-  const cols = ["title", "note", "status", "created_at", ...keys];
-  const vals = [title, note, "inbox", nowStamp(), ...keys.map((k) => draft[k])];
+  const stamp = nowStamp();
+  const triaged = draft.stage === "todo" || draft.stage === "done";
+  const cols = ["title", "note", "status", "created_at", "triaged_at", ...keys];
+  const vals = [title, note, triaged ? "active" : "inbox", stamp, triaged ? stamp : null, ...keys.map((k) => draft[k])];
   const r = await (await db()).execute(
     `INSERT INTO tasks (${cols.join(", ")}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(", ")})`,
     vals,
   );
   const id = r.lastInsertId ?? 0;
   if (id && draft.tags?.length) await setTaskTags(id, draft.tags);
+  if (id && draft.participants?.length) await setTaskPeople(id, draft.participants);
+  if (id && draft.link) await addLink(id, draft.link, "", 1);
+  // Сразу сделанная: через completeTask, чтобы у повторяющейся появился следующий повтор
+  if (id && draft.stage === "done") {
+    const x = (await loadTasks()).find((t) => t.id === id);
+    if (x) await completeTask(x);
+  }
   return id;
 }
 
-type Editable = Pick<Task, "title" | "note" | "priority" | "project_id" | "due_date" | "remind_at" | "status" | "reminded" | "triaged_at" | "done_at" | "start_time" | "end_time" | "quadrant" | "recurrence" | "series_id" | "next_id" | "started_at" | "assigned_by" | "remind_before" | "kind">;
+type Editable = Pick<Task, "title" | "note" | "priority" | "project_id" | "due_date" | "remind_at" | "status" | "reminded" | "triaged_at" | "done_at" | "start_time" | "end_time" | "quadrant" | "recurrence" | "series_id" | "next_id" | "started_at" | "assigned_by" | "remind_before" | "kind" | "cancelled" | "summary">;
 
 export async function updateTask(id: number, patch: Partial<Editable>): Promise<void> {
   const keys = Object.keys(patch) as (keyof Editable)[];
@@ -155,7 +181,7 @@ export async function updateTask(id: number, patch: Partial<Editable>): Promise<
 export async function deleteTask(id: number): Promise<void> {
   const d = await db();
   const files = await d.select<Attachment[]>("SELECT * FROM attachments WHERE task_id = $1", [id]);
-  for (const t of ["subtasks", "links", "attachments", "task_tags"]) await d.execute(`DELETE FROM ${t} WHERE task_id = $1`, [id]);
+  for (const t of ["subtasks", "links", "attachments", "task_tags", "task_people"]) await d.execute(`DELETE FROM ${t} WHERE task_id = $1`, [id]);
   await d.execute("DELETE FROM tasks WHERE id = $1", [id]);
   for (const f of files) await dropFileIfUnused(f.path);
 }
@@ -163,8 +189,31 @@ export async function deleteTask(id: number): Promise<void> {
 /**
  * Отметить сделанной. У повторяющейся рядом создаётся следующий повтор: та же задача с новой датой,
  * чеклист снова не отмечен, ссылки и файлы те же. Сделанная остаётся в истории и уходит в архив как обычно.
+ * Отменённую просто переводим в сделанные: повтор она уже создала при отмене
  */
 export async function completeTask(x: Task): Promise<void> {
+  if (isCancelled(x)) return updateTask(x.id, { status: "done", done_at: nowStamp(), cancelled: 0 });
+  await close(x);
+}
+
+/**
+ * Отменить. Можно из любого этапа, кроме сделанной: сделанную сначала возвращают в работу.
+ * Закрывается так же, как сделанная: у повторяющейся появляется следующий повтор, серия продолжается
+ */
+export async function cancelTask(x: Task): Promise<void> {
+  if (isClosed(x)) {
+    if (x.cancelled) return;
+    throw new Error("Сделанную задачу нельзя отменить. Сначала верни её в работу");
+  }
+  await close(x, 1);
+}
+
+/** Итоги задачи: почему отменил или что получилось */
+export async function setSummary(id: number, summary: string): Promise<void> {
+  await updateTask(id, { summary });
+}
+
+async function close(x: Task, cancelled = 0): Promise<void> {
   const stamp = nowStamp();
   const rule = parseRule(x.recurrence);
   const next = rule && nextOccurrence(rule, x.due_date, stampDay(stamp));
@@ -190,9 +239,10 @@ export async function completeTask(x: Task): Promise<void> {
         await d.execute("INSERT INTO attachments (task_id, name, path, size, added_at) VALUES ($1, $2, $3, $4, $5)", [nextId, f.name, f.path, f.size, f.added_at]);
       for (const [i, g] of x.tags.entries())
         await d.execute("INSERT INTO task_tags (task_id, tag_id, position) VALUES ($1, $2, $3)", [nextId, g.id, i]);
+      if (x.participants.length) await setTaskPeople(nextId, x.participants);
     }
   }
-  await updateTask(x.id, { status: "done", done_at: stamp, next_id: nextId });
+  await updateTask(x.id, { status: "done", done_at: stamp, next_id: nextId, cancelled });
 }
 
 /** Вернуть сделанную в работу. Если она успела создать следующий повтор и тот ещё не сделан, он убирается */
@@ -201,7 +251,7 @@ export async function reopenTask(x: Task): Promise<void> {
     const [n] = await (await db()).select<Task[]>("SELECT * FROM tasks WHERE id = $1", [x.next_id]);
     if (n && (n.status === "active" || n.status === "inbox")) await deleteTask(n.id);
   }
-  await updateTask(x.id, { status: "active", done_at: null, next_id: null });
+  await updateTask(x.id, { status: "active", done_at: null, next_id: null, cancelled: 0 });
 }
 
 // Теги. Создаются сами, когда их впервые ставят задаче; цвет подбирается подальше от уже занятых
@@ -211,11 +261,13 @@ export async function loadTags(): Promise<Tag[]> {
   return rows.sort((a, b) => byName(a.name, b.name));
 }
 
-/** Все, кто когда-либо назначал задачи: подсказки в поле «Кто назначил» */
+/** Все имена из задач: кто назначал и кто был участником встречи. Один список на оба поля */
+const PEOPLE_SQL = `SELECT assigned_by AS name, id AS task_id FROM tasks WHERE assigned_by IS NOT NULL AND assigned_by <> ''
+  UNION SELECT name, task_id FROM task_people`;
+
+/** Все, кто когда-либо назначал задачи или был на встрече: подсказки в полях «Кто назначил» и «Участники» */
 export async function loadPeople(): Promise<string[]> {
-  const rows = await (await db()).select<{ name: string }[]>(
-    "SELECT DISTINCT assigned_by AS name FROM tasks WHERE assigned_by IS NOT NULL AND assigned_by <> ''",
-  );
+  const rows = await (await db()).select<{ name: string }[]>(`SELECT DISTINCT name FROM (${PEOPLE_SQL})`);
   const out: string[] = [];
   for (const { name } of rows) if (!out.some((p) => sameName(p, name))) out.push(name);
   return out.sort(byName);
@@ -225,7 +277,7 @@ export async function loadPeople(): Promise<string[]> {
  * Одно имя в разном регистре считается одним человеком, показываем самое частое написание */
 export async function loadPeopleStats(): Promise<{ name: string; count: number }[]> {
   const rows = await (await db()).select<{ name: string; n: number }[]>(
-    "SELECT assigned_by AS name, COUNT(*) AS n FROM tasks WHERE assigned_by IS NOT NULL AND assigned_by <> '' GROUP BY assigned_by ORDER BY n DESC",
+    `SELECT name, COUNT(DISTINCT task_id) AS n FROM (${PEOPLE_SQL}) GROUP BY name ORDER BY n DESC`,
   );
   const out: { name: string; count: number }[] = [];
   for (const r of rows) {
@@ -242,12 +294,28 @@ export async function loadPeopleStats(): Promise<{ name: string; count: number }
  */
 export async function renamePerson(from: string, to: string | null): Promise<void> {
   const d = await db();
-  const names = (await d.select<{ name: string }[]>("SELECT DISTINCT assigned_by AS name FROM tasks WHERE assigned_by IS NOT NULL"))
-    .map((r) => r.name);
+  const names = (await d.select<{ name: string }[]>(`SELECT DISTINCT name FROM (${PEOPLE_SQL})`)).map((r) => r.name);
   const clean = to?.replace(/\s+/g, " ").trim() || null;
   // Написание того, к кому объединяем: берём уже существующее, если это другой человек
   const target = clean && !sameName(clean, from) ? names.find((n) => sameName(n, clean)) ?? clean : clean;
-  for (const n of names.filter((n) => sameName(n, from))) await d.execute("UPDATE tasks SET assigned_by = $1 WHERE assigned_by = $2", [target, n]);
+  for (const n of names.filter((n) => sameName(n, from))) {
+    await d.execute("UPDATE tasks SET assigned_by = $1 WHERE assigned_by = $2", [target, n]);
+    // В участниках: если человек уже есть на встрече под новым именем, вторая строка не нужна
+    if (target) await d.execute("UPDATE OR IGNORE task_people SET name = $1 WHERE name = $2", [target, n]);
+    if (n !== target) await d.execute("DELETE FROM task_people WHERE name = $1", [n]);
+  }
+}
+
+/** Заменить участников встречи. Имена сверяются без учёта регистра, повторы отбрасываются */
+export async function setTaskPeople(taskId: number, names: string[]): Promise<void> {
+  const d = await db();
+  const clean: string[] = [];
+  for (const raw of names) {
+    const n = raw.replace(/\s+/g, " ").trim();
+    if (n && !clean.some((c) => sameName(c, n))) clean.push(n);
+  }
+  await d.execute("DELETE FROM task_people WHERE task_id = $1", [taskId]);
+  for (const [i, n] of clean.entries()) await d.execute("INSERT INTO task_people (task_id, name, position) VALUES ($1, $2, $3)", [taskId, n, i]);
 }
 
 /** Заменить теги задачи. Названия сверяются без учёта регистра, лишние сверх шести отбрасываются */

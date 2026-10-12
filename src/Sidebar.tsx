@@ -71,8 +71,12 @@ export function Sidebar(props: {
   onSetting: (key: string, value: string) => void;
   onSettings: () => void;
   onShortcuts: () => void;
+  searching: boolean;
+  onSearch: () => void;
 }) {
   // Пункт меню, у которого сейчас открыт выбор иконки
+  // Пока открыт поиск, подсвечен только он
+  const cur = props.searching ? null : props.view;
   const [picker, setPicker] = useState<{ id: ViewId; el: HTMLElement } | null>(null);
   const [collapsed, setCollapsed] = useState(props.settings[KEY_PROJECTS_COLLAPSED] === "1");
   useEffect(() => setCollapsed(props.settings[KEY_PROJECTS_COLLAPSED] === "1"), [props.settings[KEY_PROJECTS_COLLAPSED]]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -109,7 +113,7 @@ export function Sidebar(props: {
   const item = (id: ViewId, label: string, accent: string, icon: string, onIcon: (el: HTMLElement) => void, key?: string, extra = "", space = false) => {
     const n = countFor(id, props.tasks);
     return (
-      <div key={id} className={`nav ${props.view === id ? "on" : ""} ${space ? "space" : ""} ${extra}`} onClick={() => props.onOpen(id)} role="button"
+      <div key={id} className={`nav ${cur === id ? "on" : ""} ${space ? "space" : ""} ${extra}`} onClick={() => props.onOpen(id)} role="button"
         data-tip={key ? label : undefined} data-key={key} style={space ? spaceVars(accent) : undefined}>
         <button className="nav-icon" data-tip={space ? "Изменить пространство" : "Сменить иконку"} style={space ? undefined : { color: `var(--${accent})` }}
           onClick={(e) => (e.stopPropagation(), onIcon(e.currentTarget))}>
@@ -125,10 +129,14 @@ export function Sidebar(props: {
 
   return (
     <nav className="side">
-      <div className={`nav ${props.view === "home" ? "on" : ""}`} onClick={() => props.onOpen("home")} role="button"
+      <div className={`nav ${cur === "home" ? "on" : ""}`} onClick={() => props.onOpen("home")} role="button"
         data-tip="Главная" data-key="⌘0">
         <span className="nav-icon"><HomeIcon /></span>
         <span className="nav-name">Главная</span>
+      </div>
+      <div className={`nav ${props.searching ? "on" : ""}`} onClick={props.onSearch} role="button" data-tip="Поиск по задачам" data-key="⌘F">
+        <span className="nav-icon"><Search size={15} /></span>
+        <span className="nav-name">Поиск</span>
       </div>
       {visibleViews.map(({ v, key }) => item(v.id, v.name, v.accent, viewIcon(v.id, props.settings), (el) => setPicker({ id: v.id, el }), key))}
 
@@ -141,7 +149,7 @@ export function Sidebar(props: {
           <span>Пространства</span>
           {collapsed && props.projects.length > 0 && <span className="sec-n">{props.projects.length}</span>}
         </button>
-        <button className={`sec-btn ${props.view === "projects" ? "on" : ""}`} onClick={() => props.onOpen("projects")}
+        <button className={`sec-btn ${cur === "projects" ? "on" : ""}`} onClick={() => props.onOpen("projects")}
           data-tip="Все пространства карточками" data-key="⌘6" aria-label="Все пространства">
           <LayoutGrid size={14} />
         </button>
@@ -189,7 +197,7 @@ export function Sidebar(props: {
           {props.tags.map((t) => {
             const id: ViewId = `t:${t.id}`;
             return (
-              <div key={t.id} className={`nav tagnav ${props.view === id ? "on" : ""}`} role="button" onClick={() => props.onOpen(id)}
+              <div key={t.id} className={`nav tagnav ${cur === id ? "on" : ""}`} role="button" onClick={() => props.onOpen(id)}
                 style={{ "--c": `var(--${t.color})` } as React.CSSProperties}>
                 <button className="nav-icon" data-tip="Изменить тег" onClick={(e) => (e.stopPropagation(), setTagEdit({ id: t.id, el: e.currentTarget }))}>
                   <i className="tdot" />

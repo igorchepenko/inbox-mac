@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { compareBy, countFor, listFor, plural, sortOf } from "../views";
+import { compareBy, countFor, directionOf, listFor, plural, revOf, sortOf } from "../views";
 import { boardFor, stageOf } from "../boardOps";
 import { freezeToday, task } from "./helpers";
 
@@ -42,6 +42,49 @@ describe("сортировка", () => {
     const q = (id: number, quadrant: number | null) => task({ id, quadrant });
     const sorted = [q(1, null), q(2, 4), q(3, 2), q(4, 3), q(5, 1)].sort(compareBy("matrix"));
     expect(sorted.map((x) => x.id)).toEqual([5, 4, 3, 2, 1]);
+  });
+
+  it("по дате обратно: дальние сверху, без даты всё равно в конце", () => {
+    const a = task({ id: 1, due_date: "2026-10-12" });
+    const b = task({ id: 2, due_date: null });
+    const c = task({ id: 3, due_date: "2026-10-11" });
+    const d = task({ id: 4, due_date: "2026-10-11", start_time: "09:00" });
+    expect([a, b, c, d].sort(compareBy("date", true)).map((x) => x.id)).toEqual([1, 3, 4, 2]);
+  });
+
+  it("по дате создания обратно: старые сверху", () => {
+    const a = task({ id: 1, created_at: "2026-10-05T10:00:00" });
+    const b = task({ id: 2, created_at: "2026-10-01T10:00:00" });
+    expect([a, b].sort(compareBy("created")).map((x) => x.id)).toEqual([1, 2]);
+    expect([a, b].sort(compareBy("created", true)).map((x) => x.id)).toEqual([2, 1]);
+  });
+
+  it("по важности и по матрице обратно: пустые остаются в конце", () => {
+    const p = (id: number, priority: number) => task({ id, priority });
+    expect([p(1, 0), p(2, 5), p(3, 1)].sort(compareBy("priority", true)).map((x) => x.id)).toEqual([3, 2, 1]);
+    const q = (id: number, quadrant: number | null) => task({ id, quadrant });
+    expect([q(1, null), q(2, 4), q(3, 2), q(4, 3), q(5, 1)].sort(compareBy("matrix", true)).map((x) => x.id)).toEqual([2, 3, 4, 5, 1]);
+  });
+
+  it("по тегам и людям обратно: от Я до А, без значения в конце", () => {
+    const g = (id: number, name?: string) => task({ id, tags: name ? [{ id, name, color: "move" }] : [] });
+    expect([g(1), g(2, "альфа"), g(3, "яблоко")].sort(compareBy("tag", true)).map((x) => x.id)).toEqual([3, 2, 1]);
+    const w = (id: number, assigned_by: string | null) => task({ id, assigned_by });
+    expect([w(1, null), w(2, "Аня"), w(3, "Юра")].sort(compareBy("assignee", true)).map((x) => x.id)).toEqual([3, 2, 1]);
+  });
+
+  it("направление хранится для каждой сортировки в каждом списке", () => {
+    const st = { "sort.rev:today:date": "1" };
+    expect(revOf("today", "date", st)).toBe(true);
+    expect(revOf("today", "priority", st)).toBe(false);
+    expect(revOf("inbox", "date", st)).toBe(false);
+    expect(directionOf("date", false)).toEqual({ asc: true, text: "ближайшие сверху" });
+    expect(directionOf("created", true)).toEqual({ asc: true, text: "старые сверху" });
+  });
+
+  it("в «Скоро» по дате обратно дни идут от дальних, без даты в конце", () => {
+    const xs = [task({ id: 1, due_date: "2026-10-12" }), task({ id: 2, due_date: null }), task({ id: 3, due_date: "2026-10-15" })];
+    expect(listFor("soon", xs, "date", true).map((i) => i.task.id)).toEqual([3, 1, 2]);
   });
 
   it("sortOf берёт сохранённое значение или по дате", () => {
@@ -122,7 +165,7 @@ describe("канбан", () => {
       task({ id: 4, status: "active" }),
     ];
     const cols = boardFor("today", xs, "date");
-    expect(cols.map((c) => c.key)).toEqual(["new", "todo", "done"]);
+    expect(cols.map((c) => c.key)).toEqual(["new", "todo", "done", "cancelled"]);
     expect(ids(cols[2].items)).toEqual([2, 1]);
     expect(ids(cols[1].items)).toEqual([4]);
   });

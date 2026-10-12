@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { spaceVars } from "./palette";
-import { Bell, CalendarDays, CalendarPlus, Check, Clock, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Bell, CalendarDays, CalendarPlus, Check, Clock, X, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound } from "lucide-react";
 import { Assignee, TagChip } from "./TagsUI";
-import { CreatedMeta, MeetingMark } from "./TaskBits";
-import type { Project, Task } from "./db";
+import { CreatedMeta, DueFlag, MeetingMark } from "./TaskBits";
+import { isCancelled, type Project, type Task } from "./db";
 import { addDays, fmtDay, fmtRange, nextMonday, stampTime, today } from "./dates";
 import { TARGETS, type BoardColumn, type Layout, type Stage } from "./boardOps";
 import * as board from "./boardOps";
-import { plural, SORTS, type SortBy } from "./views";
+import { directionOf, plural, SORTS, type SortBy } from "./views";
 import { PRIORITY } from "./components";
 import { Icon } from "./icons";
 import { Calendar, Popover } from "./widgets";
@@ -32,8 +32,9 @@ export function LayoutSwitch({ value, onChange }: { value: Layout; onChange: (l:
   );
 }
 
-/** Сортировка списка и столбцов канбана: по дате, по важности, по матрице */
-export function SortSwitch({ value, onChange }: { value: SortBy; onChange: (s: SortBy) => void }) {
+/** Сортировка списка и столбцов канбана: по дате, по важности, по матрице.
+ * Повторный клик по выбранной или кнопка со стрелкой разворачивают порядок */
+export function SortSwitch({ value, rev, onChange, onReverse }: { value: SortBy; rev: boolean; onChange: (s: SortBy) => void; onReverse: () => void }) {
   const icons: Record<SortBy, ReactNode> = {
     date: <CalendarDays size={14} />,
     priority: <PriorityIcon p={5} size={14} color="currentColor" />,
@@ -42,12 +43,24 @@ export function SortSwitch({ value, onChange }: { value: SortBy; onChange: (s: S
     tag: <Tag size={14} />,
     assignee: <UserRound size={14} />,
   };
+  const dir = directionOf(value, rev);
+  const other = directionOf(value, !rev);
+  const tip = (s: (typeof SORTS)[number]) => {
+    if (s.id !== value) return s.hint;
+    return `${s.name}, ${dir.asc ? "по возрастанию" : "по убыванию"}: ${dir.text}. Нажми ещё раз: ${other.text}`;
+  };
   return (
-    <div className="theme-switch layout-switch" role="radiogroup" aria-label="Сортировка">
-      {SORTS.map((s) => (
-        <button key={s.id} role="radio" aria-checked={value === s.id} aria-label={s.name} data-tip={s.hint}
-          className={value === s.id ? "on" : ""} onClick={() => onChange(s.id)}>{icons[s.id]}</button>
-      ))}
+    <div className="sort-switch">
+      <div className="theme-switch layout-switch" role="radiogroup" aria-label="Сортировка">
+        {SORTS.map((s) => (
+          <button key={s.id} role="radio" aria-checked={value === s.id} aria-label={s.name} data-tip={tip(s)}
+            className={value === s.id ? "on" : ""} onClick={() => (value === s.id ? onReverse() : onChange(s.id))}>{icons[s.id]}</button>
+        ))}
+      </div>
+      <button className={`icon-btn sort-dir ${rev ? "on" : ""}`} aria-label={dir.asc ? "По возрастанию" : "По убыванию"}
+        data-tip={`${dir.asc ? "По возрастанию" : "По убыванию"}: ${dir.text}. Нажми: ${other.text}`} onClick={onReverse}>
+        {dir.asc ? <ArrowUpNarrowWide size={14} /> : <ArrowDownWideNarrow size={14} />}
+      </button>
     </div>
   );
 }
@@ -65,6 +78,7 @@ function Meta({ task: x, project }: { task: Task; project?: Project }) {
     <div className="card-meta">
       {x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`}><CalendarDays size={11} /> {fmtDay(x.due_date)}</span>}
       {x.start_time && <span className="meta"><Clock size={11} /> {fmtRange(x.start_time, x.end_time)}</span>}
+      <DueFlag task={x} />
       {x.remind_at && !x.reminded && !done && <span className="meta"><Bell size={11} /> {stampTime(x.remind_at)}</span>}
       {x.subtasks.length > 0 && <span className="meta"><ListChecks size={11} /> {checked}/{x.subtasks.length}</span>}
       {x.links.length > 0 && <span className="meta"><Link2 size={11} /> {x.links.length}</span>}
@@ -161,7 +175,7 @@ export function BoardView(props: {
       }
       const g = ghost;
       document.body.classList.remove("dragging");
-      const target = over && over !== from ? over : null;
+      const target = over && over !== from && !(over === "cancelled" && from === "done") ? over : null;
       if (target) await props.onMove(ids, target);
       setDrag(null);
       // Ждём, пока React дорисует доску с новыми данными
@@ -190,29 +204,32 @@ export function BoardView(props: {
       {props.columns.map(({ key: col, name, accent, icon, hint, items }) => {
         const open = items.filter((i) => i.task.status === "inbox" || i.task.status === "active").length;
         const isOver = drag?.over === col && drag.from !== col;
+        // Сделанную отменить нельзя: столбец «Отменено» не примет карточку из «Готово»
+        const blocked = isOver && col === "cancelled" && drag?.from === "done";
         return (
           <section key={col} ref={(el) => void (el ? colRefs.current.set(col, el) : colRefs.current.delete(col))}
-            className={`col ${isOver ? "over" : ""}`} style={{ "--c": `var(--${accent})` } as React.CSSProperties}>
+            className={`col ${isOver ? "over" : ""} ${blocked ? "blocked" : ""}`} style={{ "--c": `var(--${accent})` } as React.CSSProperties}>
             <header className="col-head">
               <span className="col-icon"><Icon name={icon} size={14} /></span>
               <span className="col-name">{name}</span>
               <span className="col-n">{open || items.length || ""}</span>
             </header>
             <div className="col-body">
-              {isOver && <div className="col-hint">{hint}</div>}
+              {isOver && <div className="col-hint">{blocked ? "Сделанную нельзя отменить. Сначала верни её в работу" : hint}</div>}
               {items.map(({ task: x, group }) => {
                 const project = props.projects.find((p) => p.id === x.project_id);
                 const done = x.status === "done" || x.status === "archived";
+                const cancelled = isCancelled(x);
                 const lifted = drag?.ids.includes(x.id);
                 return (
                   <div key={x.id}>
                     {group && <div className="group col-group">{group}</div>}
                     <article data-card={x.id} data-task-id={x.id} onPointerDown={(e) => start(e, x, col)}
-                      className={`kcard ${x.kind === "meeting" ? "meeting" : ""} ${props.sel === x.id ? "sel" : ""} ${props.fileDrop === x.id ? "filedrop" : ""} ${props.picked.includes(x.id) ? "picked" : ""} ${done ? "done" : ""} ${lifted ? "lifted" : ""} ${project ? "pc" : ""}`}
+                      className={`kcard ${x.kind === "meeting" ? "meeting" : ""} ${props.sel === x.id ? "sel" : ""} ${props.fileDrop === x.id ? "filedrop" : ""} ${props.picked.includes(x.id) ? "picked" : ""} ${done ? "done" : ""} ${cancelled ? "cancelled" : ""} ${lifted ? "lifted" : ""} ${project ? "pc" : ""}`}
                       style={spaceVars(project?.color)}>
                       <div className="kcard-top">
                         <button className="chk kchk" aria-label={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
-                          onClick={(e) => (e.stopPropagation(), props.onToggle(x))}><Check size={11} strokeWidth={3.2} /></button>
+                          onClick={(e) => (e.stopPropagation(), props.onToggle(x))}>{cancelled ? <X size={11} strokeWidth={3.2} /> : <Check size={11} strokeWidth={3.2} />}</button>
                         <MeetingMark task={x} />
                         <span className="t">{x.title}</span>
                         {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
@@ -260,7 +277,8 @@ export function BulkPanel(props: {
   const dates = [t, addDays(t, 1), nextMonday()].filter((d, i, a) => a.indexOf(d) === i);
 
   return (
-    <aside className="det bulk">
+    <aside className="det split bulk">
+      <div className="det-body">
       <div>
         <div className="lbl">Выбрано</div>
         <div className="bulk-title">{xs.length ? plural(xs.length, "задача", "задачи", "задач") : "Ничего"}</div>
@@ -319,6 +337,7 @@ export function BulkPanel(props: {
             </button>
           ))}
         </div>
+      </div>
       </div>
 
       <div className="det-actions">

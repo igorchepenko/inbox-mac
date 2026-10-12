@@ -15,3 +15,12 @@
 /* «Кто назначил» в настройках: кнопки в строку, на узком окне переносятся */
 .person-row .set-ctl { flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .person-row .set-text input { width: 100%; }
+
+/* Свой день напоминания: чипсы дня на отдельной строке под временем */
+.remind-day { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex-basis: 100%; }
+
+/* Срок «до 18:00» в строке списка и на карточке канбана */
+.meta.due { display: inline-flex; align-items: center; gap: 3px; flex: none; }
+.meta.due.soon, .meta.due.overdue { font-weight: 700; padding: 1px 6px; border-radius: 6px; }
+.meta.due.soon { color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); }
+.meta.due.overdue { color: var(--move); background: color-mix(in srgb, var(--move) 12%, transparent); }

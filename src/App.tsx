@@ -6,17 +6,20 @@ import { invoke } from "@tauri-apps/api/core";
 import * as db from "./db";
 import type { Project, ProjectFields, Tag, Task } from "./db";
 import { fmtDay, fmtRange, nowStamp, stampTime, today, toHHMM } from "./dates";
-import { listFor, progressFor, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
+import { listFor, progressFor, revKey, revOf, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
+import { marks, searchTasks } from "./search";
+import "./search.css";
 import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
 import { Icon } from "./icons";
 import { ProjectDialog } from "./widgets";
-import { CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Tag as TagIcon } from "lucide-react";
+import { CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Search, Tag as TagIcon, X } from "lucide-react";
 import { applyFilter, EMPTY_FILTER, filterOn, NO_SPACE, peopleOf, type TaskFilter } from "./tags";
 import { Assignee, FilterBar, FilterButton, TagChips, TagEditor } from "./TagsUI";
 import { QuadrantGlyph } from "./extras";
-import { CreatedMeta, MeetingMark } from "./TaskBits";
+import { CreatedMeta, DueFlag, MeetingMark } from "./TaskBits";
 import { defaultBefore, remindPatch } from "./remind";
-import { boardFor, dropTo, layoutOf, STAGES, stageOf, type Layout, type Stage } from "./boardOps";
+import { boardFor, canMove, CLOSING, dropTo, layoutOf, STAGES, stageOf, type Layout, type Stage } from "./boardOps";
+import { SummaryDialog, type Closing } from "./Summary";
 import { BoardView, BulkPanel, LayoutSwitch, SortSwitch, type Pick } from "./Board";
 import { ensurePermission, fireDueReminders, maybeSendDigest, syncPlan } from "./reminders";
 import { Settings } from "./Settings";
@@ -50,6 +53,12 @@ export default function App() {
   const [picked, setPicked] = useState<number[]>([]);
   const [selecting, setSelecting] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
+  // Окно итогов после перевода в «Готово» или «Отменено»
+  const [closing, setClosing] = useState<Closing | null>(null);
+  // Поиск по всем задачам: null закрыт. Пока открыт, вместо списка результаты, вид под ним не меняется
+  const [query, setQuery] = useState<string | null>(null);
+  const searching = query !== null;
+  const searchRef = useRef<HTMLInputElement>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutError, setShortcutError] = useState<string | null>(null);
@@ -113,6 +122,7 @@ export default function App() {
 
   const layout = layoutOf(view, settings);
   const sort = sortOf(view, settings);
+  const rev = revOf(view, sort, settings);
   const people = useMemo(() => peopleOf(tasks), [tasks]);
   // Удалённый тег или пространство из фильтра выпадает само. Внутри пространства фильтр по пространствам не действует
   const inSpace = view.startsWith("p:");
@@ -124,17 +134,17 @@ export default function App() {
   const shown = useMemo(() => applyFilter(tasks, filt), [tasks, filt]);
   // В фильтре ровно одно пространство: новые задачи сразу записываются в него
   const oneSpace = filt.spaces.length === 1 && filt.spaces[0] !== NO_SPACE ? filt.spaces[0] : null;
-  const list = useMemo(() => listFor(view, shown, sort), [view, shown, sort]);
-  const columns = useMemo(() => (layout === "board" ? boardFor(view, shown, sort) : null), [layout, view, shown, sort]);
+  const list = useMemo(() => (searching ? searchTasks(query, tasks, projects) : listFor(view, shown, sort, rev)), [searching, query, tasks, projects, view, shown, sort, rev]);
+  const columns = useMemo(() => (layout === "board" && !searching ? boardFor(view, shown, sort, rev) : null), [layout, searching, view, shown, sort, rev]);
   const ids = columns ? columns.flatMap((c) => c.items.map((i) => i.task.id)) : list.map((i) => i.task.id);
   const pickedTasks = tasks.filter((x) => picked.includes(x.id) && ids.includes(x.id));
   const bulk = selecting || pickedTasks.length > 1;
-  const task = tasks.find((x) => x.id === sel && (view === "calendar" || ids.includes(x.id))) ?? null;
+  const task = tasks.find((x) => x.id === sel && ((view === "calendar" && !searching) || ids.includes(x.id))) ?? null;
 
   // Когда выбранная задача ушла из списка (разобрана, сделана), выбираем ту, что встала на её место
   const lastIdx = useRef(0);
   useEffect(() => {
-    if (view === "calendar") return; // в календаре выбор не зависит от списка
+    if (view === "calendar" && !searching) return; // в календаре выбор не зависит от списка
     const i = ids.indexOf(sel ?? -1);
     if (i >= 0) lastIdx.current = i;
     else setSel(ids[Math.min(lastIdx.current, ids.length - 1)] ?? null);
@@ -143,11 +153,13 @@ export default function App() {
   const clearPick = () => (setPicked([]), setSelecting(false));
   const openView = (v: ViewId, from = tasks) => {
     setView(v);
+    setQuery(null);
     clearPick();
     setFilter((f) => ({ ...EMPTY_FILTER, spaces: f.spaces }));
     setTagEdit(null);
     lastIdx.current = 0;
-    setSel(listFor(v, from, sortOf(v, settings))[0]?.task.id ?? null);
+    const s = sortOf(v, settings);
+    setSel(listFor(v, from, s, revOf(v, s, settings))[0]?.task.id ?? null);
     db.setSetting("last.view", v).catch(() => {}); // для начального экрана «Где остановился»
   };
 
@@ -192,24 +204,47 @@ export default function App() {
     }
   };
   const triage = (x: Task) => run(() => db.updateTask(x.id, { status: "active", triaged_at: nowStamp() }));
-  // Через completeTask: у повторяющейся задачи она создаёт следующий повтор, reopenTask его убирает
-  const toggleDone = (x: Task) => run(() => (x.status === "done" ? db.reopenTask(x) : db.completeTask(x)));
+  // Перевод в этап из панели, канбана и по галочке. Через dropTo: completeTask и cancelTask создают следующий повтор,
+  // reopenTask его убирает. «Готово» и «Отменено» закрывают задачу сразу, а потом спрашивают итоги
+  const toStage = async (xs: Task[], stage: Stage) => {
+    const moved = xs.filter((x) => stageOf(x) !== stage && canMove(x, stage));
+    if (!moved.length) return;
+    if (CLOSING.includes(stage)) setClosing({ ids: moved.map((x) => x.id), stage: stage as Closing["stage"] });
+    // Канбан ждёт перечитанных задач, чтобы карточка села уже на новое место
+    await run(async () => {
+      for (const x of moved) await dropTo(x, stage);
+    });
+  };
+  const toggleDone = (x: Task) => void (x.status === "done" ? run(() => db.reopenTask(x)) : toStage([x], "done"));
   const archive = (x: Task) => run(() => db.updateTask(x.id, { status: "archived", done_at: x.done_at ?? nowStamp() }));
-  const restore = (x: Task) => run(() => db.updateTask(x.id, { status: "active", done_at: null }));
+  const restore = (x: Task) => run(() => db.updateTask(x.id, { status: "active", done_at: null, cancelled: 0 }));
 
   // С главной: отметка учитывает повторы, перенос просроченного сохраняет время напоминания
-  const toggleFromHome = (x: Task) => run(() => (x.status === "done" ? db.reopenTask(x) : db.completeTask(x)));
+  const toggleFromHome = toggleDone;
   const moveToToday = (xs: Task[]) =>
     run(async () => {
       for (const x of xs) await db.updateTask(x.id, { due_date: today(), ...remindPatch(x, { due_date: today() }) });
     });
   // Задача с главной открывается в своём списке
-  const openTask = (x: Task) => {
+  const homeOf = (x: Task): ViewId => {
     const t = today();
-    const v: ViewId = x.status === "inbox" ? "inbox" : x.status === "archived" ? "archive"
+    return x.status === "inbox" ? "inbox" : x.status === "archived" ? "archive"
       : x.due_date && x.due_date <= t ? "today" : x.status === "done" ? "today" : "soon";
-    setView(v);
+  };
+  const openTask = (x: Task) => {
+    setView(homeOf(x));
     setSel(x.id);
+  };
+  // Найденная задача открывается в своём списке. Фильтр сбрасываем, иначе он мог бы её спрятать
+  const revealTask = (x: Task) => {
+    openView(homeOf(x));
+    setFilter(EMPTY_FILTER);
+    setSel(x.id);
+  };
+  const openSearch = () => {
+    setQuery((q) => q ?? "");
+    clearPick();
+    requestAnimationFrame(() => searchRef.current?.select());
   };
   // Клик выбирает задачу, ⌘-клик или режим «Выбрать» добавляют к выделению, ⇧-клик берёт всё подряд от выбранной
   const pick: Pick = (id, m) => {
@@ -229,10 +264,13 @@ export default function App() {
     setSettings((st) => ({ ...st, [`sort:${view}`]: s }));
     run(() => db.setSetting(`sort:${view}`, s));
   };
-  const moveCards = (moved: number[], col: Stage) =>
-    run(async () => {
-      for (const x of tasks.filter((x) => moved.includes(x.id))) await dropTo(x, col);
-    });
+  // Направление помнится для каждой сортировки в каждом списке
+  const reverseSort = () => {
+    const key = revKey(view, sort), value = rev ? "0" : "1";
+    setSettings((st) => ({ ...st, [key]: value }));
+    run(() => db.setSetting(key, value));
+  };
+  const moveCards = (moved: number[], col: Stage) => toStage(tasks.filter((x) => moved.includes(x.id)), col);
 
   // Клик по пустому месту календаря: задача на этот день и время, название сразу выделено для правки.
   // Если в фильтре одно пространство, задача сразу в нём, иначе фильтр бы её спрятал
@@ -266,8 +304,10 @@ export default function App() {
     (async () => {
       try {
         const id = await db.addTask(title, note, draft);
-        await reload();
-        setView("inbox");
+        const all = await reload();
+        // Записанная сразу в «К выполнению» или «Готово» открывается там, где теперь лежит
+        const x = all.find((t) => t.id === id);
+        setView(x && draft.stage ? homeOf(x) : "inbox");
         setSel(id);
       } catch (e) {
         setError(String(e));
@@ -280,7 +320,7 @@ export default function App() {
   const [dropOnDetails, setDropOnDetails] = useState(false);
   const live = useRef({ sel, tasks, busy: false });
   const lastRow = useRef<number | null>(null);
-  live.current = { sel, tasks, busy: newOpen || !!projectDlg || helpOpen };
+  live.current = { sel, tasks, busy: newOpen || !!projectDlg || helpOpen || !!closing };
   useEffect(() => {
     // Над панелью задачи зона горит всё время, пока там курсор: решает панель целиком, а не то, что под курсором внутри неё.
     // Между строками списка остаётся последняя строка, иначе подсветка моргала бы на каждом зазоре.
@@ -319,7 +359,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey && e.code === "Comma") return e.preventDefault(), setSettingsOpen(true);
-      if (newOpen || projectDlg || settingsOpen) return; // формы сами ловят Enter и Esc
+      if (newOpen || projectDlg || settingsOpen || closing) return; // формы сами ловят Enter и Esc
       if (helpOpen) {
         if (e.key === "Escape" || (e.metaKey && e.code === "Slash")) setHelpOpen(false);
         return;
@@ -330,6 +370,7 @@ export default function App() {
       if (e.metaKey && e.code === "Digit0") return e.preventDefault(), openView("home");
       if (e.metaKey && e.code === "Digit6") return e.preventDefault(), openView("projects");
       if (e.metaKey && e.code === "KeyP") return e.preventDefault(), window.dispatchEvent(new Event(FIND_PROJECT_EVENT));
+      if (e.metaKey && e.code === "KeyF") return e.preventDefault(), openSearch();
       if (e.metaKey && /^Digit[1-5]$/.test(e.code)) {
         e.preventDefault();
         const v = VIEWS[Number(e.code.slice(5)) - 1].id;
@@ -343,6 +384,7 @@ export default function App() {
       }
       if (e.metaKey && e.code === "KeyA") return e.preventDefault(), setPicked(ids);
       if (e.key === "Escape" && bulk) return clearPick();
+      if (e.key === "Escape" && searching) return setQuery(null);
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const i = ids.indexOf(sel ?? -1);
       // e.code не зависит от раскладки: N работает и на русской
@@ -362,7 +404,8 @@ export default function App() {
           if (i > 0) setSel(ids[i - 1]);
           break;
         case "Enter":
-          if (task?.status === "inbox") triage(task);
+          if (searching && task) revealTask(task);
+          else if (task?.status === "inbox") triage(task);
           break;
         case "Space":
           e.preventDefault();
@@ -388,7 +431,7 @@ export default function App() {
   });
 
   // Главная и страница проектов занимают всё место справа от меню, без панели деталей
-  const wide = view === "home" || view === "projects";
+  const wide = (view === "home" || view === "projects") && !searching;
   const current = VIEWS.find((v) => v.id === view);
   const project = view.startsWith("p:") ? projects.find((p) => `p:${p.id}` === view) : undefined;
   const tag = view.startsWith("t:") ? tags.find((g) => `t:${g.id}` === view) : undefined;
@@ -406,17 +449,50 @@ export default function App() {
         onTagSave={saveTag} onTagDelete={(id) => run(() => db.deleteTag(id))}
         onNewProject={() => setProjectDlg("new")} onEditProject={(p) => setProjectDlg(p)}
         onSettings={() => setSettingsOpen(true)} onShortcuts={() => setHelpOpen(true)}
+        searching={searching} onSearch={openSearch}
         onSetting={(key, value) => {
           setSettings((st) => ({ ...st, [key]: value }));
           run(() => db.setSetting(key, value));
         }}
         onViewIcon={(id, icon) => run(() => db.setSetting(`icon:${id}`, icon))} />
 
-      {view === "calendar" ? (
+      {searching ? (
+        <main className="main search-main">
+          <header className="search-head">
+            <Search size={16} />
+            <input ref={searchRef} className="search-input" autoFocus placeholder="Найти задачу: название, заметка, теги, люди"
+              value={query} onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                const i = ids.indexOf(sel ?? -1);
+                if (e.key === "Escape") return e.stopPropagation(), query ? setQuery("") : setQuery(null);
+                if (e.key === "ArrowDown") return e.preventDefault(), e.stopPropagation(), ids[i + 1] != null && setSel(ids[i + 1]);
+                if (e.key === "ArrowUp") return e.preventDefault(), e.stopPropagation(), i > 0 && setSel(ids[i - 1]);
+                if (e.key === "Enter" && task) return e.preventDefault(), e.stopPropagation(), revealTask(task);
+              }} />
+            {query && <span className="search-n">{ids.length ? `Найдено: ${ids.length}` : ""}</span>}
+            <button className="icon-btn" data-tip="Закрыть поиск" data-key="Esc" aria-label="Закрыть поиск" onClick={() => setQuery(null)}><X size={14} /></button>
+          </header>
+          <div className="views">
+            <div className="list" role="listbox">
+              {list.map(({ task: x, group }) => (
+                <div key={x.id}>
+                  {group && <div className="group">{group}</div>}
+                  <TaskRow task={x} project={projects.find((p) => p.id === x.project_id)} selected={x.id === sel} query={query}
+                    picked={false} dropping={dropTarget === x.id && !dropOnDetails} onSelect={() => setSel(x.id)} onToggle={() => toggleDone(x)}
+                    onOpen={() => revealTask(x)} />
+                </div>
+              ))}
+              {!list.length && (
+                <div className="empty">{query.trim() ? "Ничего не нашлось. Ищу в названии, заметке, чеклисте, тегах, по тому, кто назначил, и по пространству." : "Начни вводить. Ищу по всем задачам, включая сделанные и архив. Enter или двойной клик открывает задачу в её списке."}</div>
+              )}
+            </div>
+          </div>
+        </main>
+      ) : view === "calendar" ? (
         <CalendarView tasks={shown} projects={projects} selected={sel} onSelect={setSel}
           filterButton={<FilterButton filter={filt} projects={projects} tags={tags} people={people} onChange={setFilter} />}
           filterBar={<FilterBar filter={filt} projects={projects} tags={tags} onChange={setFilter} />}
-          onToggle={(x) => run(() => (x.status === "done" ? db.reopenTask(x) : db.completeTask(x)))}
+          onToggle={toggleDone}
           onMove={(id, p) => {
             if (p.remind_at) ensurePermission();
             run(() => db.updateTask(id, p));
@@ -462,7 +538,7 @@ export default function App() {
               <Pencil size={13} /> Изменить
             </button>
           )}
-          {view !== "archive" && <SortSwitch value={sort} onChange={setSort} />}
+          {view !== "archive" && <SortSwitch value={sort} rev={rev} onChange={setSort} onReverse={reverseSort} />}
           <FilterButton filter={filt} projects={projects} tags={tags} people={people} lockTag={tag?.id} noSpaces={!!project} onChange={setFilter} />
           <LayoutSwitch value={layout} onChange={setLayout} />
           <button className={`icon-btn ${selecting ? "on" : ""}`} data-tip="Выбрать несколько задач, ⌘-клик по строке" data-key="⌘A"
@@ -511,7 +587,7 @@ export default function App() {
         <Details key={task.id} task={task} projects={projects} tags={tags} people={people} remindBefore={defaultBefore(settings)}
           onPatch={(p) => patch(task.id, p)} onCreateProject={createProject} run={run} onError={setError}
           dropping={dropTarget === task.id && dropOnDetails}
-          onTriage={() => triage(task)} onToggleDone={() => toggleDone(task)}
+          onTriage={() => triage(task)} onToggleDone={() => toggleDone(task)} onStage={(st) => toStage([task], st)}
           onArchive={() => archive(task)} onRestore={() => restore(task)}
           onDelete={() => run(() => db.deleteTask(task.id))} />
       ) : (
@@ -529,6 +605,17 @@ export default function App() {
           onSave={(p) => saveTag(tag.id, p)} onDelete={() => (setTagEdit(null), run(() => db.deleteTag(tag.id)))} />
       )}
       {helpOpen && <Help onClose={() => setHelpOpen(false)} />}
+      {closing && (
+        <SummaryDialog key={`sum:${closing.ids.join(",")}`} closing={closing} tasks={tasks.filter((x) => closing.ids.includes(x.id))}
+          onSkip={() => setClosing(null)}
+          onSave={(text) => {
+            const ids = closing.ids;
+            setClosing(null);
+            run(async () => {
+              for (const id of ids) await db.setSummary(id, text);
+            });
+          }} />
+      )}
       <Tooltips />
       {!settingsOpen && <QuickKeyBanner error={shortcutError} onSettings={() => setSettingsOpen(true)} />}
       {settingsOpen && (
@@ -584,6 +671,8 @@ function TaskRow(props: {
   dropping?: boolean;
   onSelect: (mods: { meta: boolean; shift: boolean }) => void;
   onToggle: () => void;
+  query?: string; // в поиске: подсветить найденное в названии
+  onOpen?: () => void; // двойной клик
 }) {
   const { task: x, project } = props;
   const ref = useRef<HTMLDivElement>(null);
@@ -591,16 +680,17 @@ function TaskRow(props: {
     if (props.selected) ref.current?.scrollIntoView({ block: "nearest" });
   }, [props.selected]);
   const done = x.status === "done" || x.status === "archived";
+  const cancelled = done && !!x.cancelled;
   const overdue = x.status === "active" && !!x.due_date && x.due_date < today();
   return (
     <div ref={ref} role="option" aria-selected={props.selected} data-task-id={x.id}
-      className={`row ${x.kind === "meeting" ? "meeting" : ""} ${props.selected ? "sel" : ""} ${props.picked ? "picked" : ""} ${done ? "done" : ""} ${props.dropping ? "drop" : ""} ${project ? "pc" : ""}`}
+      className={`row ${x.kind === "meeting" ? "meeting" : ""} ${props.selected ? "sel" : ""} ${props.picked ? "picked" : ""} ${done ? "done" : ""} ${cancelled ? "cancelled" : ""} ${props.dropping ? "drop" : ""} ${project ? "pc" : ""}`}
       style={spaceVars(project?.color)}
-      onMouseDown={(e) => props.onSelect({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey })}>
-      <button className="chk" title={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
+      onMouseDown={(e) => props.onSelect({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey })} onDoubleClick={props.onOpen}>
+      <button className="chk" title={done ? "Вернуть в работу" : "Сделано"} disabled={x.status === "archived"}
         onMouseDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), props.onToggle())} />
       <MeetingMark task={x} />
-      <span className="t">{x.title}</span>
+      <span className="t">{props.query ? marks(x.title, props.query).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part)) : x.title}</span>
       <TagChips tags={x.tags} max={2} />
       {x.assigned_by && <Assignee name={x.assigned_by} />}
       {x.subtasks.length > 0 && (
@@ -611,9 +701,10 @@ function TaskRow(props: {
       {x.recurrence && !done && <span className="meta badge" title="Повторяется"><Repeat size={12} /></span>}
       {x.quadrant && !done && <QuadrantGlyph q={x.quadrant} />}
       {x.start_time && <span className="meta" title="Время">{fmtRange(x.start_time, x.end_time)}</span>}
+      <DueFlag task={x} />
       {x.remind_at && !x.reminded && !done && <span className="meta" title="Напоминание">⏰ {stampTime(x.remind_at)}</span>}
       {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
-      {x.status !== "archived" && <StageChip task={x} />}
+      {(x.status !== "archived" || cancelled) && <StageChip task={x} />}
       {project && <span className="tag" style={{ background: `var(--${project.color})`, color: `var(--${project.color}-ink, var(--on-acc))` }}>{project.name}</span>}
       {x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`}>{fmtDay(x.due_date)}</span>}
       <CreatedMeta task={x} />
@@ -621,7 +712,7 @@ function TaskRow(props: {
   );
 }
 
-/** Этап задачи в строке, как столбец канбана: Новые, К выполнению, Готово */
+/** Этап задачи в строке, как столбец канбана: Новые, К выполнению, Готово, Отменено. В архиве виден только «Отменено» */
 function StageChip({ task }: { task: Task }) {
   const st = STAGES.find((s) => s.key === stageOf(task))!;
   return (

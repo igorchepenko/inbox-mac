@@ -1,7 +1,7 @@
 import {
   Archive, Baby, Banknote, Bell, BookOpen, Briefcase, CalendarClock, CalendarDays, Camera, Car, Code, Coffee, Coins, DollarSign, Dumbbell, Flag, Folder, Gift,
   GraduationCap, Heart, House, Inbox, Leaf, Lightbulb, Music, Palette, Plane, Rocket, ShoppingCart, Star, Sun, Target,
-  Users, Wallet, Zap, type LucideIcon,
+  Users, Wallet, Zap, Ban, type LucideIcon,
 } from "lucide-react";
 
 // Набор иконок для пунктов меню и проектов. В базе храним имя, чтобы набор можно было расширять
@@ -14,7 +14,10 @@ export const ICONS: Record<string, LucideIcon> = {
   money: Banknote, dollar: DollarSign, coins: Coins,
 };
 
+// Служебные иконки этапов: не попадают в выбор иконки пространства
+const SYSTEM: Record<string, LucideIcon> = { cancel: Ban };
+
 export function Icon({ name, size = 16, color }: { name: string; size?: number; color?: string }) {
-  const C = ICONS[name] ?? Folder;
+  const C = ICONS[name] ?? SYSTEM[name] ?? Folder;
   return <C size={size} strokeWidth={2.2} color={color} aria-hidden="true" />;
 }

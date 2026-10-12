@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import { Pencil, Plus } from "lucide-react";
-import type { Project, Task } from "./db";
+import { isDoneReal, type Project, type Task } from "./db";
 import { fmtDay, today } from "./dates";
 import { Icon } from "./icons";
 import { plural, type ViewId } from "./views";
@@ -15,7 +15,8 @@ interface Card {
   next?: Task;
 }
 
-const isDone = (x: Task) => x.status === "done" || x.status === "archived";
+// Отменённые не считаются сделанными
+const isDone = (x: Task) => isDoneReal(x);
 
 function cardsFor(projects: Project[], tasks: Task[]): Card[] {
   const t = today();

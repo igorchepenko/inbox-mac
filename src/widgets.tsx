@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { ChevronLeft, ChevronRight, Monitor, Moon, Sun } from "lucide-react";
-import { dayKey, MONTHS, pad, parseDay, today, WEEKDAYS, weekdayIndex } from "./dates";
+import { dayKey, MONTHS, pad, parseDay, today, typeTimeDigit, WEEKDAYS, weekdayIndex } from "./dates";
 import { Icon, ICONS } from "./icons";
 import type { Project, ProjectFields, ProjectTasksFate } from "./db";
 import { Chip } from "./extras";
@@ -142,7 +142,8 @@ export function Calendar(props: { value: string | null; onPick: (day: string | n
 
 /**
  * Время в два поля: часы и минуты. Пусто по умолчанию.
- * После двух цифр часа курсор сам переходит на минуты; «7» в часах сразу становится «07».
+ * Клик или Tab выделяет поле целиком, и цифры вводятся заново, а не вставляются в середину: «4» в часах сразу «04»
+ * и переход на минуты, «1», «4» — «14». В минутах так же в пределах 59. Стрелки ↑ ↓ листают значение, ← → переходят между полями
  */
 export function TimeInput(props: { value: string; disabled?: boolean; onCommit: (hhmm: string) => void }) {
   const [hh, setHh] = useState(props.value.slice(0, 2));
@@ -150,6 +151,7 @@ export function TimeInput(props: { value: string; disabled?: boolean; onCommit: 
   const hRef = useRef<HTMLInputElement>(null);
   const mRef = useRef<HTMLInputElement>(null);
   const box = useRef<HTMLDivElement>(null);
+  const fresh = useRef(true); // поле выделено целиком: следующая цифра начинает значение заново
   useEffect(() => {
     setHh(props.value.slice(0, 2));
     setMm(props.value.slice(3, 5));
@@ -168,19 +170,76 @@ export function TimeInput(props: { value: string; disabled?: boolean; onCommit: 
       setMm(hhmm.slice(3, 5));
     }
   };
+  const selectAll = (el: HTMLInputElement | null) => {
+    if (!el) return;
+    fresh.current = true;
+    if (document.activeElement !== el) el.focus();
+    // После ввода React ещё перерисует значение: выделяем на следующем кадре, чтобы выделение не слетело
+    requestAnimationFrame(() => el === document.activeElement && el.select());
+  };
+  // Вставка и автозаполнение идут через onChange: оставляем только цифры в пределах часов и минут
   const onHour = (v: string) => {
     v = v.replace(/\D/g, "").slice(0, 2);
     if (v.length === 1 && Number(v) > 2) v = `0${v}`;
     if (v.length === 2 && Number(v) > 23) v = "23";
     setHh(v);
-    if (v.length === 2) mRef.current?.focus();
+    if (v.length === 2) selectAll(mRef.current);
   };
   const onMinute = (v: string) => {
     v = v.replace(/\D/g, "").slice(0, 2);
     if (v.length === 1 && Number(v) > 5) v = `0${v}`;
+    if (v.length === 2 && Number(v) > 59) v = "59";
     setMm(v);
     if (v.length === 2) commit(hh, v);
   };
+  const onSegKey = (seg: "h" | "m") => (e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const cur = seg === "h" ? hh : mm;
+    const max = seg === "h" ? 23 : 59;
+    if (/^\d$/.test(e.key)) {
+      e.preventDefault();
+      const r = typeTimeDigit(cur, fresh.current, Number(e.key), max);
+      fresh.current = false;
+      if (seg === "h") {
+        setHh(r.value);
+        if (r.done) selectAll(mRef.current);
+      } else {
+        setMm(r.value);
+        if (r.done) (commit(hh, r.value), selectAll(mRef.current));
+      }
+    } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const n = cur === "" ? (seg === "h" ? 9 : 0) : (Number(cur) + (e.key === "ArrowUp" ? 1 : -1) + max + 1) % (max + 1);
+      if (seg === "h") setHh(pad(n));
+      else setMm(pad(n));
+      selectAll(e.currentTarget);
+    } else if (seg === "h" && (e.key === "ArrowRight" || e.key === ":" || e.key === ".")) {
+      e.preventDefault();
+      selectAll(mRef.current);
+    } else if (seg === "m" && e.key === "ArrowLeft") {
+      e.preventDefault();
+      selectAll(hRef.current);
+    } else if (e.key === "Backspace" || e.key === "Delete") {
+      e.preventDefault();
+      if (seg === "m" && !mm) return selectAll(hRef.current);
+      if (seg === "h") setHh("");
+      else setMm("");
+      fresh.current = true;
+    }
+  };
+  const seg = (ref: RefObject<HTMLInputElement | null>, s: "h" | "m") => ({
+    ref,
+    inputMode: "numeric" as const,
+    disabled: props.disabled,
+    onKeyDown: onSegKey(s),
+    onFocus: () => selectAll(ref.current),
+    // Клик в любое место поля выделяет его целиком, курсор между цифрами не ставится
+    onMouseDown: (e: React.MouseEvent<HTMLInputElement>) => {
+      if (props.disabled) return;
+      e.preventDefault();
+      selectAll(e.currentTarget);
+    },
+  });
   return (
     <div ref={box} className={`time-in field ${props.disabled ? "disabled" : ""}`}
       onBlur={(e) => !box.current?.contains(e.relatedTarget as Node) && commit()}
@@ -191,12 +250,9 @@ export function TimeInput(props: { value: string; disabled?: boolean; onCommit: 
           setMm(props.value.slice(3, 5));
         }
       }}>
-      <input ref={hRef} value={hh} placeholder="чч" inputMode="numeric" disabled={props.disabled} aria-label="Часы"
-        onChange={(e) => onHour(e.target.value)} onFocus={(e) => e.target.select()} />
+      <input {...seg(hRef, "h")} value={hh} placeholder="чч" aria-label="Часы" onChange={(e) => onHour(e.target.value)} />
       <span>:</span>
-      <input ref={mRef} value={mm} placeholder="мм" inputMode="numeric" disabled={props.disabled} aria-label="Минуты"
-        onChange={(e) => onMinute(e.target.value)} onFocus={(e) => e.target.select()}
-        onKeyDown={(e) => e.key === "Backspace" && !mm && (e.preventDefault(), hRef.current?.focus())} />
+      <input {...seg(mRef, "m")} value={mm} placeholder="мм" aria-label="Минуты" onChange={(e) => onMinute(e.target.value)} />
     </div>
   );
 }

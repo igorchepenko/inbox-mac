@@ -1,5 +1,5 @@
 // Расчёты для главной: всё считается из задач на лету, отдельных таблиц для статистики нет
-import type { Project, Task } from "../db";
+import { isCancelled, isDoneReal, type Project, type Task } from "../db";
 import { addDays, daysBetween, fmtMin, hoursBetween, monthEnd, monthStart, stampDay, toMin, today, weekdayShort, weekStart } from "../dates";
 
 export const BLOCKS = [
@@ -10,6 +10,7 @@ export const BLOCKS = [
   { id: "matrix", name: "Матрица Эйзенхауэра", hint: "необязательно", span: 5 },
   { id: "stats", name: "Статистика", hint: "", span: 8 },
   { id: "projects", name: "Пространства", hint: "", span: 4 },
+  { id: "meetings", name: "Встречи", hint: "статистика", span: 12 },
 ] as const;
 
 export type BlockId = (typeof BLOCKS)[number]["id"];
@@ -81,17 +82,18 @@ export function duration(x: Task): number {
 }
 
 
-export const timeRange = (x: Task) => (x.start_time ? `${x.start_time}–${fmtMin(toMin(x.start_time) + duration(x))}` : "");
+export const timeRange = (x: Task) => (x.start_time ? `${x.start_time}–${fmtMin(toMin(x.start_time) + duration(x))}` : x.end_time ? `до ${x.end_time}` : "");
 
 // Состояния задач
 
-export const isDone = (x: Task) => x.status === "done" || x.status === "archived";
+// Отменённые на главной не считаются ни сделанными, ни запланированными: их будто и не было
+export const isDone = (x: Task) => isDoneReal(x);
 const doneDay = (x: Task) => (isDone(x) && x.done_at ? stampDay(x.done_at) : null);
 const byStart = (a: Task, b: Task) => (a.start_time ?? "99") < (b.start_time ?? "99") ? -1 : (a.start_time ?? "99") > (b.start_time ?? "99") ? 1 : 0;
 
 /** Задачи дня: разобранные с этой датой, открытые и сделанные */
 export function dayTasks(tasks: Task[], day: string): Task[] {
-  return tasks.filter((x) => x.status !== "inbox" && x.due_date === day).sort(byStart);
+  return tasks.filter((x) => x.status !== "inbox" && !isCancelled(x) && x.due_date === day).sort(byStart);
 }
 
 export function overdue(tasks: Task[]): Task[] {
@@ -249,7 +251,7 @@ export function stats(tasks: Task[], period: Period, cfg: DayConfig): Stats {
   // Запланированное: вся текущая неделя с понедельника или весь месяц
   const pFrom = period === "week" ? weekStart(t) : monthStart(t);
   const pTo = period === "week" ? addDays(pFrom, 6) : monthEnd(t);
-  const planned = busyMinutes(tasks.filter((x) => x.status !== "inbox" && !!x.due_date && x.due_date >= pFrom && x.due_date <= pTo));
+  const planned = busyMinutes(tasks.filter((x) => x.status !== "inbox" && !isCancelled(x) && !!x.due_date && x.due_date >= pFrom && x.due_date <= pTo));
   return {
     bars,
     goal: period === "week" ? cfg.goal : cfg.goal * 5,
@@ -264,6 +266,52 @@ export function fmtHours(h: number): string {
   if (h < 1) return `${Math.max(1, Math.round(h * 60))} мин`;
   if (h < 24) return `${Math.round(h)} ч`;
   return `${(h / 24).toFixed(1).replace(".", ",")} дн.`;
+}
+
+// Встречи
+
+export interface MeetingPerson {
+  name: string;
+  count: number;
+  minutes: number;
+}
+
+export interface MeetingStats {
+  count: number;
+  done: number; // уже прошедшие (отмеченные сделанными)
+  minutes: number; // только встречи со временем начала
+  untimed: number; // встречи без времени: в часы не входят
+  people: MeetingPerson[]; // по убыванию числа встреч
+}
+
+/** Встречи (kind='meeting') с датой в текущей неделе (с понедельника) или месяце. Работает по assigned_by */
+export function meetingStats(tasks: Task[], period: Period): MeetingStats {
+  const t = today();
+  const from = period === "week" ? weekStart(t) : monthStart(t);
+  const to = period === "week" ? addDays(from, 6) : monthEnd(t);
+  const list = tasks.filter((x) => x.kind === "meeting" && x.status !== "inbox" && !isCancelled(x) && !!x.due_date && x.due_date >= from && x.due_date <= to);
+  const byName = new Map<string, MeetingPerson>();
+  for (const x of list) {
+    // С кем: кто назначил и участники, каждый человек раз на встречу
+    const seen = new Set<string>();
+    for (const raw of [x.assigned_by ?? "", ...(x.participants ?? [])]) {
+      const name = raw.trim();
+      const key = name.toLowerCase();
+      if (!name || seen.has(key)) continue;
+      seen.add(key);
+      const p = byName.get(key) ?? { name, count: 0, minutes: 0 };
+      p.count++;
+      p.minutes += duration(x);
+      byName.set(key, p);
+    }
+  }
+  return {
+    count: list.length,
+    done: list.filter(isDone).length,
+    minutes: list.reduce((s, x) => s + duration(x), 0),
+    untimed: list.filter((x) => !x.start_time).length,
+    people: [...byName.values()].sort((a, b) => b.count - a.count || b.minutes - a.minutes || a.name.localeCompare(b.name, "ru")),
+  };
 }
 
 // Проекты
