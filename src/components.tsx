@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as db from "./db";
 import { isCancelled, isClosed, type Draft, type Project, type Tag, type Task } from "./db";
 import { fmtStamp, today } from "./dates";
-import { useAutosize } from "./widgets";
+import { CloseX, useAutosize } from "./widgets";
 import { firstOccurrence, parseRule } from "./recurrence";
 import { Paperclip } from "lucide-react";
 import { Checklist, DateField, Files, Line, Links, normalizeUrl, PriorityPicker, QuadrantPicker, RepeatField, TimeRange, type RunDb } from "./extras";
@@ -19,7 +19,7 @@ export { PRIORITY } from "./priority";
 
 /** Карточка записи задачи. Используется и в отдельном окне ⌥Space, и внутри приложения по N.
  * Дата, время, проект и остальное по желанию: блок свёрнут, открывается кнопкой или ⌘E */
-export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: string[]; onSave: (title: string, note: string, draft: Draft) => void; onCancel: () => void; profile?: string; initial?: Draft; remindBefore: number; onCreateProject?: (name: string) => Promise<number> }) {
+export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: string[]; onSave: (title: string, note: string, draft: Draft) => void; onCancel: () => void; closable?: boolean; profile?: string; initial?: Draft; remindBefore: number; onCreateProject?: (name: string) => Promise<number> }) {
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
   const [more, setMore] = useState(false);
@@ -92,6 +92,7 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
 
   return (
     <form className="qi" onSubmit={(e) => (e.preventDefault(), submit())} onKeyDown={onKey}>
+      {props.closable && <CloseX onClick={props.onCancel} />}
       <input ref={titleRef} className="field qi-title" placeholder="Что нужно сделать? #тег @кто назначил" value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="off" spellCheck={false} />
       <textarea ref={noteRef} rows={2} className="field qi-note" placeholder="Заметка, если нужна" value={note} onChange={(e) => setNote(e.target.value)} />
       {more && (
@@ -432,9 +433,9 @@ export function Help({ onClose }: { onClose: () => void }) {
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="help" role="dialog" aria-label="Сочетания клавиш">
+        <CloseX onClick={onClose} />
         <div className="help-head">
           <h3>Сочетания клавиш</h3>
-          <button className="help-x" aria-label="Закрыть" data-tip="Закрыть" data-key="Esc" onClick={onClose}>×</button>
         </div>
         <div className="help-grid">
           {SHORTCUTS.map(([k, v]) => (

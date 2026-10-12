@@ -569,7 +569,7 @@ export default function App() {
 
       {newOpen && (
         <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && setNewOpen(false)}>
-          <QuickForm projects={projects} tags={tags} people={people} remindBefore={defaultBefore(settings)} onSave={saveNew} onCancel={() => setNewOpen(false)} onCreateProject={createProject}
+          <QuickForm projects={projects} tags={tags} people={people} remindBefore={defaultBefore(settings)} onSave={saveNew} onCancel={() => setNewOpen(false)} closable onCreateProject={createProject}
             initial={project ? { project_id: project.id } : oneSpace != null ? { project_id: oneSpace } : undefined} />
         </div>
       )}

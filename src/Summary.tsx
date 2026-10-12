@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Task } from "./db";
 import { plural } from "./views";
-import { useAutosize } from "./widgets";
+import { CloseX, useAutosize } from "./widgets";
 
 /** Что закрыли: задачи уже переведены в «Готово» или «Отменено», окно только спрашивает итоги */
 export interface Closing {
@@ -36,6 +36,7 @@ export function SummaryDialog(props: { closing: Closing; tasks: Task[]; onSave: 
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && props.onSkip()}>
       <div className={`sum-dlg ${cancelled ? "cancelled" : ""}`} role="dialog" aria-label="Итоги" onKeyDown={onKey}>
+        <CloseX onClick={props.onSkip} />
         <div className="sum-head">
           <span className="sum-badge">{cancelled ? "Отменено" : "Готово"}</span>
           <span className="sum-what">{what}</span>

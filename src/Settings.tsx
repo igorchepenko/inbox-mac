@@ -9,7 +9,7 @@ import { loadPeopleStats, renamePerson } from "./db";
 import { sameName } from "./tags";
 import { searchNames } from "./search";
 import { SearchField } from "./TagsUI";
-import { IconGrid, Popover, ThemeSwitch, TimeInput, Toggle } from "./widgets";
+import { CloseX, IconGrid, Popover, ThemeSwitch, TimeInput, Toggle } from "./widgets";
 import { savedTheme, setTheme } from "./theme";
 import { HomeSettings } from "./HomeSettings";
 import { FieldsSettings } from "./FieldsSettings";
@@ -58,6 +58,7 @@ export function Settings(props: SettingsProps) {
         onKeyDown={(e) => {
           if (e.key === "Escape" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement)) props.onClose();
         }}>
+        <CloseX onClick={props.onClose} />
         <nav className="set-nav">
           <h3>Настройки</h3>
           {SECTIONS.map((s) => (
