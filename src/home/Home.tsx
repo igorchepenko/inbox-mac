@@ -511,7 +511,7 @@ function Customize(props: { order: BlockId[]; hidden: BlockId[]; onSave: (o: Blo
       const el = e.target as HTMLElement;
       if (!boxRef.current?.contains(el) && !el.closest(".h-cust-btn")) props.onClose();
     };
-    const key = (e: KeyboardEvent) => e.key === "Escape" && props.onClose();
+    const key = (e: KeyboardEvent) => e.key === "Escape" && (e.stopPropagation(), props.onClose());
     document.addEventListener("mousedown", down);
     document.addEventListener("keydown", key);
     return () => {

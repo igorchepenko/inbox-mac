@@ -15,7 +15,7 @@ const hideQuick = () => invoke("hide_quick");
 
 /** Окно ⌥Space: маленькая карточка поверх всех приложений */
 export default function QuickApp() {
-  // Новый ключ пересоздаёт форму с пустыми полями. Делаем это до того, как окно спрячется,
+  // Новый ключ пересоздаёт форму пустой и свёрнутой. Делаем это, когда окно прячется (quick-reset из lib.rs),
   // а не при открытии: иначе первые буквы, набранные сразу после ⌥Space, потеряются
   const [key, setKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +57,8 @@ export default function QuickApp() {
     const focusTitle = () => document.querySelector<HTMLInputElement>(".qi-title")?.focus();
     const un = [
       listen("quick-open", () => (fit(), focusTitle(), refreshProjects())),
+      // Окно спряталось (Esc, клик мимо, повторное сочетание): черновик не переносим в следующий раз
+      listen("quick-reset", () => setKey((k) => k + 1)),
       win.onFocusChanged(({ payload }) => payload && focusTitle()),
     ];
     return () => un.forEach((p) => p.then((f) => f()));
@@ -68,7 +70,6 @@ export default function QuickApp() {
       setError(null);
       // Напоминание сразу в расписание macOS: главное окно может быть спрятано и прочитает базу не скоро
       if (draft.remind_at) Promise.all([loadTasks(), loadSettings()]).then(([t, st]) => syncPlan(t, st)).catch(() => {});
-      setKey((k) => k + 1);
       await hideQuick();
       await emit("tasks-changed");
     } catch (e) {
@@ -84,11 +85,8 @@ export default function QuickApp() {
     return id;
   };
 
-  // Esc стирает черновик. Если просто кликнуть мимо, окно спрячется, а набранное останется
-  const cancel = () => {
-    setKey((k) => k + 1);
-    hideQuick();
-  };
+  // Esc закрывает окно, черновик сбросится вместе с ним
+  const cancel = () => hideQuick();
 
   return (
     <div ref={root} className="quick-root">

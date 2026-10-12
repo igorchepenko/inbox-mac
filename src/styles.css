@@ -77,7 +77,7 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius
 .error { color: var(--move); font-size: 12px; padding: 8px 10px; border: 1px solid var(--move); border-radius: 10px; user-select: text; }
 
 /* Каркас окна: списки, задачи, детали */
-.app { --side-w: 210px; --det-w: 300px; display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr) var(--det-w); height: 100%; }
+.app { --side-w: 220px; --det-w: 340px; display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr) var(--det-w); height: 100%; }
 .titlebar { position: fixed; inset: 0 0 auto 0; height: 28px; z-index: 1; }
 .side { background: var(--side); border-right: 1px solid var(--line); padding: 44px 10px 14px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
 .nav { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 9px; font-weight: 600; color: var(--muted); text-align: left; width: 100%; }
