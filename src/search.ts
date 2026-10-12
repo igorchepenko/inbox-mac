@@ -11,7 +11,7 @@ export const words = (q: string) => fold(q).split(/\s+/).filter(Boolean);
 /** Где искать: название, заметка, пункты чеклиста, теги, кто назначил, пространство, подписи ссылок */
 function haystack(x: Task, space?: Project): string {
   return fold([
-    x.title, x.note, ...x.subtasks.map((s) => s.title), ...x.tags.map((t) => t.name), x.assigned_by ?? "",
+    x.title, x.note, ...x.subtasks.map((s) => s.title), ...x.tags.map((t) => t.name), x.assigned_by ?? "", ...x.participants,
     space?.name ?? "", ...x.links.map((l) => `${l.title} ${l.url}`),
   ].join("\n"));
 }

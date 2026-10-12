@@ -480,7 +480,7 @@ function MeetingsBlock(props: { tasks: Task[] }) {
       <div className="h-kpis h-kpis-3">
         <div className="h-kpi"><b>{m.count}</b><span>{plural(m.count, "встреча", "встречи", "встреч").replace(/^\d+ /, "")} {when}{m.done ? `, прошло ${m.done}` : ""}</span></div>
         <div className="h-kpi"><b>{m.minutes ? fmtDuration(m.minutes) : "0 ч"}</b><span>в календаре{m.untimed ? `, ещё ${m.untimed} без времени` : ""}</span></div>
-        <div className="h-kpi"><b>{m.people.length}</b><span>{m.people.length === 1 ? "человек назначил" : "людей назначили"} встречи</span></div>
+        <div className="h-kpi"><b>{m.people.length}</b><span>{m.people.length === 1 ? "человек" : "людей"} на встречах</span></div>
       </div>
       {top.length ? (
         <div className="h-mtg-people">

@@ -28,6 +28,14 @@ describe("статистика встреч", () => {
     expect(m.people.map((p) => p.name)).toEqual(["Анна", "Борис"]);
   });
 
+  it("участники входят в «с кем», автор-участник не считается дважды", () => {
+    const s = meetingStats([
+      meet({ due_date: "2026-10-06", start_time: "10:00", end_time: "11:00", assigned_by: "Анна", participants: ["Борис", "анна"] }),
+      meet({ due_date: "2026-10-07", start_time: "10:00", end_time: "10:30", participants: ["Борис"] }),
+    ], "week");
+    expect(s.people).toEqual([{ name: "Борис", count: 2, minutes: 90 }, { name: "Анна", count: 1, minutes: 60 }]);
+  });
+
   it("встреча без времени и без автора считается, но в часы не входит", () => {
     const s = meetingStats([meet({ due_date: "2026-10-07" })], "week");
     expect(s).toMatchObject({ count: 1, minutes: 0, untimed: 1, people: [] });

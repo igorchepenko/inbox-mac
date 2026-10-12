@@ -291,13 +291,18 @@ export function meetingStats(tasks: Task[], period: Period): MeetingStats {
   const list = tasks.filter((x) => x.kind === "meeting" && x.status !== "inbox" && !!x.due_date && x.due_date >= from && x.due_date <= to);
   const byName = new Map<string, MeetingPerson>();
   for (const x of list) {
-    const name = x.assigned_by?.trim();
-    if (!name) continue;
-    const key = name.toLowerCase();
-    const p = byName.get(key) ?? { name, count: 0, minutes: 0 };
-    p.count++;
-    p.minutes += duration(x);
-    byName.set(key, p);
+    // С кем: кто назначил и участники, каждый человек раз на встречу
+    const seen = new Set<string>();
+    for (const raw of [x.assigned_by ?? "", ...(x.participants ?? [])]) {
+      const name = raw.trim();
+      const key = name.toLowerCase();
+      if (!name || seen.has(key)) continue;
+      seen.add(key);
+      const p = byName.get(key) ?? { name, count: 0, minutes: 0 };
+      p.count++;
+      p.minutes += duration(x);
+      byName.set(key, p);
+    }
   }
   return {
     count: list.length,
