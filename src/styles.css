@@ -355,3 +355,4 @@ html.quick, html.quick body { background: transparent; }
 .quick-root .qi { max-height: calc(var(--qmax, 100vh) - 20px); }
 /* «Пространство» — самая длинная подпись, колонка под неё */
 .qi-more .line { grid-template-columns: 96px minmax(0, 1fr); }
+.qi-more .qi-link { flex: 1; min-width: 0; height: 30px; padding: 0 10px; }

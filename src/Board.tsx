@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { spaceVars } from "./palette";
 import { Bell, CalendarDays, CalendarPlus, Check, Clock, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound } from "lucide-react";
 import { Assignee, TagChip } from "./TagsUI";
-import { CreatedMeta, MeetingMark } from "./TaskBits";
+import { CreatedMeta, DueFlag, MeetingMark } from "./TaskBits";
 import type { Project, Task } from "./db";
 import { addDays, fmtDay, fmtRange, nextMonday, stampTime, today } from "./dates";
 import { TARGETS, type BoardColumn, type Layout, type Stage } from "./boardOps";
@@ -65,6 +65,7 @@ function Meta({ task: x, project }: { task: Task; project?: Project }) {
     <div className="card-meta">
       {x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`}><CalendarDays size={11} /> {fmtDay(x.due_date)}</span>}
       {x.start_time && <span className="meta"><Clock size={11} /> {fmtRange(x.start_time, x.end_time)}</span>}
+      <DueFlag task={x} />
       {x.remind_at && !x.reminded && !done && <span className="meta"><Bell size={11} /> {stampTime(x.remind_at)}</span>}
       {x.subtasks.length > 0 && <span className="meta"><ListChecks size={11} /> {checked}/{x.subtasks.length}</span>}
       {x.links.length > 0 && <span className="meta"><Link2 size={11} /> {x.links.length}</span>}

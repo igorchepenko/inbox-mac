@@ -129,7 +129,7 @@ function TaskLine({ x, row, time = true, extra }: { x: Task; row: RowCtx; time?:
     <div className={`h-row ${done ? "done" : ""}`}>
       <button className={`h-chk ${done ? "on" : ""}`} aria-label={done ? "Вернуть" : "Отметить сделанной"}
         title={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"} onClick={() => row.onToggle(x)} />
-      {time && <span className={`h-tm ${x.start_time ? "" : "none"}`}>{x.start_time ? H.timeRange(x) : "без времени"}</span>}
+      {time && <span className={`h-tm ${H.timeRange(x) ? "" : "none"}`}>{H.timeRange(x) || "без времени"}</span>}
       <button className="t" title={x.title} onClick={() => row.onOpen(x)}>{x.title}</button>
       {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
       {p && <span className="tag" style={{ background: `var(--${p.color})`, color: `var(--${p.color}-ink, var(--on-acc))` }}>{p.name}</span>}

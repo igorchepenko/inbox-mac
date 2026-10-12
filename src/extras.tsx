@@ -69,29 +69,34 @@ const LAST = 23 * 60 + 59;
 const DURATIONS = [15, 30, 60, 90, 120];
 
 /**
- * Начало и конец в один день. Конец без начала не бывает, конец раньше начала не принимается.
+ * Начало и конец в один день. Конец раньше начала не принимается.
+ * Только конец, без начала — это срок задачи: «до 18:00».
  * Если сдвинуть начало, конец едет следом и длительность сохраняется, как в календаре.
- * Убрать время: стереть часы начала
+ * Убрать время: стереть часы начала и конца
  */
 export function TimeRange(props: { start: string | null; end: string | null; disabled?: boolean; onChange: (start: string | null, end: string | null) => void }) {
   const { start, end } = props;
-  const [bump, setBump] = useState(0); // пересоздать поле конца, если введённое значение отклонено
+  const [bump, setBump] = useState(0); // пересоздать поле, если введённое значение отклонено
   const dur = start && end ? toMin(end) - toMin(start) : 0;
   const setStart = (v: string) => {
-    if (!v) return props.onChange(null, null);
-    props.onChange(v, end && start ? toHHMM(Math.min(LAST, toMin(v) + dur)) : null);
+    if (!v) return props.onChange(null, start ? null : end);
+    // Был только срок: он становится концом, если начало раньше него
+    if (!start) return props.onChange(v, end && toMin(end) > toMin(v) ? end : null);
+    props.onChange(v, end ? toHHMM(Math.min(LAST, toMin(v) + dur)) : null);
   };
   const setEnd = (v: string) => {
     if (!v) return props.onChange(start, null);
-    if (!start || toMin(v) <= toMin(start)) return setBump((n) => n + 1);
+    if (start && toMin(v) <= toMin(start)) return setBump((n) => n + 1);
     props.onChange(start, v);
   };
   return (
     <>
       <TimeInput value={start ?? ""} disabled={props.disabled} onCommit={setStart} />
       <span className="dash">–</span>
-      <TimeInput key={bump} value={end ?? ""} disabled={props.disabled || !start} onCommit={setEnd} />
+      <TimeInput key={bump} value={end ?? ""} disabled={props.disabled} onCommit={setEnd} />
       {start && end && <span className="hint">{fmtDuration(dur)}</span>}
+      {!start && end && <span className="hint">срок, до {end}</span>}
+      {!start && !end && !props.disabled && <span className="hint">только конец — это срок</span>}
       {start && !props.disabled && (
         <div className="seg durations">
           {DURATIONS.map((d) => (
