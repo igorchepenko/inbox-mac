@@ -8,9 +8,9 @@ import { priorityName } from "./priority";
 import { QUADRANTS } from "./quadrants";
 
 /*
- * Какие поля задачи видны в строке списка и на карточке канбана. Настраивается отдельно для списка
- * и для канбана в Настройках → «Поля задач». Название и галочка видны всегда.
- * Храним в таблице settings ключи fields:list и fields:board: JSON со списком СКРЫТЫХ полей.
+ * Какие поля задачи видны в строке списка, на карточке канбана и на плашке календаря. Настраивается отдельно
+ * для каждого вида в Настройках → «Поля задач». Название и галочка видны всегда.
+ * Храним в таблице settings ключи fields:list, fields:board и fields:calendar: JSON со списком СКРЫТЫХ полей.
  * Так новое поле в будущей версии появится у всех сразу, а не потеряется в старом списке видимых.
  * Здесь же тексты подсказок при наведении на каждый элемент задачи. Чистая логика под тесты.
  */
@@ -23,22 +23,26 @@ export interface FieldInfo {
   id: FieldId;
   name: string;
   hint: string;
-  /** Где поле бывает: этап на канбане и так виден по столбцу */
-  layouts: Layout[];
+  /** Где поле бывает: этап на канбане и так виден по столбцу, на плашке календаря места только на главное */
+  layouts: FieldView[];
 }
 
-const BOTH: Layout[] = ["list", "board"];
+/** Вид, для которого поля настраиваются отдельно */
+export type FieldView = Layout | "calendar";
+
+const BOTH: FieldView[] = ["list", "board"];
+const ALL: FieldView[] = ["list", "board", "calendar"];
 
 /** В порядке, в каком поля стоят в настройках */
 export const FIELDS: FieldInfo[] = [
-  { id: "kind", name: "Встреча", hint: "Значок перед названием у встреч", layouts: BOTH },
-  { id: "priority", name: "Важность", hint: "Стрелки важности", layouts: BOTH },
+  { id: "kind", name: "Встреча", hint: "Значок перед названием у встреч", layouts: ALL },
+  { id: "priority", name: "Важность", hint: "Стрелки важности", layouts: ALL },
   { id: "stage", name: "Этап", hint: "Новые, К выполнению, Готово, Отменено. На канбане этап и так виден по столбцу", layouts: ["list"] },
   { id: "date", name: "Дата", hint: "День, на который стоит задача", layouts: BOTH },
-  { id: "time", name: "Время", hint: "Начало и конец, например 10:00–11:30", layouts: BOTH },
+  { id: "time", name: "Время", hint: "Начало и конец, например 10:00–11:30. В календаре время подписано у плашки", layouts: ALL },
   { id: "due", name: "Срок", hint: "«до 18:00», когда указан только конец", layouts: BOTH },
   { id: "remind", name: "Напоминание", hint: "Когда придёт напоминание", layouts: BOTH },
-  { id: "space", name: "Пространство", hint: "Плашка с названием пространства", layouts: BOTH },
+  { id: "space", name: "Пространство", hint: "Плашка с названием пространства", layouts: ALL },
   { id: "tags", name: "Теги", hint: "В списке первые два, остальные числом", layouts: BOTH },
   { id: "assignee", name: "Кто назначил", hint: "Имя того, кто поставил задачу", layouts: BOTH },
   { id: "participants", name: "Участники", hint: "Число участников встречи, имена в подсказке", layouts: BOTH },
@@ -50,15 +54,15 @@ export const FIELDS: FieldInfo[] = [
   { id: "created", name: "Дата создания", hint: "Когда задачу записали", layouts: BOTH },
 ];
 
-export const fieldsFor = (layout: Layout) => FIELDS.filter((f) => f.layouts.includes(layout));
+export const fieldsFor = (layout: FieldView) => FIELDS.filter((f) => f.layouts.includes(layout));
 
 /** Изначально скрыты: участников раньше в строке не было, остальное видно как до настройки */
-export const DEFAULT_HIDDEN: Record<Layout, FieldId[]> = { list: ["participants"], board: ["participants"] };
+export const DEFAULT_HIDDEN: Record<FieldView, FieldId[]> = { list: ["participants"], board: ["participants"], calendar: [] };
 
-export const fieldsKey = (layout: Layout) => `fields:${layout}`;
+export const fieldsKey = (layout: FieldView) => `fields:${layout}`;
 
 /** Скрытые поля из настроек. Мусор и неизвестные поля пропускаем, без ключа — как по умолчанию */
-export function hiddenFields(settings: Record<string, string>, layout: Layout): FieldId[] {
+export function hiddenFields(settings: Record<string, string>, layout: FieldView): FieldId[] {
   const raw = settings[fieldsKey(layout)];
   if (raw == null) return DEFAULT_HIDDEN[layout];
   try {
@@ -73,22 +77,22 @@ export function hiddenFields(settings: Record<string, string>, layout: Layout): 
 export type Shown = (id: FieldId) => boolean;
 export const ALL_SHOWN: Shown = () => true;
 
-export function shownFields(settings: Record<string, string>, layout: Layout): Shown {
+export function shownFields(settings: Record<string, string>, layout: FieldView): Shown {
   const hidden = new Set(hiddenFields(settings, layout));
   return (id) => !hidden.has(id);
 }
 
 /** Новое значение ключа после переключения одного поля */
-export function toggleField(settings: Record<string, string>, layout: Layout, id: FieldId, on: boolean): string {
+export function toggleField(settings: Record<string, string>, layout: FieldView, id: FieldId, on: boolean): string {
   const hidden = hiddenFields(settings, layout).filter((x) => x !== id);
   if (!on) hidden.push(id);
   return JSON.stringify(FIELDS.map((f) => f.id).filter((x) => hidden.includes(x)));
 }
 
-export const fieldsChanged = (settings: Record<string, string>, layout: Layout) =>
+export const fieldsChanged = (settings: Record<string, string>, layout: FieldView) =>
   hiddenFields(settings, layout).join() !== DEFAULT_HIDDEN[layout].join();
 
-export const DEFAULT_FIELDS_VALUE = (layout: Layout) => JSON.stringify(DEFAULT_HIDDEN[layout]);
+export const DEFAULT_FIELDS_VALUE = (layout: FieldView) => JSON.stringify(DEFAULT_HIDDEN[layout]);
 
 // ── Подсказки при наведении ──
 

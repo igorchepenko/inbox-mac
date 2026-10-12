@@ -62,7 +62,7 @@ export default function Home(props: HomeProps) {
     <div className="home">
       <div className="home-bar" data-tauri-drag-region>
         <div className="h-rel">
-          <button className="gear h-cust-btn" aria-expanded={custOpen} aria-label="Настроить главную" data-tip="Настроить главную"
+          <button className="gear h-cust-btn" aria-expanded={custOpen} aria-label="Настроить дашборд" data-tip="Настроить дашборд"
             onClick={() => setCustOpen((o) => !o)}><LayoutDashboard size={16} /></button>
           {custOpen && <Customize order={order} hidden={hidden} onSave={props.onSaveLayout} onClose={() => setCustOpen(false)} />}
         </div>
@@ -73,7 +73,7 @@ export default function Home(props: HomeProps) {
         ))}
         {!shown.length && (
           <section className="w" style={{ gridColumn: "span 12" }}>
-            <div className="h-note">Все блоки скрыты. Верни нужные кнопкой «Настроить главную» справа вверху.</div>
+            <div className="h-note">Все блоки скрыты. Верни нужные кнопкой «Настроить дашборд» справа вверху.</div>
           </section>
         )}
       </div>
@@ -96,7 +96,7 @@ function MiniRing({ fraction, color, size = 46 }: { fraction: number; color: str
   );
 }
 
-/** Иконка пункта «Главная» в боковом меню: три вложенных мини-кольца */
+/** Иконка пункта «Дашборд» в боковом меню: три вложенных мини-кольца */
 /** Знак приложения «Молния»: тот же, что в Dock (src-tauri/icons/source/app-icon.svg) */
 export function HomeIcon({ size = 16 }: { size?: number }) {
   return (

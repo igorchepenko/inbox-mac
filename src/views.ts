@@ -4,15 +4,34 @@ import { quickKeyLabel } from "./prefs";
 import { PRIORITY } from "./priority";
 import { compareNames, firstTag } from "./tags";
 
-export type ViewId = "home" | "projects" | "inbox" | "today" | "soon" | "archive" | "calendar" | `p:${number}` | `t:${number}`;
+export type ViewId = "home" | "projects" | "tasks" | "inbox" | "today" | "soon" | "archive" | "calendar" | `p:${number}` | `t:${number}`;
 
+/** Пункты меню по порядку: ⌘1 … ⌘6. «Новые», «Сегодня» и «Скоро» стоят в меню под «Задачами» */
 export const VIEWS: { id: ViewId; name: string; accent: string; icon: string }[] = [
+  { id: "tasks", name: "Задачи", accent: "stand", icon: "tasks" },
   { id: "inbox", name: "Новые", accent: "move", icon: "inbox" },
   { id: "today", name: "Сегодня", accent: "exercise", icon: "sun" },
   { id: "soon", name: "Скоро", accent: "stand", icon: "calendar" },
-  { id: "archive", name: "Архив", accent: "muted", icon: "archive" },
+  { id: "archive", name: "Завершённые", accent: "muted", icon: "finished" },
   { id: "calendar", name: "Календарь", accent: "stand", icon: "schedule" },
 ];
+
+/**
+ * Умные списки: раздел «Задачи» с готовым фильтром. Внутри это свои виды (inbox, today, soon), чтобы работали
+ * начальный экран, «Где остановился» и переходы с дашборда, но шапка, вид и сортировка у них общие с «Задачами»
+ */
+export const SMART: { id: ViewId; name: string }[] = [
+  { id: "inbox", name: "Новые" },
+  { id: "today", name: "Сегодня" },
+  { id: "soon", name: "Скоро" },
+];
+/** Эти пункты меню нельзя спрятать */
+export const ALWAYS: ViewId[] = ["tasks", "inbox"];
+export const isSmart = (v: ViewId) => SMART.some((s) => s.id === v);
+/** Раздел «Задачи»: все задачи или умный список */
+export const inTasks = (v: ViewId) => v === "tasks" || isSmart(v);
+/** Под каким ключом хранить вид и сортировку: у раздела «Задачи» они одни на все умные списки */
+export const scopeOf = (v: ViewId): ViewId => (inTasks(v) ? "tasks" : v);
 
 export interface ListItem {
   task: Task;
@@ -32,11 +51,11 @@ export const SORTS: { id: SortBy; name: string; hint: string }[] = [
   { id: "assignee", name: "По тому, кто назначил", hint: "По тому, кто назначил: группы по именам, свои задачи в конце" },
 ];
 export const sortOf = (view: ViewId, settings: Record<string, string>): SortBy =>
-  SORTS.find((s) => s.id === settings[`sort:${view}`])?.id ?? "date";
+  SORTS.find((s) => s.id === settings[`sort:${scopeOf(view)}`])?.id ?? "date";
 
 /** Обратный порядок хранится для каждого списка и каждой сортировки отдельно: settings sort.rev:<вид>:<сортировка> = "1".
  * Без него порядок обычный, как в подсказке SORTS */
-export const revKey = (view: ViewId, sort: SortBy) => `sort.rev:${view}:${sort}`;
+export const revKey = (view: ViewId, sort: SortBy) => `sort.rev:${scopeOf(view)}:${sort}`;
 export const revOf = (view: ViewId, sort: SortBy, settings: Record<string, string>): boolean => settings[revKey(view, sort)] === "1";
 
 /** Подписи направлений: [обычный, обратный]. asc — обычный порядок идёт по возрастанию значения */
@@ -122,6 +141,8 @@ function arrange(xs: Task[], sort: SortBy, rev: boolean): ListItem[] {
 export function listFor(view: ViewId, tasks: Task[], sort: SortBy = "date", rev = false): ListItem[] {
   const t = today();
   if (view === "home" || view === "projects") return [];
+  // Все задачи в работе, неразобранные и сделанные, пока не ушли в «Завершённые»
+  if (view === "tasks") return arrange(tasks.filter((x) => x.status !== "archived"), sort, rev);
   if (view === "inbox") return arrange(tasks.filter((x) => x.status === "inbox"), sort, rev);
   if (view === "today") return arrange(tasks.filter((x) => (x.status === "active" && !!x.due_date && x.due_date <= t) || doneToday(x, t)), sort, rev);
   if (view === "archive")

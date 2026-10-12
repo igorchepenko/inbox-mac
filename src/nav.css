@@ -131,3 +131,7 @@
   .sec-toggle .chev { transition: transform .15s; }
   .color-dot { transition: transform .1s, box-shadow .1s; }
 }
+
+/* Умные списки под «Задачами»: с отступом и чуть мельче, это тот же раздел с готовым фильтром */
+.side .nav.smart { padding-left: 26px; font-size: 13px; }
+.set-row.menu-row.smart { padding-left: 22px; }

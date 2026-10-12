@@ -43,7 +43,7 @@ export function HomeSettings(props: { settings: Record<string, string>; onSet: (
       <div className="set-row">
         <div className="set-text">
           <div className="set-name">Блоки и их порядок</div>
-          <div className="hint">Перетащи строку за ручку или двигай стрелками. Выключенные блоки на главной не показываются</div>
+          <div className="hint">Перетащи строку за ручку или двигай стрелками. Выключенные блоки на дашборде не показываются</div>
           <div className="set-def">По умолчанию: <b>все блоки включены, стандартный порядок</b></div>
         </div>
         {blocksChanged && <button type="button" className="link" onClick={resetBlocks}>Сбросить</button>}
@@ -97,14 +97,14 @@ export function HomeSettings(props: { settings: Record<string, string>; onSet: (
           onChange={(e) => setGoal(e.target.value.replace(/\D/g, "").slice(0, 3))}
           onBlur={commitGoal} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLElement).blur()} />
       </Row>
-      <Row name="Как к тебе обращаться" hint="Имя в приветствии на главной"
+      <Row name="Как к тебе обращаться" hint="Имя в приветствии на дашборде"
         def={{ text: "Игорь", changed: (s["home:name"] ?? "Игорь") !== "Игорь", reset: () => (setName("Игорь"), props.onSet("home:name", "Игорь")) }}>
         <input className="field set-input wide" value={name} aria-label="Имя"
           onChange={(e) => setName(e.target.value)}
           onBlur={() => props.onSet("home:name", name.trim())}
           onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLElement).blur()} />
       </Row>
-      <ResetSection name="Главная" changed={blocksChanged || start !== 9 || end !== 20 || capacity !== 6 || num(s, "home:goal", 5) !== 5 || (s["home:name"] ?? "Игорь") !== "Игорь"}
+      <ResetSection name="Дашборд" changed={blocksChanged || start !== 9 || end !== 20 || capacity !== 6 || num(s, "home:goal", 5) !== 5 || (s["home:name"] ?? "Игорь") !== "Игорь"}
         onReset={() => {
           resetBlocks();
           setGoal("5");

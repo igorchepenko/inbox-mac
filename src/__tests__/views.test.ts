@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { compareBy, countFor, directionOf, listFor, plural, revOf, sortOf } from "../views";
-import { boardFor, stageOf } from "../boardOps";
+import { boardFor, layoutOf, stageOf } from "../boardOps";
 import { freezeToday, task } from "./helpers";
 
 beforeEach(freezeToday); // сегодня 2026-10-10
@@ -73,11 +73,13 @@ describe("сортировка", () => {
     expect([w(1, null), w(2, "Аня"), w(3, "Юра")].sort(compareBy("assignee", true)).map((x) => x.id)).toEqual([3, 2, 1]);
   });
 
-  it("направление хранится для каждой сортировки в каждом списке", () => {
-    const st = { "sort.rev:today:date": "1" };
+  it("направление хранится для каждой сортировки; у «Задач» и умных списков оно общее", () => {
+    const st = { "sort.rev:tasks:date": "1", "sort.rev:p:3:date": "1" };
     expect(revOf("today", "date", st)).toBe(true);
+    expect(revOf("tasks", "date", st)).toBe(true);
     expect(revOf("today", "priority", st)).toBe(false);
-    expect(revOf("inbox", "date", st)).toBe(false);
+    expect(revOf("p:3", "date", st)).toBe(true);
+    expect(revOf("p:4", "date", st)).toBe(false);
     expect(directionOf("date", false)).toEqual({ asc: true, text: "ближайшие сверху" });
     expect(directionOf("created", true)).toEqual({ asc: true, text: "старые сверху" });
   });
@@ -88,9 +90,11 @@ describe("сортировка", () => {
   });
 
   it("sortOf берёт сохранённое значение или по дате", () => {
-    expect(sortOf("today", { "sort:today": "matrix" })).toBe("matrix");
-    expect(sortOf("today", { "sort:today": "чушь" })).toBe("date");
+    expect(sortOf("today", { "sort:tasks": "matrix" })).toBe("matrix");
+    expect(sortOf("tasks", { "sort:tasks": "matrix" })).toBe("matrix");
+    expect(sortOf("today", { "sort:tasks": "чушь" })).toBe("date");
     expect(sortOf("inbox", {})).toBe("date");
+    expect(sortOf("p:3", { "sort:p:3": "tag", "sort:tasks": "matrix" })).toBe("tag");
   });
 });
 
@@ -164,10 +168,30 @@ describe("канбан", () => {
       task({ id: 3, status: "done", done_at: "2026-09-20T10:00:00" }),
       task({ id: 4, status: "active" }),
     ];
-    const cols = boardFor("today", xs, "date");
+    const cols = boardFor("tasks", xs, "date");
     expect(cols.map((c) => c.key)).toEqual(["new", "todo", "done", "cancelled"]);
     expect(ids(cols[2].items)).toEqual([2, 1]);
     expect(ids(cols[1].items)).toEqual([4]);
+  });
+
+  it("в умном списке канбан берёт только его задачи, во «Всех задачах» все", () => {
+    const xs = [task({ id: 1, status: "inbox" }), task({ id: 2, status: "active", due_date: null }), task({ id: 3, status: "archived" })];
+    const all = (v: Parameters<typeof boardFor>[0]) => boardFor(v, xs, "date").flatMap((c) => ids(c.items));
+    expect(all("inbox")).toEqual([1]);
+    expect(all("soon")).toEqual([2]);
+    expect(all("today")).toEqual([]);
+    expect(all("tasks")).toEqual([1, 2]);
+  });
+
+  it("«Задачи» показывают всё, кроме завершённых", () => {
+    const xs = [task({ id: 1, status: "inbox" }), task({ id: 2, status: "active" }), task({ id: 3, status: "archived" })];
+    expect(listFor("tasks", xs).map((i) => i.task.id).sort()).toEqual([1, 2]);
+  });
+
+  it("вид списка у «Задач» один на все умные списки, по умолчанию списком", () => {
+    expect(layoutOf("inbox", {})).toBe("list");
+    expect(layoutOf("today", { "layout:tasks": "board" })).toBe("board");
+    expect(layoutOf("p:3", { "layout:tasks": "board" })).toBe("list");
   });
 
   it("в пространстве канбан берёт только его задачи", () => {

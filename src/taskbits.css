@@ -30,7 +30,7 @@
 
 /* Настройки → «Поля задач»: название поля и два столбца переключателей, список и канбан */
 .fields-grid { display: flex; flex-direction: column; }
-.fields-head, .fields-row { display: grid; grid-template-columns: 1fr 84px 84px; align-items: center; gap: 12px; }
+.fields-head, .fields-row { display: grid; grid-template-columns: 1fr repeat(3, 84px); align-items: center; gap: 12px; }
 .fields-head { padding-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
 .fields-row { padding: 8px 0; border-top: 1px solid var(--line); }
 .fields-col { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
