@@ -107,8 +107,6 @@
 .help { width: min(640px, 100%); }
 .help-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .help-head h3 { margin: 0; }
-.help-x { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; font-size: 18px; color: var(--muted); }
-.help-x:hover { color: var(--fg); background: var(--field); }
 .help-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
 .help-row kbd { min-width: 86px; }
 .help-foot { margin: 12px 0 0; }

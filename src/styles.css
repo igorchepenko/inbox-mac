@@ -188,6 +188,12 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius
 .icon-cell { display: grid; place-items: center; height: 30px; border-radius: 8px; color: var(--muted); border: 1px solid transparent; }
 .icon-cell:hover { color: var(--fg); border-color: var(--border); }
 
+/* Крестик закрытия: кружок на правом верхнем углу окна, половина за краем. Окна-хозяева держат position: relative */
+.qi, .sum-dlg, .help, .dialog { position: relative; }
+.x-close { position: absolute; top: -11px; right: -11px; z-index: 2; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+  color: var(--muted); background: var(--surface); border: 1px solid var(--border); box-shadow: 0 4px 10px -6px rgba(0, 0, 0, .45); }
+.x-close:hover { color: var(--fg); border-color: var(--muted); }
+
 /* Диалог проекта */
 .dialog { width: min(440px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 18px 40px -24px rgba(0, 0, 0, .45); }
 .dialog h3 { margin: 0 0 2px; font-size: 15px; }
@@ -289,11 +295,11 @@ html.quick, html.quick body { background: transparent; }
 .gear { display: grid; place-items: center; width: 30px; height: 28px; border-radius: 8px; color: var(--muted); }
 .gear:hover { color: var(--fg); background: var(--field); }
 .theme-switch.wide button { width: auto; padding: 0 10px; gap: 6px; display: inline-flex; align-items: center; font-weight: 600; font-size: 12px; }
-.settings { width: min(760px, 100%); height: min(540px, 76vh); display: grid; grid-template-columns: 190px minmax(0, 1fr); background: var(--surface); border: 1px solid var(--border); border-radius: 18px; overflow: hidden; box-shadow: 0 18px 40px -24px rgba(0, 0, 0, .45); }
+.settings { position: relative; width: min(760px, 100%); height: min(540px, 76vh); display: grid; grid-template-columns: 190px minmax(0, 1fr); background: var(--surface); border: 1px solid var(--border); border-radius: 18px; box-shadow: 0 18px 40px -24px rgba(0, 0, 0, .45); }
 .overlay:has(.settings) { padding-top: 9vh; }
-.set-nav { background: var(--side); border-right: 1px solid var(--line); padding: 16px 10px; display: flex; flex-direction: column; gap: 2px; }
+.set-nav { border-radius: 17px 0 0 17px; background: var(--side); border-right: 1px solid var(--line); padding: 16px 10px; display: flex; flex-direction: column; gap: 2px; }
 .set-nav h3 { margin: 0 10px 12px; font-size: 15px; }
-.set-body { padding: 16px 22px 22px; overflow-y: auto; }
+.set-body { padding: 16px 22px 22px; overflow-y: auto; border-radius: 0 17px 17px 0; }
 .set-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .set-head h2 { margin: 0; font-size: 18px; font-weight: 800; letter-spacing: -.01em; }
 .set-group { display: flex; flex-direction: column; gap: 10px; }
