@@ -14,8 +14,8 @@ export interface Pane {
 export type Panes = Record<PaneId, Pane>;
 
 export const PANE_LIMITS: Record<PaneId, { min: number; max: number; def: number }> = {
-  side: { min: 170, max: 380, def: 210 },
-  det: { min: 260, max: 560, def: 300 },
+  side: { min: 220, max: 380, def: 220 },
+  det: { min: 340, max: 560, def: 340 },
 };
 
 const KEY = "inbox.panes";

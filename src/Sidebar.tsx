@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronsUpDown, Keyboard, LayoutGrid, Plus, Search, Settings as Gear, X } from "lucide-react";
 import type { Project, Tag, TagPatch, Task } from "./db";
 import { TagEditor } from "./TagsUI";
-import { countFor, VIEWS, type ViewId } from "./views";
+import { ALWAYS, countFor, isSmart, VIEWS, type ViewId } from "./views";
 import { Icon } from "./icons";
 import { IconGrid, Popover, ThemeSwitch } from "./widgets";
 import { HomeIcon } from "./home/Home";
@@ -122,16 +122,18 @@ export function Sidebar(props: {
     );
   };
   const pickerView = picker && VIEWS.find((v) => v.id === picker.id);
-  const visibleViews = VIEWS.map((v, i) => ({ v, key: `⌘${i + 1}` })).filter(({ v }) => v.id === "inbox" || props.settings[`hidden:${v.id}`] !== "1");
+  const visibleViews = VIEWS.map((v, i) => ({ v, key: `⌘${i + 1}` })).filter(({ v }) => ALWAYS.includes(v.id) || props.settings[`hidden:${v.id}`] !== "1");
 
   return (
     <nav className="side">
       <div className={`nav ${cur === "home" ? "on" : ""}`} onClick={() => props.onOpen("home")} role="button"
-        data-tip="Главная" data-key="⌘0">
+        data-tip="Дашборд" data-key="⌘0">
         <span className="nav-icon"><HomeIcon /></span>
-        <span className="nav-name">Главная</span>
+        <span className="nav-name">Дашборд</span>
       </div>
-      {visibleViews.map(({ v, key }) => item(v.id, v.name, v.accent, viewIcon(v.id, props.settings), (el) => setPicker({ id: v.id, el }), key))}
+      {/* Умные списки стоят под «Задачами» с отступом: это тот же раздел с готовым фильтром */}
+      {visibleViews.map(({ v, key }) =>
+        item(v.id, v.name, v.accent, viewIcon(v.id, props.settings), (el) => setPicker({ id: v.id, el }), key, isSmart(v.id) ? "smart" : ""))}
 
       <div className="side-div" role="separator" />
 
@@ -143,7 +145,7 @@ export function Sidebar(props: {
           {collapsed && props.projects.length > 0 && <span className="sec-n">{props.projects.length}</span>}
         </button>
         <button className={`sec-btn ${cur === "projects" ? "on" : ""}`} onClick={() => props.onOpen("projects")}
-          data-tip="Все пространства карточками" data-key="⌘6" aria-label="Все пространства">
+          data-tip="Все пространства карточками" data-key="⌘7" aria-label="Все пространства">
           <LayoutGrid size={14} />
         </button>
       </div>

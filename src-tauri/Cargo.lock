@@ -1961,6 +1961,7 @@ name = "inbox"
 version = "0.1.0"
 dependencies = [
  "mac-usernotifications",
+ "objc2",
  "serde",
  "serde_json",
  "tauri",

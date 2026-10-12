@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import * as db from "./db";
 import { isCancelled, isClosed, type Draft, type Project, type Tag, type Task } from "./db";
 import { fmtStamp, today } from "./dates";
-import { useAutosize } from "./widgets";
+import { CloseX, useAutosize } from "./widgets";
 import { firstOccurrence, parseRule } from "./recurrence";
 import { Paperclip } from "lucide-react";
 import { Checklist, DateField, Files, Line, Links, normalizeUrl, PriorityPicker, QuadrantPicker, RepeatField, TimeRange, type RunDb } from "./extras";
@@ -19,7 +19,7 @@ export { PRIORITY } from "./priority";
 
 /** Карточка записи задачи. Используется и в отдельном окне ⌥Space, и внутри приложения по N.
  * Дата, время, проект и остальное по желанию: блок свёрнут, открывается кнопкой или ⌘E */
-export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: string[]; onSave: (title: string, note: string, draft: Draft) => void; onCancel: () => void; profile?: string; initial?: Draft; remindBefore: number; onCreateProject?: (name: string) => Promise<number> }) {
+export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: string[]; onSave: (title: string, note: string, draft: Draft) => void; onCancel: () => void; closable?: boolean; profile?: string; initial?: Draft; remindBefore: number; onCreateProject?: (name: string) => Promise<number> }) {
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
   const [more, setMore] = useState(false);
@@ -92,6 +92,7 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
 
   return (
     <form className="qi" onSubmit={(e) => (e.preventDefault(), submit())} onKeyDown={onKey}>
+      {props.closable && <CloseX onClick={props.onCancel} />}
       <input ref={titleRef} className="field qi-title" placeholder="Что нужно сделать? #тег @кто назначил" value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="off" spellCheck={false} />
       <textarea ref={noteRef} rows={2} className="field qi-note" placeholder="Заметка, если нужна" value={note} onChange={(e) => setNote(e.target.value)} />
       {more && (
@@ -196,10 +197,11 @@ export function Details(props: {
   const noteRef = useRef<HTMLTextAreaElement>(null);
   const sumRef = useRef<HTMLTextAreaElement>(null);
   useAutosize(noteRef, note);
-  useAutosize(sumRef, summary, 240);
+  const closed = isClosed(x);
+  // Поле итогов появляется при закрытии задачи: тогда тоже подогнать высоту
+  useAutosize(sumRef, closed ? summary : "", 240);
   // Итоги могли записать в окне при закрытии, пока панель открыта
   useEffect(() => setSummary(x.summary), [x.summary]);
-  const closed = isClosed(x);
   const cancelled = isCancelled(x);
   const isInbox = x.status === "inbox";
   const locked = x.status === "archived";
@@ -230,7 +232,7 @@ export function Details(props: {
       {/* Прокручивается только содержимое, кнопки внизу живут отдельно и ничего не закрывают */}
       <div className="det-body">
       <div>
-        <div className="lbl">{isInbox ? "Разбор" : locked ? "В архиве" : x.kind === "meeting" ? "Встреча" : "Задача"}</div>
+        <div className="lbl">{isInbox ? "Разбор" : locked ? "Завершена" : x.kind === "meeting" ? "Встреча" : "Задача"}</div>
         <textarea className="det-title" rows={1} value={title} disabled={locked}
           onChange={(e) => setTitle(e.target.value.replace(/\n/g, ""))}
           onBlur={saveTitle}
@@ -317,13 +319,15 @@ export function Details(props: {
         <Files task={x} locked={locked} run={props.run} onError={props.onError} />
       </div>
 
-      {/* Итоги видны всегда и правятся даже в архиве: их дописывают задним числом. Заполняются при «Готово» и «Отменено» */}
-      <div className="det-sec">
-        <div className="lbl">Итоги <span className="opt">{cancelled ? "почему отменил" : closed ? "что получилось" : "при закрытии"}</span></div>
-        <textarea ref={sumRef} rows={1} className="field note sum-field" value={summary}
-          placeholder={cancelled ? "Почему отменил" : closed ? "Что получилось, к чему пришли" : "Спрошу при «Готово» или «Отменено»"}
-          onChange={(e) => setSummary(e.target.value)} onBlur={() => summary !== x.summary && props.run(() => db.setSummary(x.id, summary.trim()))} />
-      </div>
+      {/* Итоги только у сделанных и отменённых, в том числе в «Завершённых»: их дописывают задним числом */}
+      {closed && (
+        <div className="det-sec">
+          <div className="lbl">Итоги <span className="opt">{cancelled ? "почему отменил" : "что получилось"}</span></div>
+          <textarea ref={sumRef} rows={1} className="field note sum-field" value={summary}
+            placeholder={cancelled ? "Почему отменил" : "Что получилось, к чему пришли"}
+            onChange={(e) => setSummary(e.target.value)} onBlur={() => summary !== x.summary && props.run(() => db.setSummary(x.id, summary.trim()))} />
+        </div>
+      )}
       </div>
 
       <div className="det-actions">
@@ -337,7 +341,7 @@ export function Details(props: {
         {x.status === "done" && (
           <div className="row-btns">
             <button className="btn" onClick={props.onToggleDone}>Вернуть</button>
-            <button className="cta go" onClick={props.onArchive}>В архив</button>
+            <button className="cta go" onClick={props.onArchive}>В завершённые</button>
           </div>
         )}
         {locked && <button className="cta stand" onClick={props.onRestore}>Вернуть в работу</button>}
@@ -347,7 +351,7 @@ export function Details(props: {
               ? "После разбора задача уйдёт в нужные списки."
               : "Без пространства и даты задача после разбора окажется в «Скоро», в группе «Без даты»."
             : x.status === "done"
-              ? `${x.recurrence && x.next_id ? "Следующий повтор уже в списке. " : ""}${cancelled ? "Отменённые" : "Сделанные"} сами уйдут в архив завтра.`
+              ? `${x.recurrence && x.next_id ? "Следующий повтор уже в списке. " : ""}${cancelled ? "Отменённые" : "Сделанные"} сами уйдут в «Завершённые» завтра.`
               : x.recurrence ? "Когда отметишь сделанной или отменишь, появится следующий повтор." : null}
         </div>
         <button className={`link danger ${confirmDelete ? "armed" : ""}`}
@@ -411,9 +415,9 @@ export const SHORTCUTS: [string, string][] = [
   ["Space", "Сделано / вернуть"],
   ["1 … 5", "Важность: от минимальной до максимальной"],
   ["T", "Дата: сегодня"],
-  ["⌘0", "Главная"],
-  ["⌘1 … ⌘5", "Новые, Сегодня, Скоро, Архив, Календарь"],
-  ["⌘6", "Все пространства карточками"],
+  ["⌘0", "Дашборд"],
+  ["⌘1 … ⌘6", "Задачи, Новые, Сегодня, Скоро, Завершённые, Календарь"],
+  ["⌘7", "Все пространства карточками"],
   ["⌘F", "Поиск на этом экране: в списке, на доске, в календаре, в пространствах"],
   ["⌘P", "Найти пространство и перейти"],
   ["D W M  ← →", "Календарь: день, неделя, месяц, листать"],
@@ -432,9 +436,9 @@ export function Help({ onClose }: { onClose: () => void }) {
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="help" role="dialog" aria-label="Сочетания клавиш">
+        <CloseX onClick={onClose} />
         <div className="help-head">
           <h3>Сочетания клавиш</h3>
-          <button className="help-x" aria-label="Закрыть" data-tip="Закрыть" data-key="Esc" onClick={onClose}>×</button>
         </div>
         <div className="help-grid">
           {SHORTCUTS.map(([k, v]) => (

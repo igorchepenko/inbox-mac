@@ -63,10 +63,6 @@ static BACKED_UP: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
 /// Пункты профилей в меню строки меню: галочка у активного
 struct TrayProfiles(Vec<(&'static str, CheckMenuItem<Wry>)>);
 
-/// Было ли главное окно активно, когда открыли быстрый ввод. Если нет, после ввода
-/// возвращаем фокус в приложение, из которого нажали ⌥Space.
-static MAIN_WAS_FOCUSED: AtomicBool = AtomicBool::new(false);
-
 /// Ошибка, с которой не удалось занять сочетание быстрого ввода. Главное окно показывает её плашкой
 static QUICK_ERROR: Mutex<Option<String>> = Mutex::new(None);
 
@@ -167,6 +163,8 @@ fn migrations() -> Vec<Migration> {
 }
 
 /// Окно быстрого ввода: показать поверх всех приложений или спрятать, если уже открыто.
+/// На macOS это панель, которая не делает Inbox активным: ты остаёшься в своей программе и на своём столе,
+/// главное окно не выскакивает (quick_panel ниже)
 fn toggle_quick(app: &AppHandle) {
     let Some(w) = app.get_webview_window("quick") else {
         return;
@@ -175,15 +173,18 @@ fn toggle_quick(app: &AppHandle) {
         hide_quick(app.clone());
         return;
     }
-    let main_focused = app
-        .get_webview_window("main")
-        .and_then(|m| m.is_focused().ok())
-        .unwrap_or(false);
-    MAIN_WAS_FOCUSED.store(main_focused, Ordering::Relaxed);
     place_quick(&w);
-    let _ = w.show();
-    let _ = w.set_focus();
-    // Окно сбрасывает поля и ставит курсор в название
+    #[cfg(target_os = "macos")]
+    {
+        let panel = w.clone();
+        let _ = w.run_on_main_thread(move || quick_panel::show(&panel));
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = w.show();
+        let _ = w.set_focus();
+    }
+    // Окно ставит курсор в название и перечитывает пространства и теги
     let _ = app.emit_to("quick", "quick-open", ());
 }
 
@@ -204,16 +205,84 @@ fn place_quick(w: &tauri::WebviewWindow) {
     let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
 }
 
-/// Спрятать быстрый ввод после сохранения или Esc
+/// Спрятать быстрый ввод после сохранения, по Esc или повторному сочетанию.
+/// Каждый раз окно открывается чистым и свёрнутым, поэтому форму сбрасываем сразу при закрытии
 #[tauri::command]
 fn hide_quick(app: AppHandle) {
     if let Some(w) = app.get_webview_window("quick") {
         let _ = w.hide();
     }
-    // Как у Spotlight: macOS вернёт фокус туда, где ты был, и главное окно не выскочит поверх
-    #[cfg(target_os = "macos")]
-    if !MAIN_WAS_FOCUSED.load(Ordering::Relaxed) {
-        let _ = app.hide();
+    let _ = app.emit_to("quick", "quick-reset", ());
+}
+
+/// Быстрый ввод как у Spotlight: NSPanel с флагом «не активировать приложение».
+/// Обычное окно при показе активирует всё приложение: macOS поднимает главное окно Inbox поверх твоей программы
+/// и может перебросить на стол, где оно открыто. Панель получает клавиатуру, не трогая остальное
+#[cfg(target_os = "macos")]
+mod quick_panel {
+    use objc2::runtime::{AnyClass, AnyObject, Bool, ClassBuilder, Sel};
+    use objc2::{msg_send, sel};
+
+    const NONACTIVATING_PANEL: usize = 1 << 7;
+    const JOIN_ALL_SPACES: usize = 1 << 0;
+    const FULL_SCREEN_AUXILIARY: usize = 1 << 8;
+
+    extern "C-unwind" fn yes(_: &AnyObject, _: Sel) -> Bool {
+        Bool::YES
+    }
+    extern "C-unwind" fn no(_: &AnyObject, _: Sel) -> Bool {
+        Bool::NO
+    }
+
+    /// Подкласс NSPanel: окно без рамки по умолчанию не может стать ключевым, а нам нужен ввод с клавиатуры
+    fn class() -> &'static AnyClass {
+        if let Some(cls) = AnyClass::get(c"InboxQuickPanel") {
+            return cls;
+        }
+        let panel = AnyClass::get(c"NSPanel").expect("NSPanel есть в AppKit");
+        let mut b = ClassBuilder::new(c"InboxQuickPanel", panel)
+            .expect("класс InboxQuickPanel ещё не создан");
+        unsafe {
+            b.add_method(
+                sel!(canBecomeKeyWindow),
+                yes as extern "C-unwind" fn(_, _) -> _,
+            );
+            b.add_method(
+                sel!(canBecomeMainWindow),
+                no as extern "C-unwind" fn(_, _) -> _,
+            );
+        }
+        b.register()
+    }
+
+    fn ns_window(w: &tauri::WebviewWindow) -> Option<&AnyObject> {
+        let ptr = w.ns_window().ok()? as *mut AnyObject;
+        unsafe { ptr.as_ref() }
+    }
+
+    /// Превратить окно quick в панель. Один раз при запуске, на главном потоке (setup)
+    pub fn convert(w: &tauri::WebviewWindow) {
+        let Some(win) = ns_window(w) else { return };
+        unsafe {
+            objc2::ffi::object_setClass(win as *const AnyObject as *mut AnyObject, class());
+            let mask: usize = msg_send![win, styleMask];
+            let _: () = msg_send![win, setStyleMask: mask | NONACTIVATING_PANEL];
+            let behavior: usize = msg_send![win, collectionBehavior];
+            let _: () = msg_send![win, setCollectionBehavior: behavior | JOIN_ALL_SPACES | FULL_SCREEN_AUXILIARY];
+            let _: () = msg_send![win, setFloatingPanel: true];
+            // Прячем сами, когда фокус ушёл (on_window_event): панель не должна исчезать по своим правилам
+            let _: () = msg_send![win, setHidesOnDeactivate: false];
+            let _: () = msg_send![win, setBecomesKeyOnlyIfNeeded: false];
+        }
+    }
+
+    /// Показать и отдать клавиатуру, не активируя Inbox
+    pub fn show(w: &tauri::WebviewWindow) {
+        let Some(win) = ns_window(w) else { return };
+        unsafe {
+            let _: () = msg_send![win, makeKeyAndOrderFront: None::<&AnyObject>];
+            let _: () = msg_send![win, orderFrontRegardless];
+        }
     }
 }
 
@@ -599,6 +668,11 @@ pub fn run() {
             }
         })
         .setup(move |app| {
+            #[cfg(target_os = "macos")]
+            if let Some(w) = app.get_webview_window("quick") {
+                quick_panel::convert(&w);
+            }
+
             // ⌥Space может не достаться: тогда работаем через иконку в строке меню, а главное окно
             // показывает плашку с причиной и кнопкой «Сменить сочетание»
             if let Err(e) = app.global_shortcut().register(quick_shortcut) {
@@ -708,9 +782,9 @@ pub fn run() {
                 api.prevent_close();
                 let _ = window.hide();
             }
-            // Быстрый ввод прячется, как только фокус ушёл в другое приложение
+            // Быстрый ввод прячется, как только фокус ушёл в другое приложение, и в следующий раз откроется чистым
             WindowEvent::Focused(false) if window.label() == "quick" => {
-                let _ = window.hide();
+                hide_quick(window.app_handle().clone());
             }
             _ => {}
         })

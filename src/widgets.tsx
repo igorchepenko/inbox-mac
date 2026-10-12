@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
-import { ChevronLeft, ChevronRight, Monitor, Moon, Sun } from "lucide-react";
+import { ChevronLeft, ChevronRight, Monitor, Moon, Sun, X } from "lucide-react";
 import { dayKey, MONTHS, pad, parseDay, today, typeTimeDigit, WEEKDAYS, weekdayIndex } from "./dates";
 import { Icon, ICONS } from "./icons";
 import type { Project, ProjectFields, ProjectTasksFate } from "./db";
@@ -25,6 +25,14 @@ export function useAutosize(ref: RefObject<HTMLTextAreaElement | null>, value: s
   }, [ref, value, max]);
 }
 
+/** Крестик закрытия на углу окна или всплывающей панели: кружок наполовину заходит за край */
+export function CloseX(props: { onClick: () => void }) {
+  return (
+    <button type="button" className="x-close" aria-label="Закрыть" data-tip="Закрыть" data-key="Esc"
+      onMouseDown={(e) => e.stopPropagation()} onClick={props.onClick}><X size={13} strokeWidth={2.4} /></button>
+  );
+}
+
 /** Всплывающая панель под кнопкой-якорем. Закрывается по клику мимо и по Esc */
 export function Popover(props: { anchor: HTMLElement | null; onClose: () => void; children: ReactNode; width?: number }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -33,8 +41,8 @@ export function Popover(props: { anchor: HTMLElement | null; onClose: () => void
     if (!props.anchor || !ref.current) return;
     const a = props.anchor.getBoundingClientRect();
     const p = ref.current.getBoundingClientRect();
-    const top = a.bottom + 6 + p.height > innerHeight - 8 ? Math.max(8, a.top - 6 - p.height) : a.bottom + 6;
-    const left = Math.min(Math.max(8, a.left), innerWidth - p.width - 8);
+    const top = a.bottom + 6 + p.height > innerHeight - 8 ? Math.max(14, a.top - 6 - p.height) : a.bottom + 6;
+    const left = Math.min(Math.max(8, a.left), innerWidth - p.width - 14);
     setPos({ top, left });
   }, [props.anchor]);
   useEffect(() => {
@@ -57,6 +65,7 @@ export function Popover(props: { anchor: HTMLElement | null; onClose: () => void
   });
   return (
     <div ref={ref} className="popover" style={{ width: props.width, top: pos?.top ?? -9999, left: pos?.left ?? -9999 }}>
+      <CloseX onClick={props.onClose} />
       {props.children}
     </div>
   );
@@ -344,6 +353,7 @@ export function ProjectDialog(props: {
           if (e.key === "Escape") props.onClose();
           if (e.key === "Enter" && e.metaKey) save();
         }}>
+        <CloseX onClick={props.onClose} />
         <h3>{props.initial ? "Пространство" : "Новое пространство"}</h3>
         <input className="field dlg-name" autoFocus placeholder="Название" value={p.name}
           onChange={(e) => setP({ ...p, name: e.target.value })} />
@@ -395,6 +405,7 @@ function DeleteSpace(props: { name: string; count: number; others: Project[]; on
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
       <form className="dialog" onSubmit={(e) => (e.preventDefault(), go())}
         onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), props.onBack())}>
+        <CloseX onClick={props.onClose} />
         <h3>Удалить «{props.name}»?</h3>
         <p className="hint">В пространстве {n}. Что с ними сделать?</p>
         <div className="del-fate" role="radiogroup">

@@ -20,3 +20,17 @@
 
 .sort-switch { display: inline-flex; align-items: center; gap: 4px; }
 .sort-dir { padding: 3px 6px; }
+
+/* Где нашёлся запрос, если не в названии */
+.meta.found { display: inline-flex; align-items: center; gap: 3px; flex: none; color: var(--stand); font-size: 11px; }
+.kcard .meta.found { margin: 4px 0 0 27px; }
+
+/* Шапка списка, канбана и календаря: поиск, сортировка, фильтры, поля, вид и кнопки одной высоты */
+.head { --ctl-h: 30px; }
+.head .fsearch, .head .icon-btn, .head .theme-switch, .head .cal-today, .head .cal-modes { height: var(--ctl-h); box-sizing: border-box; }
+.head .icon-btn { padding-top: 0; padding-bottom: 0; }
+.head .sort-dir { width: var(--ctl-h); justify-content: center; padding: 0; }
+.head .theme-switch, .head .cal-modes { align-items: stretch; }
+.head .theme-switch button, .head .cal-modes button { height: auto; display: inline-flex; align-items: center; justify-content: center; padding-top: 0; padding-bottom: 0; }
+.head .cal-today { display: inline-flex; align-items: center; padding-top: 0; padding-bottom: 0; }
+.head .cal-stepper .cal-nav { width: var(--ctl-h); height: var(--ctl-h); }
