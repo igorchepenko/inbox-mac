@@ -113,7 +113,8 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius
 .group { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 12px 10px 1px; }
 /* Каждая задача отдельной карточкой с зазором, рамки не слипаются */
 .row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); }
-.row:hover { border-color: var(--border); }
+/* Наведение: рамка и фон акцентного цвета, заметно и в светлой, и в тёмной теме */
+.row:hover:not(.sel):not(.lifted) { border-color: color-mix(in srgb, var(--stand) 75%, transparent); background: color-mix(in srgb, var(--stand) 7%, var(--surface)); }
 .row.sel { background: color-mix(in srgb, var(--stand) 10%, var(--surface)); border-color: color-mix(in srgb, var(--stand) 55%, transparent); }
 .row.done { background: transparent; }
 .row .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
@@ -207,7 +208,7 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius
 
 /* Отдельное прозрачное окно ⌥Space: фон прозрачный, видна только карточка */
 html.quick, html.quick body { background: transparent; }
-.quick-root { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.quick-root { padding: 14px; display: flex; flex-direction: column; gap: 8px; }
 .quick-root .qi { width: 100%; box-shadow: 0 6px 16px -8px rgba(0, 0, 0, .5); }
 
 /* Расширенные поля задачи: строки «подпись — поле», время, повтор, матрица */
@@ -369,7 +370,7 @@ html.quick, html.quick body { background: transparent; }
 .qi-more.lines { gap: 6px; }
 .qi-more .chip { padding: 4px 9px; }
 .qi-more .quad-cell { padding: 4px 9px; }
-.quick-root .qi { max-height: calc(var(--qmax, 100vh) - 20px); }
+.quick-root .qi { max-height: calc(var(--qmax, 100vh) - 28px); }
 /* «Пространство» — самая длинная подпись, колонка под неё */
 .qi-more .line { grid-template-columns: 96px minmax(0, 1fr); }
 .qi-more .qi-link { flex: 1; min-width: 0; height: 30px; padding: 0 10px; }
