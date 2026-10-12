@@ -1,0 +1,12 @@
+/* Поиск по задачам (⌘F) и направление сортировки */
+.search-head { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 8px 0 14px; color: var(--muted);
+  background: var(--field); border: 1px solid var(--line); border-radius: 12px; }
+.search-head:focus-within { border-color: var(--stand); }
+.search-input { flex: 1; min-width: 0; font: 600 17px var(--font); color: var(--fg); background: none; border: 0; outline: none; padding: 10px 0; }
+.search-input:focus-visible { outline: none; }
+.search-input::placeholder { color: var(--muted); font-weight: 600; }
+.search-n { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.row .t mark { background: color-mix(in srgb, var(--stand) 28%, transparent); color: inherit; border-radius: 3px; }
+
+.sort-switch { display: inline-flex; align-items: center; gap: 4px; }
+.sort-dir { padding: 3px 6px; }

@@ -34,6 +34,26 @@ export const SORTS: { id: SortBy; name: string; hint: string }[] = [
 export const sortOf = (view: ViewId, settings: Record<string, string>): SortBy =>
   SORTS.find((s) => s.id === settings[`sort:${view}`])?.id ?? "date";
 
+/** Обратный порядок хранится для каждого списка и каждой сортировки отдельно: settings sort.rev:<вид>:<сортировка> = "1".
+ * Без него порядок обычный, как в подсказке SORTS */
+export const revKey = (view: ViewId, sort: SortBy) => `sort.rev:${view}:${sort}`;
+export const revOf = (view: ViewId, sort: SortBy, settings: Record<string, string>): boolean => settings[revKey(view, sort)] === "1";
+
+/** Подписи направлений: [обычный, обратный]. asc — обычный порядок идёт по возрастанию значения */
+export const DIRECTIONS: Record<SortBy, { asc: boolean; names: [string, string] }> = {
+  date: { asc: true, names: ["ближайшие сверху", "дальние сверху"] },
+  created: { asc: false, names: ["новые сверху", "старые сверху"] },
+  priority: { asc: false, names: ["самые важные сверху", "менее важные сверху"] },
+  matrix: { asc: true, names: ["срочно и важно сверху", "не срочно и не важно сверху"] },
+  tag: { asc: true, names: ["теги от А до Я", "теги от Я до А"] },
+  assignee: { asc: true, names: ["имена от А до Я", "имена от Я до А"] },
+};
+/** По возрастанию или по убыванию идёт список сейчас, и словами, что сверху */
+export function directionOf(sort: SortBy, rev: boolean): { asc: boolean; text: string } {
+  const d = DIRECTIONS[sort];
+  return { asc: d.asc !== rev, text: d.names[rev ? 1 : 0] };
+}
+
 // Порядок квадрантов задал Игорь: срочно и важно, срочно не важно, важно не срочно, не срочно не важно
 const QUAD_ORDER = [1, 3, 2, 4];
 const QUAD_NAMES: Record<number, string> = { 1: "Срочно и важно", 2: "Важно, не срочно", 3: "Срочно, не важно", 4: "Не срочно, не важно" };
@@ -41,23 +61,32 @@ const quadRank = (x: Task) => (x.quadrant ? QUAD_ORDER.indexOf(x.quadrant) : 9);
 // Время задачи в дне: начало из календаря, иначе напоминание. Без времени после задач со временем
 const timeOf = (x: Task) => x.start_time ?? (x.remind_at ? stampTime(x.remind_at) : "99");
 
-/** Ближайшие сверху: дата (без даты в конце), время, затем важнее и свежее */
-function byDate(a: Task, b: Task): number {
-  const ad = a.due_date ?? "9999", bd = b.due_date ?? "9999";
-  if (ad !== bd) return ad < bd ? -1 : 1;
+// Сравнение, где пустое значение всегда в конце, а непустые можно развернуть
+function lastEmpty<T>(a: T | null, b: T | null, cmp: (a: T, b: T) => number, rev: boolean): number {
+  if (a == null || b == null) return (a == null ? 1 : 0) - (b == null ? 1 : 0);
+  return rev ? cmp(b, a) : cmp(a, b);
+}
+const str = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+/** Ближайшие сверху: дата (без даты в конце), время, затем важнее и свежее. rev: дальние сверху, без даты всё так же в конце */
+function byDate(a: Task, b: Task, rev = false): number {
+  const d = lastEmpty(a.due_date, b.due_date, str, rev);
+  if (d) return d;
   const at = timeOf(a), bt = timeOf(b);
-  if (at !== bt) return at < bt ? -1 : 1;
+  if (at !== bt) return (at < bt ? -1 : 1) * (rev ? -1 : 1);
   if (a.priority !== b.priority) return b.priority - a.priority;
   return a.created_at < b.created_at ? 1 : -1;
 }
 
-export function compareBy(sort: SortBy): (a: Task, b: Task) => number {
-  if (sort === "created") return (a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0);
-  if (sort === "priority") return (a, b) => b.priority - a.priority || byDate(a, b);
-  if (sort === "matrix") return (a, b) => quadRank(a) - quadRank(b) || byDate(a, b);
-  if (sort === "tag") return (a, b) => compareNames(firstTag(a), firstTag(b)) || byDate(a, b);
-  if (sort === "assignee") return (a, b) => compareNames(a.assigned_by, b.assigned_by) || byDate(a, b);
-  return byDate;
+/** rev разворачивает главный ключ сортировки. Задачи без значения (без даты, тега, важности, вне матрицы, свои) остаются в конце,
+ * а внутри одной группы порядок всегда по дате, ближайшие сверху */
+export function compareBy(sort: SortBy, rev = false): (a: Task, b: Task) => number {
+  if (sort === "created") return (a, b) => str(b.created_at, a.created_at) * (rev ? -1 : 1);
+  if (sort === "priority") return (a, b) => lastEmpty(a.priority || null, b.priority || null, (x, y) => y - x, rev) || byDate(a, b);
+  if (sort === "matrix") return (a, b) => lastEmpty(a.quadrant && quadRank(a), b.quadrant && quadRank(b), (x, y) => x - y, rev) || byDate(a, b);
+  if (sort === "tag") return (a, b) => lastEmpty(firstTag(a), firstTag(b), compareNames, rev) || byDate(a, b);
+  if (sort === "assignee") return (a, b) => lastEmpty(a.assigned_by, b.assigned_by, compareNames, rev) || byDate(a, b);
+  return (a, b) => byDate(a, b, rev);
 }
 
 export const NO_TAG_GROUP = "Без тегов";
@@ -75,8 +104,8 @@ function groupName(x: Task, sort: SortBy): string {
 }
 
 /** Открытые выше сделанных, внутри по выбранной сортировке; при важности и матрице с заголовками групп */
-function arrange(xs: Task[], sort: SortBy): ListItem[] {
-  const cmp = compareBy(sort);
+function arrange(xs: Task[], sort: SortBy, rev: boolean): ListItem[] {
+  const cmp = compareBy(sort, rev);
   const sorted = [...xs].sort((a, b) => (a.status === "done" ? 1 : 0) - (b.status === "done" ? 1 : 0) || cmp(a, b));
   if (sort === "date") return sorted.map((task) => ({ task }));
   let last = "";
@@ -88,11 +117,11 @@ function arrange(xs: Task[], sort: SortBy): ListItem[] {
   });
 }
 
-export function listFor(view: ViewId, tasks: Task[], sort: SortBy = "date"): ListItem[] {
+export function listFor(view: ViewId, tasks: Task[], sort: SortBy = "date", rev = false): ListItem[] {
   const t = today();
   if (view === "home" || view === "projects") return [];
-  if (view === "inbox") return arrange(tasks.filter((x) => x.status === "inbox"), sort);
-  if (view === "today") return arrange(tasks.filter((x) => (x.status === "active" && !!x.due_date && x.due_date <= t) || doneToday(x, t)), sort);
+  if (view === "inbox") return arrange(tasks.filter((x) => x.status === "inbox"), sort, rev);
+  if (view === "today") return arrange(tasks.filter((x) => (x.status === "active" && !!x.due_date && x.due_date <= t) || doneToday(x, t)), sort, rev);
   if (view === "archive")
     return tasks
       .filter((x) => x.status === "archived")
@@ -100,11 +129,11 @@ export function listFor(view: ViewId, tasks: Task[], sort: SortBy = "date"): Lis
       .map((task) => ({ task }));
   if (view === "soon") {
     const active = tasks.filter((x) => x.status === "active" && (!x.due_date || x.due_date > t));
-    if (sort !== "date") return arrange(active, sort);
+    if (sort !== "date") return arrange(active, sort, rev);
     // По дате: будущие даты по дням, затем всё разобранное без даты, чтобы ничего не терялось
     const out: ListItem[] = [];
     let last = "";
-    for (const task of active.sort(byDate)) {
+    for (const task of active.sort(compareBy("date", rev))) {
       const g = task.due_date ? fmtDay(task.due_date) : "Без даты";
       out.push(g !== last ? { task, group: g } : { task });
       last = g;
@@ -115,10 +144,10 @@ export function listFor(view: ViewId, tasks: Task[], sort: SortBy = "date"): Lis
   if (view.startsWith("t:")) {
     // Тег: все его задачи в работе, включая неразобранные, и сделанные сегодня
     const tid = Number(view.slice(2));
-    return arrange(tasks.filter((x) => x.tags.some((g) => g.id === tid) && (x.status === "inbox" || x.status === "active" || doneToday(x, t))), sort);
+    return arrange(tasks.filter((x) => x.tags.some((g) => g.id === tid) && (x.status === "inbox" || x.status === "active" || doneToday(x, t))), sort, rev);
   }
   const pid = Number(view.slice(2));
-  return arrange(tasks.filter((x) => x.project_id === pid && (x.status === "active" || doneToday(x, t))), sort);
+  return arrange(tasks.filter((x) => x.project_id === pid && (x.status === "active" || doneToday(x, t))), sort, rev);
 }
 
 export function countFor(view: ViewId, tasks: Task[]): number {

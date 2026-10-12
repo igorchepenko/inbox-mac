@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { spaceVars } from "./palette";
-import { Bell, CalendarDays, CalendarPlus, Check, Clock, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Bell, CalendarDays, CalendarPlus, Check, Clock, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound } from "lucide-react";
 import { Assignee, TagChip } from "./TagsUI";
 import { CreatedMeta, MeetingMark } from "./TaskBits";
 import type { Project, Task } from "./db";
 import { addDays, fmtDay, fmtRange, nextMonday, stampTime, today } from "./dates";
 import { TARGETS, type BoardColumn, type Layout, type Stage } from "./boardOps";
 import * as board from "./boardOps";
-import { plural, SORTS, type SortBy } from "./views";
+import { directionOf, plural, SORTS, type SortBy } from "./views";
 import { PRIORITY } from "./components";
 import { Icon } from "./icons";
 import { Calendar, Popover } from "./widgets";
@@ -32,8 +32,9 @@ export function LayoutSwitch({ value, onChange }: { value: Layout; onChange: (l:
   );
 }
 
-/** Сортировка списка и столбцов канбана: по дате, по важности, по матрице */
-export function SortSwitch({ value, onChange }: { value: SortBy; onChange: (s: SortBy) => void }) {
+/** Сортировка списка и столбцов канбана: по дате, по важности, по матрице.
+ * Повторный клик по выбранной или кнопка со стрелкой разворачивают порядок */
+export function SortSwitch({ value, rev, onChange, onReverse }: { value: SortBy; rev: boolean; onChange: (s: SortBy) => void; onReverse: () => void }) {
   const icons: Record<SortBy, ReactNode> = {
     date: <CalendarDays size={14} />,
     priority: <PriorityIcon p={5} size={14} color="currentColor" />,
@@ -42,12 +43,24 @@ export function SortSwitch({ value, onChange }: { value: SortBy; onChange: (s: S
     tag: <Tag size={14} />,
     assignee: <UserRound size={14} />,
   };
+  const dir = directionOf(value, rev);
+  const other = directionOf(value, !rev);
+  const tip = (s: (typeof SORTS)[number]) => {
+    if (s.id !== value) return s.hint;
+    return `${s.name}, ${dir.asc ? "по возрастанию" : "по убыванию"}: ${dir.text}. Нажми ещё раз: ${other.text}`;
+  };
   return (
-    <div className="theme-switch layout-switch" role="radiogroup" aria-label="Сортировка">
-      {SORTS.map((s) => (
-        <button key={s.id} role="radio" aria-checked={value === s.id} aria-label={s.name} data-tip={s.hint}
-          className={value === s.id ? "on" : ""} onClick={() => onChange(s.id)}>{icons[s.id]}</button>
-      ))}
+    <div className="sort-switch">
+      <div className="theme-switch layout-switch" role="radiogroup" aria-label="Сортировка">
+        {SORTS.map((s) => (
+          <button key={s.id} role="radio" aria-checked={value === s.id} aria-label={s.name} data-tip={tip(s)}
+            className={value === s.id ? "on" : ""} onClick={() => (value === s.id ? onReverse() : onChange(s.id))}>{icons[s.id]}</button>
+        ))}
+      </div>
+      <button className={`icon-btn sort-dir ${rev ? "on" : ""}`} aria-label={dir.asc ? "По возрастанию" : "По убыванию"}
+        data-tip={`${dir.asc ? "По возрастанию" : "По убыванию"}: ${dir.text}. Нажми: ${other.text}`} onClick={onReverse}>
+        {dir.asc ? <ArrowUpNarrowWide size={14} /> : <ArrowDownWideNarrow size={14} />}
+      </button>
     </div>
   );
 }
