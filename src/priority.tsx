@@ -28,7 +28,6 @@ export function PriorityIcon({ p, size = 14, color }: { p: number; size?: number
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" className="prio" aria-label={priorityName(p)} role="img"
       fill="none" stroke={color ?? `var(--p${p})`} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <title>Важность: {priorityName(p).toLowerCase()}</title>
       {paths.map((d) => <path key={d} d={d} />)}
     </svg>
   );

@@ -71,12 +71,9 @@ export function Sidebar(props: {
   onSetting: (key: string, value: string) => void;
   onSettings: () => void;
   onShortcuts: () => void;
-  searching: boolean;
-  onSearch: () => void;
 }) {
+  const cur = props.view;
   // Пункт меню, у которого сейчас открыт выбор иконки
-  // Пока открыт поиск, подсвечен только он
-  const cur = props.searching ? null : props.view;
   const [picker, setPicker] = useState<{ id: ViewId; el: HTMLElement } | null>(null);
   const [collapsed, setCollapsed] = useState(props.settings[KEY_PROJECTS_COLLAPSED] === "1");
   useEffect(() => setCollapsed(props.settings[KEY_PROJECTS_COLLAPSED] === "1"), [props.settings[KEY_PROJECTS_COLLAPSED]]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -133,10 +130,6 @@ export function Sidebar(props: {
         data-tip="Главная" data-key="⌘0">
         <span className="nav-icon"><HomeIcon /></span>
         <span className="nav-name">Главная</span>
-      </div>
-      <div className={`nav ${props.searching ? "on" : ""}`} onClick={props.onSearch} role="button" data-tip="Поиск по задачам" data-key="⌘F">
-        <span className="nav-icon"><Search size={15} /></span>
-        <span className="nav-name">Поиск</span>
       </div>
       {visibleViews.map(({ v, key }) => item(v.id, v.name, v.accent, viewIcon(v.id, props.settings), (el) => setPicker({ id: v.id, el }), key))}
 

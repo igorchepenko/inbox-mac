@@ -1,12 +1,13 @@
 // Теги и «Кто назначил» в интерфейсе: чипсы, поля ввода с подсказками, правка тега, фильтр списка.
 // Поля работают и в правой панели, и в форме записи задачи (⌥Space и N)
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { ListFilter, UserRound, X } from "lucide-react";
+import { ListFilter, Search, UserRound, X } from "lucide-react";
 import type { Project, Tag, TagPatch } from "./db";
 import { Icon } from "./icons";
 import { PALETTE } from "./palette";
 import { addTagName, canonicalPerson, EMPTY_FILTER, filterOn, NO_PERSON, NO_SPACE, pickColor, sameName, suggest, TAG_COLORS, TAG_MAX, TAG_MAX_LEN, type TaskFilter } from "./tags";
 import { ColorGrid, Popover } from "./widgets";
+import { tips } from "./fields";
 import { plural } from "./views";
 
 const tagVars = (color: string | undefined) => ({ "--c": color ? `var(--${color})` : "var(--muted)" }) as CSSProperties;
@@ -32,8 +33,8 @@ export function TagChips({ tags, max = 3 }: { tags: Tag[]; max?: number }) {
   const rest = tags.length - max;
   return (
     <span className="tchips">
-      {tags.slice(0, rest > 0 ? max : tags.length).map((t) => <TagChip key={t.id} name={t.name} color={t.color} />)}
-      {rest > 0 && <span className="meta" title={tags.slice(max).map((t) => t.name).join(", ")}>+{rest}</span>}
+      {tags.slice(0, rest > 0 ? max : tags.length).map((t) => <TagChip key={t.id} name={t.name} color={t.color} title={tips.tag(t.name)} />)}
+      {rest > 0 && <span className="meta" title={tips.tagsRest(tags.slice(max).map((t) => t.name))}>+{rest}</span>}
     </span>
   );
 }
@@ -278,12 +279,44 @@ function SpaceChip({ project: p, on, onClick, onRemove }: { project?: Project; o
 
 const toggle = (xs: number[], id: number) => (xs.includes(id) ? xs.filter((x) => x !== id) : [...xs, id]);
 
-/** Кнопка фильтра в шапке: пространства и теги (любое из выбранных) и кто назначил. Внутри пространства его фильтра нет */
+/** ⌘F фокусирует поле поиска того экрана, который сейчас открыт: список, доска, календарь, пространства */
+export const FIND_EVENT = "inbox:find";
+
+/**
+ * Поиск в шапке рядом с сортировкой и фильтрами. Ищет только в том, что сейчас на экране, и складывается с фильтрами.
+ * Esc сначала стирает запрос, потом уводит фокус; стрелки двигают выбор в списке, не выходя из поля
+ */
+export function SearchField(props: { value: string; onChange: (v: string) => void; placeholder: string; tip?: string; onArrow?: (dir: 1 | -1) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const find = () => requestAnimationFrame(() => input.current?.select());
+    window.addEventListener(FIND_EVENT, find);
+    return () => window.removeEventListener(FIND_EVENT, find);
+  }, []);
+  return (
+    <label className={`fsearch ${props.value ? "has" : ""}`} data-tip={props.tip} data-key={props.tip ? "⌘F" : undefined}>
+      <Search size={13} />
+      <input ref={input} value={props.value} placeholder={props.placeholder} spellCheck={false} autoComplete="off" aria-label={props.placeholder}
+        onChange={(e) => props.onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") return e.preventDefault(), e.stopPropagation(), props.value ? props.onChange("") : e.currentTarget.blur();
+          if (e.key === "Enter") return e.preventDefault(), e.currentTarget.blur();
+          if (props.onArrow && (e.key === "ArrowDown" || e.key === "ArrowUp")) return e.preventDefault(), e.stopPropagation(), props.onArrow(e.key === "ArrowDown" ? 1 : -1);
+        }} />
+      {props.value && (
+        <button type="button" className="fsearch-x" aria-label="Очистить поиск" onMouseDown={(e) => e.preventDefault()} onClick={() => props.onChange("")}><X size={12} /></button>
+      )}
+    </label>
+  );
+}
+
+/** Кнопка «Фильтры» в шапке: пространства и теги (любое из выбранных) и кто назначил. Внутри пространства его фильтра нет */
 export function FilterButton(props: {
   filter: TaskFilter; projects: Project[]; tags: Tag[]; people: string[]; lockTag?: number; noSpaces?: boolean; onChange: (f: TaskFilter) => void;
 }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const { filter: f } = props;
+  // Запрос поиска виден в своём поле, в счётчик кнопки не входит
   const n = f.spaces.length + f.tags.length + (f.person !== null ? 1 : 0);
   const tags = props.tags.filter((t) => t.id !== props.lockTag);
   const toggleTag = (id: number) => props.onChange({ ...f, tags: toggle(f.tags, id) });
@@ -291,9 +324,9 @@ export function FilterButton(props: {
   const setPerson = (p: string | null) => props.onChange({ ...f, person: f.person === p ? null : p });
   return (
     <>
-      <button className={`icon-btn ${n ? "on" : ""}`} data-tip={props.noSpaces ? "Фильтр по тегам и тому, кто назначил" : "Фильтр по пространствам, тегам и тому, кто назначил"}
+      <button className={`icon-btn ${n ? "on" : ""}`} data-tip={props.noSpaces ? "Фильтры по тегам и тому, кто назначил" : "Фильтры по пространствам, тегам и тому, кто назначил"}
         onClick={(e) => setAnchor(anchor ? null : e.currentTarget)}>
-        <ListFilter size={13} /> Фильтр{n > 0 && <span className="fcount">{n}</span>}
+        <ListFilter size={13} /> Фильтры{n > 0 && <span className="fcount">{n}</span>}
       </button>
       {anchor && (
         <Popover anchor={anchor} onClose={() => setAnchor(null)} width={320}>
@@ -324,7 +357,7 @@ export function FilterButton(props: {
             ))}
             <button type="button" className={`fchip person ${f.person === NO_PERSON ? "on" : ""}`} onClick={() => setPerson(NO_PERSON)}>Сам себе</button>
           </div>
-          {n > 0 && <button type="button" className="link tag-del" onClick={() => props.onChange(EMPTY_FILTER)}>Сбросить фильтр</button>}
+          {n > 0 && <button type="button" className="link tag-del" onClick={() => props.onChange({ ...EMPTY_FILTER, text: f.text })}>Сбросить фильтры</button>}
         </Popover>
       )}
     </>
@@ -338,6 +371,12 @@ export function FilterBar(props: { filter: TaskFilter; projects: Project[]; tags
   return (
     <div className="filter-bar">
       <ListFilter size={13} />
+      {f.text.trim() && (
+        <span className="fchip person on static">
+          <Search size={11} /> «{f.text.trim()}»
+          <button type="button" className="tchip-x" aria-label="Убрать поиск" onClick={() => props.onChange({ ...f, text: "" })}><X size={10} strokeWidth={2.6} /></button>
+        </span>
+      )}
       {f.spaces.map((id) => {
         const p = props.projects.find((x) => x.id === id);
         return (id === NO_SPACE || p) && <SpaceChip key={`s${id}`} project={p} onRemove={() => props.onChange({ ...f, spaces: f.spaces.filter((x) => x !== id) })} />;

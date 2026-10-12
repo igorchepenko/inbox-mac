@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BellRing, Check, FolderOpen, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, SlidersHorizontal, Type, UserRound, Users, X, type LucideIcon } from "lucide-react";
+import { BellRing, Check, FolderOpen, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, Rows3, SlidersHorizontal, Type, UserRound, Users, X, type LucideIcon } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as autostartEnabled } from "@tauri-apps/plugin-autostart";
 import { Icon } from "./icons";
@@ -7,9 +7,12 @@ import { plural, VIEWS, type ViewId } from "./views";
 import { beforeName, defaultBefore, REMIND_BEFORE } from "./remind";
 import { loadPeopleStats, renamePerson } from "./db";
 import { sameName } from "./tags";
+import { searchNames } from "./search";
+import { SearchField } from "./TagsUI";
 import { IconGrid, Popover, ThemeSwitch, TimeInput, Toggle } from "./widgets";
 import { savedTheme, setTheme } from "./theme";
 import { HomeSettings } from "./HomeSettings";
+import { FieldsSettings } from "./FieldsSettings";
 import { HomeIcon } from "./home/Home";
 import { QuickKeyTest } from "./QuickKeyCheck";
 import { activeProfile, PROFILES, switchProfile } from "./profile";
@@ -36,6 +39,7 @@ const SECTIONS: { id: string; name: string; icon: LucideIcon; render: (p: Settin
   { id: "quick", name: "Быстрый ввод", icon: Keyboard, render: (p) => <Quick {...p} /> },
   { id: "notify", name: "Уведомления", icon: BellRing, render: (p) => <Notifications {...p} /> },
   { id: "people", name: "Кто назначил", icon: Users, render: (p) => <People {...p} /> },
+  { id: "fields", name: "Поля задач", icon: Rows3, render: (p) => <FieldsSettings settings={p.settings} onSet={p.onSet} /> },
   { id: "menu", name: "Меню", icon: PanelLeft, render: (p) => <MenuItems {...p} /> },
   { id: "home", name: "Главная", icon: LayoutDashboard, render: (p) => <HomeSettings settings={p.settings} onSet={p.onSet} /> },
   { id: "profile", name: "Профиль", icon: UserRound, render: () => <Profiles /> },
@@ -355,6 +359,7 @@ function People(p: SettingsProps) {
   const [edit, setEdit] = useState<{ name: string; value: string } | null>(null);
   const [armed, setArmed] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const load = () => loadPeopleStats().then(setRows).catch((e) => setError(String(e)));
   useEffect(() => void load(), []);
   const apply = async (from: string, to: string | null) => {
@@ -382,7 +387,9 @@ function People(p: SettingsProps) {
     <div className="set-group">
       <div className="hint">Имена из поля «Кто назначил». Переименование меняет имя во всех задачах. Если вписать имя другого человека, задачи объединятся под ним.</div>
       {!rows.length && <div className="hint">Пока никто не назначал задач. Имя появится здесь, когда впишешь его в задачу или наберёшь @Имя при записи.</div>}
-      {rows.map((r) => (
+      {rows.length > 1 && <SearchField value={query} onChange={setQuery} placeholder="Найти человека" />}
+      {query.trim() && !searchNames(query, rows).length && <div className="hint">Никого не нашлось.</div>}
+      {searchNames(query, rows).map((r) => (
         <div key={r.name} className="set-row person-row">
           <div className="set-text">
             {edit?.name === r.name ? (

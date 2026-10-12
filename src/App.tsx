@@ -7,14 +7,14 @@ import * as db from "./db";
 import type { Project, ProjectFields, Tag, Task } from "./db";
 import { fmtDay, fmtRange, nowStamp, stampTime, today, toHHMM } from "./dates";
 import { listFor, progressFor, revKey, revOf, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
-import { marks, searchTasks } from "./search";
+import { marks } from "./search";
 import "./search.css";
 import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
 import { Icon } from "./icons";
 import { ProjectDialog } from "./widgets";
-import { CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Search, Tag as TagIcon, X } from "lucide-react";
+import { Check, CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Tag as TagIcon, Users } from "lucide-react";
 import { applyFilter, EMPTY_FILTER, filterOn, NO_SPACE, peopleOf, type TaskFilter } from "./tags";
-import { Assignee, FilterBar, FilterButton, TagChips, TagEditor } from "./TagsUI";
+import { Assignee, FilterBar, FilterButton, FIND_EVENT, SearchField, TagChips, TagEditor } from "./TagsUI";
 import { QuadrantGlyph } from "./extras";
 import { CreatedMeta, DueFlag, MeetingMark } from "./TaskBits";
 import { defaultBefore, remindPatch } from "./remind";
@@ -31,6 +31,7 @@ import { PriorityIcon } from "./priority";
 import { FIND_PROJECT_EVENT, Sidebar, viewIcon } from "./Sidebar";
 import ProjectsPage from "./ProjectsPage";
 import { Tooltips } from "./Tooltips";
+import { ALL_SHOWN, shownFields, tips, type Shown } from "./fields";
 import { QuickKeyBanner } from "./QuickKeyCheck";
 import { usePanes } from "./panes";
 import { Frame } from "./Frame";
@@ -39,7 +40,7 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
-  // Фильтр. Теги и «кто назначил» живут, пока открыт список, при переходе в другой сбрасываются.
+  // Фильтры. Поиск, теги и «кто назначил» живут, пока открыт список, при переходе в другой сбрасываются.
   // Пространства остаются выбранными во всех списках и в календаре, пока их не сбросят
   const [filter, setFilter] = useState<TaskFilter>(EMPTY_FILTER);
   const [tagEdit, setTagEdit] = useState<HTMLElement | null>(null);
@@ -55,10 +56,6 @@ export default function App() {
   const [newOpen, setNewOpen] = useState(false);
   // Окно итогов после перевода в «Готово» или «Отменено»
   const [closing, setClosing] = useState<Closing | null>(null);
-  // Поиск по всем задачам: null закрыт. Пока открыт, вместо списка результаты, вид под ним не меняется
-  const [query, setQuery] = useState<string | null>(null);
-  const searching = query !== null;
-  const searchRef = useRef<HTMLInputElement>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutError, setShortcutError] = useState<string | null>(null);
@@ -121,6 +118,7 @@ export default function App() {
   }, [reload]);
 
   const layout = layoutOf(view, settings);
+  const listFields = useMemo(() => shownFields(settings, "list"), [settings]);
   const sort = sortOf(view, settings);
   const rev = revOf(view, sort, settings);
   const people = useMemo(() => peopleOf(tasks), [tasks]);
@@ -131,35 +129,40 @@ export default function App() {
     spaces: inSpace ? [] : filter.spaces.filter((id) => id === NO_SPACE || projects.some((p) => p.id === id)),
     tags: filter.tags.filter((id) => tags.some((g) => g.id === id)),
   }), [filter, tags, projects, inSpace]);
-  const shown = useMemo(() => applyFilter(tasks, filt), [tasks, filt]);
+  const shown = useMemo(() => applyFilter(tasks, filt, projects), [tasks, filt, projects]);
   // В фильтре ровно одно пространство: новые задачи сразу записываются в него
   const oneSpace = filt.spaces.length === 1 && filt.spaces[0] !== NO_SPACE ? filt.spaces[0] : null;
-  const list = useMemo(() => (searching ? searchTasks(query, tasks, projects) : listFor(view, shown, sort, rev)), [searching, query, tasks, projects, view, shown, sort, rev]);
-  const columns = useMemo(() => (layout === "board" && !searching ? boardFor(view, shown, sort, rev) : null), [layout, searching, view, shown, sort, rev]);
+  const list = useMemo(() => listFor(view, shown, sort, rev), [view, shown, sort, rev]);
+  const columns = useMemo(() => (layout === "board" ? boardFor(view, shown, sort, rev) : null), [layout, view, shown, sort, rev]);
   const ids = columns ? columns.flatMap((c) => c.items.map((i) => i.task.id)) : list.map((i) => i.task.id);
   const pickedTasks = tasks.filter((x) => picked.includes(x.id) && ids.includes(x.id));
   const bulk = selecting || pickedTasks.length > 1;
-  const task = tasks.find((x) => x.id === sel && ((view === "calendar" && !searching) || ids.includes(x.id))) ?? null;
+  const task = tasks.find((x) => x.id === sel && (view === "calendar" || ids.includes(x.id))) ?? null;
 
   // Когда выбранная задача ушла из списка (разобрана, сделана), выбираем ту, что встала на её место
   const lastIdx = useRef(0);
   useEffect(() => {
-    if (view === "calendar" && !searching) return; // в календаре выбор не зависит от списка
+    if (view === "calendar") return; // в календаре выбор не зависит от списка
+    if (sel == null) return; // ничего не выбрано: так и оставляем, пока не кликнут по задаче
     const i = ids.indexOf(sel ?? -1);
     if (i >= 0) lastIdx.current = i;
     else setSel(ids[Math.min(lastIdx.current, ids.length - 1)] ?? null);
   }, [ids.join(","), sel]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Выбор задачи открывает правую панель: по умолчанию она свёрнута
+  const select = (id: number | null) => {
+    setSel(id);
+    if (id != null) togglePane("det", false);
+  };
   const clearPick = () => (setPicked([]), setSelecting(false));
-  const openView = (v: ViewId, from = tasks) => {
+  const openView = (v: ViewId) => {
     setView(v);
-    setQuery(null);
     clearPick();
     setFilter((f) => ({ ...EMPTY_FILTER, spaces: f.spaces }));
     setTagEdit(null);
     lastIdx.current = 0;
-    const s = sortOf(v, settings);
-    setSel(listFor(v, from, s, revOf(v, s, settings))[0]?.task.id ?? null);
+    setSel(null);
+    togglePane("det", true); // в списке, доске и календаре панель закрыта и ничего не выделено, пока не кликнешь по задаче
     db.setSetting("last.view", v).catch(() => {}); // для начального экрана «Где остановился»
   };
 
@@ -178,11 +181,11 @@ export default function App() {
   };
 
   // Первая загрузка: начальный экран и сочетание из настроек
-  function startUp(t: Task[], st: Record<string, string>) {
+  function startUp(_t: Task[], st: Record<string, string>) {
     const start = pref(st, "start.view");
     const v = (start === "last" ? st["last.view"] ?? "inbox" : start) as ViewId;
     // Удалённый проект или спрятанный список сам сменится на «Новые»
-    openView(v, t);
+    openView(v);
     const accel = pref(st, "quick.shortcut");
     // Сочетание у профиля своё, а занято оно одно на приложение: после смены профиля ставим сохранённое в нём.
     // Если не досталось ⌥Space, об этом уже говорит плашка из Rust
@@ -233,19 +236,15 @@ export default function App() {
   };
   const openTask = (x: Task) => {
     setView(homeOf(x));
-    setSel(x.id);
+    select(x.id);
   };
-  // Найденная задача открывается в своём списке. Фильтр сбрасываем, иначе он мог бы её спрятать
-  const revealTask = (x: Task) => {
-    openView(homeOf(x));
-    setFilter(EMPTY_FILTER);
-    setSel(x.id);
+  // Стрелки из поля поиска двигают выбор в списке
+  const stepSel = (dir: 1 | -1) => {
+    const i = ids.indexOf(sel ?? -1);
+    const next = ids[i < 0 ? 0 : i + dir];
+    if (next != null) select(next);
   };
-  const openSearch = () => {
-    setQuery((q) => q ?? "");
-    clearPick();
-    requestAnimationFrame(() => searchRef.current?.select());
-  };
+  const setText = (text: string) => setFilter((f) => ({ ...f, text }));
   // Клик выбирает задачу, ⌘-клик или режим «Выбрать» добавляют к выделению, ⇧-клик берёт всё подряд от выбранной
   const pick: Pick = (id, m) => {
     if (m.shift && sel != null && ids.includes(sel)) {
@@ -257,9 +256,12 @@ export default function App() {
       const base = picked.length ? picked : sel != null && sel !== id ? [sel] : [];
       setPicked(base.includes(id) ? base.filter((x) => x !== id) : [...base, id]);
     } else setPicked([]);
-    setSel(id);
+    select(id);
   };
-  const setLayout = (l: Layout) => run(() => db.setSetting(`layout:${view}`, l));
+  const setLayout = (l: Layout) => {
+    if (l !== layout) (setSel(null), togglePane("det", true)); // смена вида — тоже «переход»: панель закрыта, выделения нет
+    run(() => db.setSetting(`layout:${view}`, l));
+  };
   const setSort = (s: SortBy) => {
     setSettings((st) => ({ ...st, [`sort:${view}`]: s }));
     run(() => db.setSetting(`sort:${view}`, s));
@@ -280,7 +282,7 @@ export default function App() {
         project_id: oneSpace, due_date: day, start_time: start == null ? null : toHHMM(start), end_time: end == null ? null : toHHMM(end),
       });
       await reload();
-      setSel(id);
+      select(id);
       setTimeout(() => {
         const el = document.querySelector<HTMLTextAreaElement>(".det-title");
         el?.focus();
@@ -308,7 +310,7 @@ export default function App() {
         // Записанная сразу в «К выполнению» или «Готово» открывается там, где теперь лежит
         const x = all.find((t) => t.id === id);
         setView(x && draft.stage ? homeOf(x) : "inbox");
-        setSel(id);
+        select(id);
       } catch (e) {
         setError(String(e));
       }
@@ -344,7 +346,7 @@ export default function App() {
       if (p.type === "drop") {
         setDropTarget(null);
         if (id != null && p.paths.length) {
-          setSel(id);
+          select(id);
           run(() => db.attachFiles(id, p.paths));
         }
         return;
@@ -370,7 +372,7 @@ export default function App() {
       if (e.metaKey && e.code === "Digit0") return e.preventDefault(), openView("home");
       if (e.metaKey && e.code === "Digit6") return e.preventDefault(), openView("projects");
       if (e.metaKey && e.code === "KeyP") return e.preventDefault(), window.dispatchEvent(new Event(FIND_PROJECT_EVENT));
-      if (e.metaKey && e.code === "KeyF") return e.preventDefault(), openSearch();
+      if (e.metaKey && e.code === "KeyF") return e.preventDefault(), window.dispatchEvent(new Event(FIND_EVENT));
       if (e.metaKey && /^Digit[1-5]$/.test(e.code)) {
         e.preventDefault();
         const v = VIEWS[Number(e.code.slice(5)) - 1].id;
@@ -384,7 +386,6 @@ export default function App() {
       }
       if (e.metaKey && e.code === "KeyA") return e.preventDefault(), setPicked(ids);
       if (e.key === "Escape" && bulk) return clearPick();
-      if (e.key === "Escape" && searching) return setQuery(null);
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const i = ids.indexOf(sel ?? -1);
       // e.code не зависит от раскладки: N работает и на русской
@@ -396,16 +397,15 @@ export default function App() {
         case "ArrowDown":
         case "KeyJ":
           e.preventDefault();
-          if (ids[i + 1] != null) setSel(ids[i + 1]);
+          if (ids[i + 1] != null) select(ids[i + 1]);
           break;
         case "ArrowUp":
         case "KeyK":
           e.preventDefault();
-          if (i > 0) setSel(ids[i - 1]);
+          if (i > 0) select(ids[i - 1]);
           break;
         case "Enter":
-          if (searching && task) revealTask(task);
-          else if (task?.status === "inbox") triage(task);
+          if (task?.status === "inbox") triage(task);
           break;
         case "Space":
           e.preventDefault();
@@ -431,7 +431,7 @@ export default function App() {
   });
 
   // Главная и страница проектов занимают всё место справа от меню, без панели деталей
-  const wide = (view === "home" || view === "projects") && !searching;
+  const wide = view === "home" || view === "projects";
   const current = VIEWS.find((v) => v.id === view);
   const project = view.startsWith("p:") ? projects.find((p) => `p:${p.id}` === view) : undefined;
   const tag = view.startsWith("t:") ? tags.find((g) => `t:${g.id}` === view) : undefined;
@@ -449,48 +449,18 @@ export default function App() {
         onTagSave={saveTag} onTagDelete={(id) => run(() => db.deleteTag(id))}
         onNewProject={() => setProjectDlg("new")} onEditProject={(p) => setProjectDlg(p)}
         onSettings={() => setSettingsOpen(true)} onShortcuts={() => setHelpOpen(true)}
-        searching={searching} onSearch={openSearch}
         onSetting={(key, value) => {
           setSettings((st) => ({ ...st, [key]: value }));
           run(() => db.setSetting(key, value));
         }}
         onViewIcon={(id, icon) => run(() => db.setSetting(`icon:${id}`, icon))} />
 
-      {searching ? (
-        <main className="main search-main">
-          <header className="search-head">
-            <Search size={16} />
-            <input ref={searchRef} className="search-input" autoFocus placeholder="Найти задачу: название, заметка, теги, люди"
-              value={query} onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                const i = ids.indexOf(sel ?? -1);
-                if (e.key === "Escape") return e.stopPropagation(), query ? setQuery("") : setQuery(null);
-                if (e.key === "ArrowDown") return e.preventDefault(), e.stopPropagation(), ids[i + 1] != null && setSel(ids[i + 1]);
-                if (e.key === "ArrowUp") return e.preventDefault(), e.stopPropagation(), i > 0 && setSel(ids[i - 1]);
-                if (e.key === "Enter" && task) return e.preventDefault(), e.stopPropagation(), revealTask(task);
-              }} />
-            {query && <span className="search-n">{ids.length ? `Найдено: ${ids.length}` : ""}</span>}
-            <button className="icon-btn" data-tip="Закрыть поиск" data-key="Esc" aria-label="Закрыть поиск" onClick={() => setQuery(null)}><X size={14} /></button>
-          </header>
-          <div className="views">
-            <div className="list" role="listbox">
-              {list.map(({ task: x, group }) => (
-                <div key={x.id}>
-                  {group && <div className="group">{group}</div>}
-                  <TaskRow task={x} project={projects.find((p) => p.id === x.project_id)} selected={x.id === sel} query={query}
-                    picked={false} dropping={dropTarget === x.id && !dropOnDetails} onSelect={() => setSel(x.id)} onToggle={() => toggleDone(x)}
-                    onOpen={() => revealTask(x)} />
-                </div>
-              ))}
-              {!list.length && (
-                <div className="empty">{query.trim() ? "Ничего не нашлось. Ищу в названии, заметке, чеклисте, тегах, по тому, кто назначил, и по пространству." : "Начни вводить. Ищу по всем задачам, включая сделанные и архив. Enter или двойной клик открывает задачу в её списке."}</div>
-              )}
-            </div>
-          </div>
-        </main>
-      ) : view === "calendar" ? (
-        <CalendarView tasks={shown} projects={projects} selected={sel} onSelect={setSel}
-          filterButton={<FilterButton filter={filt} projects={projects} tags={tags} people={people} onChange={setFilter} />}
+      {view === "calendar" ? (
+        <CalendarView tasks={shown} projects={projects} selected={sel} onSelect={select}
+          filterButton={<>
+            <SearchField value={filter.text} onChange={setText} placeholder="Найти в календаре" tip="Поиск по задачам в календаре" />
+            <FilterButton filter={filt} projects={projects} tags={tags} people={people} onChange={setFilter} />
+          </>}
           filterBar={<FilterBar filter={filt} projects={projects} tags={tags} onChange={setFilter} />}
           onToggle={toggleDone}
           onMove={(id, p) => {
@@ -538,6 +508,8 @@ export default function App() {
               <Pencil size={13} /> Изменить
             </button>
           )}
+          <SearchField value={filter.text} onChange={setText} onArrow={stepSel} placeholder="Найти задачу"
+            tip="Поиск по задачам на этом экране: название, заметка, чеклист, теги, люди, ссылки" />
           {view !== "archive" && <SortSwitch value={sort} rev={rev} onChange={setSort} onReverse={reverseSort} />}
           <FilterButton filter={filt} projects={projects} tags={tags} people={people} lockTag={tag?.id} noSpaces={!!project} onChange={setFilter} />
           <LayoutSwitch value={layout} onChange={setLayout} />
@@ -561,18 +533,19 @@ export default function App() {
         <div className={`views ${selecting ? "selecting" : ""}`}>
           {columns ? (
             <BoardView columns={columns} projects={projects} sel={sel} picked={picked}
-              fileDrop={dropOnDetails ? null : dropTarget}
-              onPick={pick} onToggle={toggleDone} onMove={moveCards} />
+              fileDrop={dropOnDetails ? null : dropTarget} query={filt.text}
+              onPick={pick} onToggle={toggleDone} onMove={moveCards} show={shownFields(settings, "board")} />
           ) : (
             <div className="list" role="listbox">
               {list.map(({ task: x, group }) => (
                 <div key={x.id}>
                   {group && <div className="group">{group}</div>}
-                  <TaskRow task={x} project={projects.find((p) => p.id === x.project_id)} selected={x.id === sel}
-                    picked={picked.includes(x.id)} dropping={dropTarget === x.id && !dropOnDetails} onSelect={(m) => pick(x.id, m)} onToggle={() => toggleDone(x)} />
+                  <TaskRow task={x} project={projects.find((p) => p.id === x.project_id)} selected={x.id === sel} query={filt.text}
+                    picked={picked.includes(x.id)} dropping={dropTarget === x.id && !dropOnDetails} onSelect={(m) => pick(x.id, m)} onToggle={() => toggleDone(x)}
+                    show={listFields} />
                 </div>
               ))}
-              {!list.length && <div className="empty">{filterOn(filt) ? "С таким фильтром задач нет." : emptyText(view)}</div>}
+              {!list.length && <div className="empty">{filt.text.trim() ? "Ничего не нашлось. Ищу в названии, заметке, чеклисте, тегах, по людям, пространству и ссылкам." : filterOn(filt) ? "С такими фильтрами задач нет." : emptyText(view)}</div>}
             </div>
           )}
         </div>
@@ -671,10 +644,11 @@ function TaskRow(props: {
   dropping?: boolean;
   onSelect: (mods: { meta: boolean; shift: boolean }) => void;
   onToggle: () => void;
-  query?: string; // в поиске: подсветить найденное в названии
-  onOpen?: () => void; // двойной клик
+  query?: string; // подсветить найденное поиском в названии
+  show?: Shown; // какие поля видны, Настройки → «Поля задач»
 }) {
   const { task: x, project } = props;
+  const show = props.show ?? ALL_SHOWN;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (props.selected) ref.current?.scrollIntoView({ block: "nearest" });
@@ -686,28 +660,36 @@ function TaskRow(props: {
     <div ref={ref} role="option" aria-selected={props.selected} data-task-id={x.id}
       className={`row ${x.kind === "meeting" ? "meeting" : ""} ${props.selected ? "sel" : ""} ${props.picked ? "picked" : ""} ${done ? "done" : ""} ${cancelled ? "cancelled" : ""} ${props.dropping ? "drop" : ""} ${project ? "pc" : ""}`}
       style={spaceVars(project?.color)}
-      onMouseDown={(e) => props.onSelect({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey })} onDoubleClick={props.onOpen}>
+      onMouseDown={(e) => props.onSelect({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey })}>
       <button className="chk" title={done ? "Вернуть в работу" : "Сделано"} disabled={x.status === "archived"}
-        onMouseDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), props.onToggle())} />
-      <MeetingMark task={x} />
-      <span className="t">{props.query ? marks(x.title, props.query).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part)) : x.title}</span>
-      <TagChips tags={x.tags} max={2} />
-      {x.assigned_by && <Assignee name={x.assigned_by} />}
-      {x.subtasks.length > 0 && (
-        <span className="meta badge" title="Чеклист"><ListChecks size={12} /> {x.subtasks.filter((s) => s.done).length}/{x.subtasks.length}</span>
+        onMouseDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), props.onToggle())}>
+        {done && !cancelled && <Check size={11} strokeWidth={3.2} />}
+      </button>
+      {show("kind") && <MeetingMark task={x} />}
+      {/* Обрезанное название целиком в подсказке, сразу при наведении */}
+      <span className="t" data-tip={x.title} data-tip-full="">
+        {props.query ? marks(x.title, props.query).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part)) : x.title}
+      </span>
+      {show("tags") && <TagChips tags={x.tags} max={2} />}
+      {show("assignee") && x.assigned_by && <Assignee name={x.assigned_by} />}
+      {show("participants") && x.participants.length > 0 && (
+        <span className="meta badge" data-tip={tips.participants(x.participants)}><Users size={12} /> {x.participants.length}</span>
       )}
-      {x.links.length > 0 && <span className="meta badge" title="Ссылки"><Link2 size={12} />{x.links.length > 1 ? ` ${x.links.length}` : ""}</span>}
-      {x.files.length > 0 && <span className="meta badge" title="Файлы"><Paperclip size={12} />{x.files.length > 1 ? ` ${x.files.length}` : ""}</span>}
-      {x.recurrence && !done && <span className="meta badge" title="Повторяется"><Repeat size={12} /></span>}
-      {x.quadrant && !done && <QuadrantGlyph q={x.quadrant} />}
-      {x.start_time && <span className="meta" title="Время">{fmtRange(x.start_time, x.end_time)}</span>}
-      <DueFlag task={x} />
-      {x.remind_at && !x.reminded && !done && <span className="meta" title="Напоминание">⏰ {stampTime(x.remind_at)}</span>}
-      {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
-      {(x.status !== "archived" || cancelled) && <StageChip task={x} />}
-      {project && <span className="tag" style={{ background: `var(--${project.color})`, color: `var(--${project.color}-ink, var(--on-acc))` }}>{project.name}</span>}
-      {x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`}>{fmtDay(x.due_date)}</span>}
-      <CreatedMeta task={x} />
+      {show("checklist") && x.subtasks.length > 0 && (
+        <span className="meta badge" data-tip={tips.checklist(x)}><ListChecks size={12} /> {x.subtasks.filter((s) => s.done).length}/{x.subtasks.length}</span>
+      )}
+      {show("links") && x.links.length > 0 && <span className="meta badge" data-tip={tips.links(x)}><Link2 size={12} />{x.links.length > 1 ? ` ${x.links.length}` : ""}</span>}
+      {show("files") && x.files.length > 0 && <span className="meta badge" data-tip={tips.files(x)}><Paperclip size={12} />{x.files.length > 1 ? ` ${x.files.length}` : ""}</span>}
+      {show("repeat") && x.recurrence && !done && <span className="meta badge" data-tip={tips.repeat(x)}><Repeat size={12} /></span>}
+      {show("matrix") && x.quadrant && !done && <span className="tipped" data-tip={tips.matrix(x.quadrant)}><QuadrantGlyph q={x.quadrant} /></span>}
+      {show("time") && x.start_time && <span className="meta" data-tip={tips.time(x)}>{fmtRange(x.start_time, x.end_time)}</span>}
+      {show("due") && <DueFlag task={x} />}
+      {show("remind") && x.remind_at && !x.reminded && !done && <span className="meta" data-tip={tips.remind(x)}>⏰ {stampTime(x.remind_at)}</span>}
+      {show("priority") && x.priority > 0 && !done && <span className="tipped" data-tip={tips.priority(x.priority)}><PriorityIcon p={x.priority} /></span>}
+      {show("stage") && (x.status !== "archived" || cancelled) && <StageChip task={x} />}
+      {show("space") && project && <span className="tag" data-tip={tips.space(project.name)} style={{ background: `var(--${project.color})`, color: `var(--${project.color}-ink, var(--on-acc))` }}>{project.name}</span>}
+      {show("date") && x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`} data-tip={tips.date(x, overdue)}>{fmtDay(x.due_date)}</span>}
+      {show("created") && <CreatedMeta task={x} />}
     </div>
   );
 }
@@ -716,7 +698,7 @@ function TaskRow(props: {
 function StageChip({ task }: { task: Task }) {
   const st = STAGES.find((s) => s.key === stageOf(task))!;
   return (
-    <span className="stage" style={{ "--c": `var(--${st.accent})` } as React.CSSProperties}>
+    <span className="stage" data-tip={tips.stage(task)} style={{ "--c": `var(--${st.accent})` } as React.CSSProperties}>
       <Icon name={st.icon} size={11} /> {st.name}
     </span>
   );

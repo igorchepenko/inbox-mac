@@ -6,6 +6,7 @@ import { anchorOf, REMIND_BEFORE, REMIND_OFF, setBefore, setCustom, type When } 
 import { dueState, hasDue, type DueTask } from "./due";
 import { TimeInput, Toggle } from "./widgets";
 import { Chip, DateField } from "./extras";
+import { tips } from "./fields";
 import "./taskbits.css";
 
 /** Напоминание: да/нет, при «да» за сколько до задачи или свой день и время */
@@ -75,7 +76,7 @@ export function KindSwitch(props: { value: TaskKind; onChange: (k: TaskKind) => 
 /** Значок встречи перед названием в строке, на карточке и в календаре. У обычных задач ничего */
 export function MeetingMark({ task }: { task: Task }) {
   if (task.kind !== "meeting") return null;
-  return <span className="meeting-mark" data-tip="Встреча" aria-label="Встреча"><Users size={12} /></span>;
+  return <span className="meeting-mark" data-tip={tips.meeting(task)} aria-label="Встреча"><Users size={12} /></span>;
 }
 
 /** «Пт, 16 окт в 14:30» */
@@ -94,9 +95,8 @@ export function CreatedMeta({ task }: { task: Task }) {
 export function DueFlag({ task: x, day }: { task: DueTask; day?: boolean }) {
   if (!hasDue(x)) return null;
   const state = dueState(x);
-  const tip = state === "overdue" ? "Срок прошёл" : state === "soon" ? "Срок скоро" : "Срок";
   return (
-    <span className={`meta due ${state ?? ""}`} data-tip={tip}>
+    <span className={`meta due ${state ?? ""}`} data-tip={tips.due(x)}>
       <FlagTriangleRight size={11} /> {day ? `${fmtDay(x.due_date!)} ` : ""}до {x.end_time}
     </span>
   );

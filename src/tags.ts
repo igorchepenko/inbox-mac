@@ -1,4 +1,5 @@
-import type { Task } from "./db";
+import type { Project, Task } from "./db";
+import { searchTasks } from "./search";
 
 /*
  * Теги и «Кто назначил»: чистая логика без базы и React, под тесты.
@@ -82,21 +83,22 @@ export function parseQuick(text: string): { title: string; tags: string[]; perso
 
 /**
  * Фильтр списка, канбана и календаря. Пространства и теги: задача из любого выбранного (NO_SPACE — без пространства).
- * Человек: null — все, NO_PERSON — без назначившего
+ * Человек: null — все, NO_PERSON — без назначившего. Текст: поиск по задаче, все слова запроса должны найтись
  */
 export interface TaskFilter {
   spaces: number[];
   tags: number[];
   person: string | null;
+  text: string;
 }
 export const NO_PERSON = "";
 export const NO_SPACE = 0;
-export const EMPTY_FILTER: TaskFilter = { spaces: [], tags: [], person: null };
-export const filterOn = (f: TaskFilter) => f.spaces.length > 0 || f.tags.length > 0 || f.person !== null;
+export const EMPTY_FILTER: TaskFilter = { spaces: [], tags: [], person: null, text: "" };
+export const filterOn = (f: TaskFilter) => f.spaces.length > 0 || f.tags.length > 0 || f.person !== null || !!f.text.trim();
 
-export function applyFilter(tasks: Task[], f: TaskFilter): Task[] {
+export function applyFilter(tasks: Task[], f: TaskFilter, projects: Project[] = []): Task[] {
   if (!filterOn(f)) return tasks;
-  return tasks.filter((x) => {
+  return searchTasks(f.text, tasks, projects).filter((x) => {
     if (f.spaces.length && !f.spaces.includes(x.project_id ?? NO_SPACE)) return false;
     if (f.tags.length && !x.tags.some((t) => f.tags.includes(t.id))) return false;
     if (f.person === NO_PERSON) return !x.assigned_by;

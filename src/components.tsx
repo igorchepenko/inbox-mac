@@ -244,14 +244,6 @@ export function Details(props: {
         <StageSwitch task={x} onChange={props.onStage} />
       </fieldset>
 
-      {/* Итоги видны всегда и правятся даже в архиве: их дописывают задним числом. Заполняются при «Готово» и «Отменено» */}
-      <div className="det-sec">
-        <div className="lbl">Итоги <span className="opt">{cancelled ? "почему отменил" : closed ? "что получилось" : "при закрытии"}</span></div>
-        <textarea ref={sumRef} rows={1} className="field note sum-field" value={summary}
-          placeholder={cancelled ? "Почему отменил" : closed ? "Что получилось, к чему пришли" : "Спрошу при «Готово» или «Отменено»"}
-          onChange={(e) => setSummary(e.target.value)} onBlur={() => summary !== x.summary && props.run(() => db.setSummary(x.id, summary.trim()))} />
-      </div>
-
       <fieldset className="det-sec" disabled={locked}>
         <div className="lbl">Тип</div>
         <div className="seg"><KindSwitch value={x.kind} onChange={(kind) => onPatch({ kind })} /></div>
@@ -323,6 +315,14 @@ export function Details(props: {
       <div className="det-sec">
         <div className="lbl">Файлы{x.files.length ? <span className="opt"> {x.files.length}</span> : null}</div>
         <Files task={x} locked={locked} run={props.run} onError={props.onError} />
+      </div>
+
+      {/* Итоги видны всегда и правятся даже в архиве: их дописывают задним числом. Заполняются при «Готово» и «Отменено» */}
+      <div className="det-sec">
+        <div className="lbl">Итоги <span className="opt">{cancelled ? "почему отменил" : closed ? "что получилось" : "при закрытии"}</span></div>
+        <textarea ref={sumRef} rows={1} className="field note sum-field" value={summary}
+          placeholder={cancelled ? "Почему отменил" : closed ? "Что получилось, к чему пришли" : "Спрошу при «Готово» или «Отменено»"}
+          onChange={(e) => setSummary(e.target.value)} onBlur={() => summary !== x.summary && props.run(() => db.setSummary(x.id, summary.trim()))} />
       </div>
       </div>
 
@@ -414,7 +414,7 @@ export const SHORTCUTS: [string, string][] = [
   ["⌘0", "Главная"],
   ["⌘1 … ⌘5", "Новые, Сегодня, Скоро, Архив, Календарь"],
   ["⌘6", "Все пространства карточками"],
-  ["⌘F", "Поиск по всем задачам, Enter открывает найденную в её списке"],
+  ["⌘F", "Поиск на этом экране: в списке, на доске, в календаре, в пространствах"],
   ["⌘P", "Найти пространство и перейти"],
   ["D W M  ← →", "Календарь: день, неделя, месяц, листать"],
   ["Клик в календаре", "Новая задача на это время, 30 минут"],
