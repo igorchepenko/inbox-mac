@@ -40,7 +40,7 @@
 
 .kcard { position: relative; display: flex; flex-direction: column; gap: 7px; padding: 9px 10px; border-radius: 11px; background: var(--surface);
   border: 1px solid var(--line); cursor: grab; touch-action: none; }
-.kcard:hover { border-color: var(--border); }
+.kcard:hover:not(.sel):not(.lifted):not(.landing) { border-color: color-mix(in srgb, var(--stand) 75%, transparent); background: color-mix(in srgb, var(--stand) 7%, var(--surface)); }
 .kcard.sel { border-color: color-mix(in srgb, var(--stand) 55%, transparent); background: color-mix(in srgb, var(--stand) 8%, var(--surface)); }
 .kcard.done { background: transparent; }
 .kcard.lifted { opacity: .35; border-style: dashed; }

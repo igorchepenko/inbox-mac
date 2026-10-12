@@ -10,10 +10,11 @@ import { ColorGrid, Popover } from "./widgets";
 import { tips } from "./fields";
 import { plural, SMART, type ViewId } from "./views";
 
-/** Умный список в фильтрах раздела «Задачи»: null — все задачи */
+/** Умные списки в фильтрах раздела «Задачи»: можно выбрать несколько, пусто — все задачи */
 export interface SmartFilter {
-  value: ViewId | null;
-  onChange: (v: ViewId | null) => void;
+  value: ViewId[];
+  onToggle: (v: ViewId) => void;
+  onClear: () => void;
 }
 
 const tagVars = (color: string | undefined) => ({ "--c": color ? `var(--${color})` : "var(--muted)" }) as CSSProperties;
@@ -324,7 +325,7 @@ export function FilterButton(props: {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const { filter: f } = props;
   // Запрос поиска виден в своём поле, в счётчик кнопки не входит
-  const n = f.spaces.length + f.tags.length + (f.person !== null ? 1 : 0) + (props.smart?.value ? 1 : 0);
+  const n = f.spaces.length + f.tags.length + (f.person !== null ? 1 : 0) + (props.smart?.value.length ?? 0);
   const tags = props.tags.filter((t) => t.id !== props.lockTag);
   const toggleTag = (id: number) => props.onChange({ ...f, tags: toggle(f.tags, id) });
   const toggleSpace = (id: number) => props.onChange({ ...f, spaces: toggle(f.spaces, id) });
@@ -339,11 +340,11 @@ export function FilterButton(props: {
         <Popover anchor={anchor} onClose={() => setAnchor(null)} width={320}>
           {props.smart && (
             <>
-              <div className="lbl">Умный список <span className="opt">готовая подборка задач</span></div>
+              <div className="lbl">Умный список <span className="opt">задачи из любого выбранного</span></div>
               <div className="seg">
                 {SMART.map((x) => (
-                  <button type="button" key={x.id} className={`fchip person ${props.smart!.value === x.id ? "on" : ""}`}
-                    onClick={() => props.smart!.onChange(props.smart!.value === x.id ? null : x.id)}>
+                  <button type="button" key={x.id} className={`fchip person ${props.smart!.value.includes(x.id) ? "on" : ""}`}
+                    onClick={() => props.smart!.onToggle(x.id)}>
                     <Sparkles size={11} /> {x.name}
                   </button>
                 ))}
@@ -377,7 +378,7 @@ export function FilterButton(props: {
             ))}
             <button type="button" className={`fchip person ${f.person === NO_PERSON ? "on" : ""}`} onClick={() => setPerson(NO_PERSON)}>Сам себе</button>
           </div>
-          {n > 0 && <button type="button" className="link tag-del" onClick={() => (props.onChange({ ...EMPTY_FILTER, text: f.text }), props.smart?.onChange(null))}>Сбросить фильтры</button>}
+          {n > 0 && <button type="button" className="link tag-del" onClick={() => (props.onChange({ ...EMPTY_FILTER, text: f.text }), props.smart?.onClear())}>Сбросить фильтры</button>}
         </Popover>
       )}
     </>
@@ -387,17 +388,17 @@ export function FilterButton(props: {
 /** Что сейчас отфильтровано: под шапкой, у каждого условия крестик */
 export function FilterBar(props: { filter: TaskFilter; projects: Project[]; tags: Tag[]; shown?: number; onChange: (f: TaskFilter) => void; smart?: SmartFilter }) {
   const { filter: f, smart } = props;
-  const smartName = smart?.value ? SMART.find((x) => x.id === smart.value)?.name : undefined;
-  if (!filterOn(f) && !smartName) return null;
+  const smartOn = SMART.filter((x) => smart?.value.includes(x.id));
+  if (!filterOn(f) && !smartOn.length) return null;
   return (
     <div className="filter-bar">
       <ListFilter size={13} />
-      {smartName && (
-        <span className="fchip person on static" data-tip="Умный список. Крестик покажет все задачи">
-          <Sparkles size={11} /> {smartName}
-          <button type="button" className="tchip-x" aria-label="Показать все задачи" onClick={() => smart!.onChange(null)}><X size={10} strokeWidth={2.6} /></button>
+      {smartOn.map((x) => (
+        <span key={x.id} className="fchip person on static" data-tip="Умный список. Крестик уберёт его из подборки">
+          <Sparkles size={11} /> {x.name}
+          <button type="button" className="tchip-x" aria-label={`Убрать «${x.name}»`} onClick={() => smart!.onToggle(x.id)}><X size={10} strokeWidth={2.6} /></button>
         </span>
-      )}
+      ))}
       {f.text.trim() && (
         <span className="fchip person on static">
           <Search size={11} /> «{f.text.trim()}»
@@ -419,7 +420,7 @@ export function FilterBar(props: { filter: TaskFilter; projects: Project[]; tags
         </span>
       )}
       {props.shown != null && <span className="meta">{props.shown ? `показано ${plural(props.shown, "задача", "задачи", "задач")}` : "ничего не подходит"}</span>}
-      <button type="button" className="link" onClick={() => (props.onChange(EMPTY_FILTER), smart?.onChange(null))}>сбросить</button>
+      <button type="button" className="link" onClick={() => (props.onChange(EMPTY_FILTER), smart?.onClear())}>сбросить</button>
     </div>
   );
 }

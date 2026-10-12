@@ -22,8 +22,6 @@
 .sort-dir { padding: 3px 6px; }
 
 /* Где нашёлся запрос, если не в названии */
-.meta.found { display: inline-flex; align-items: center; gap: 3px; flex: none; color: var(--stand); font-size: 11px; }
-.kcard .meta.found { margin: 4px 0 0 27px; }
 
 /* Шапка списка, канбана и календаря: поиск, сортировка, фильтры, поля, вид и кнопки одной высоты */
 .head { --ctl-h: 30px; }

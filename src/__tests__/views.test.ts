@@ -183,8 +183,11 @@ describe("канбан", () => {
     expect(all("tasks")).toEqual([1, 2]);
   });
 
-  it("«Задачи» показывают всё, кроме завершённых", () => {
-    const xs = [task({ id: 1, status: "inbox" }), task({ id: 2, status: "active" }), task({ id: 3, status: "archived" })];
+  it("«Задачи» показывают всё, кроме сделанных и отменённых", () => {
+    const xs = [
+      task({ id: 1, status: "inbox" }), task({ id: 2, status: "active" }), task({ id: 3, status: "archived" }),
+      task({ id: 4, status: "done", done_at: "2026-10-12T10:00:00" }), task({ id: 5, status: "done", cancelled: 1, done_at: "2026-10-12T10:00:00" }),
+    ];
     expect(listFor("tasks", xs).map((i) => i.task.id).sort()).toEqual([1, 2]);
   });
 

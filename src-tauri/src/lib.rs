@@ -199,8 +199,8 @@ fn place_quick(w: &tauri::WebviewWindow) {
     };
     let area = m.work_area();
     let x = area.position.x + (area.size.width as i32 - size.width as i32) / 2;
-    // Вокруг карточки в окне 10 px отступа (.quick-root), их вычитаем, чтобы сама карточка встала на 5%
-    let pad = (10.0 * m.scale_factor()) as i32;
+    // Вокруг карточки в окне 14 px отступа (.quick-root, место под крестик), их вычитаем, чтобы сама карточка встала на 5%
+    let pad = (14.0 * m.scale_factor()) as i32;
     let y = area.position.y + area.size.height as i32 / 20 - pad;
     let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
 }

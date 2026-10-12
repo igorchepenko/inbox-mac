@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { spaceVars } from "./palette";
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, Bell, CalendarDays, CalendarPlus, Check, Clock, X, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound, Users } from "lucide-react";
 import { Assignee, TagChip } from "./TagsUI";
-import { CreatedMeta, DueFlag, FoundIn, MeetingMark } from "./TaskBits";
+import { CreatedMeta, DueFlag, MeetingMark } from "./TaskBits";
 import { isCancelled, type Project, type Task } from "./db";
 import { addDays, fmtDay, fmtRange, nextMonday, stampTime, today } from "./dates";
 import { TARGETS, type BoardColumn, type Layout, type Stage } from "./boardOps";
@@ -240,7 +240,6 @@ export function BoardView(props: {
                         <span className="t" data-tip={x.title} data-tip-full="">{props.query ? marks(x.title, props.query).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part)) : x.title}</span>
                         {show("priority") && x.priority > 0 && !done && <span className="tipped" data-tip={tips.priority(x.priority)}><PriorityIcon p={x.priority} /></span>}
                       </div>
-                      <FoundIn task={x} query={props.query} project={project} />
                       <Meta task={x} project={project} show={show} />
                     </article>
                   </div>

@@ -1,4 +1,4 @@
-import { isCancelled, type Task } from "./db";
+import { isCancelled, isClosed, type Task } from "./db";
 import { fmtDay, stampDay, stampTime, today } from "./dates";
 import { quickKeyLabel } from "./prefs";
 import { PRIORITY } from "./priority";
@@ -141,8 +141,8 @@ function arrange(xs: Task[], sort: SortBy, rev: boolean): ListItem[] {
 export function listFor(view: ViewId, tasks: Task[], sort: SortBy = "date", rev = false): ListItem[] {
   const t = today();
   if (view === "home" || view === "projects") return [];
-  // Все задачи в работе, неразобранные и сделанные, пока не ушли в «Завершённые»
-  if (view === "tasks") return arrange(tasks.filter((x) => x.status !== "archived"), sort, rev);
+  // Все задачи в работе и неразобранные; сделанные и отменённые живут в «Завершённых»
+  if (view === "tasks") return arrange(tasks.filter((x) => !isClosed(x)), sort, rev);
   if (view === "inbox") return arrange(tasks.filter((x) => x.status === "inbox"), sort, rev);
   if (view === "today") return arrange(tasks.filter((x) => (x.status === "active" && !!x.due_date && x.due_date <= t) || doneToday(x, t)), sort, rev);
   if (view === "archive")
