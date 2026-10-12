@@ -18,7 +18,8 @@ import { Assignee, FilterBar, FilterButton, TagChips, TagEditor } from "./TagsUI
 import { QuadrantGlyph } from "./extras";
 import { CreatedMeta, DueFlag, MeetingMark } from "./TaskBits";
 import { defaultBefore, remindPatch } from "./remind";
-import { boardFor, dropTo, layoutOf, STAGES, stageOf, type Layout, type Stage } from "./boardOps";
+import { boardFor, canMove, CLOSING, dropTo, layoutOf, STAGES, stageOf, type Layout, type Stage } from "./boardOps";
+import { SummaryDialog, type Closing } from "./Summary";
 import { BoardView, BulkPanel, LayoutSwitch, SortSwitch, type Pick } from "./Board";
 import { ensurePermission, fireDueReminders, maybeSendDigest, syncPlan } from "./reminders";
 import { Settings } from "./Settings";
@@ -52,6 +53,8 @@ export default function App() {
   const [picked, setPicked] = useState<number[]>([]);
   const [selecting, setSelecting] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
+  // Окно итогов после перевода в «Готово» или «Отменено»
+  const [closing, setClosing] = useState<Closing | null>(null);
   // Поиск по всем задачам: null закрыт. Пока открыт, вместо списка результаты, вид под ним не меняется
   const [query, setQuery] = useState<string | null>(null);
   const searching = query !== null;
@@ -201,13 +204,23 @@ export default function App() {
     }
   };
   const triage = (x: Task) => run(() => db.updateTask(x.id, { status: "active", triaged_at: nowStamp() }));
-  // Через completeTask: у повторяющейся задачи она создаёт следующий повтор, reopenTask его убирает
-  const toggleDone = (x: Task) => run(() => (x.status === "done" ? db.reopenTask(x) : db.completeTask(x)));
+  // Перевод в этап из панели, канбана и по галочке. Через dropTo: completeTask и cancelTask создают следующий повтор,
+  // reopenTask его убирает. «Готово» и «Отменено» закрывают задачу сразу, а потом спрашивают итоги
+  const toStage = async (xs: Task[], stage: Stage) => {
+    const moved = xs.filter((x) => stageOf(x) !== stage && canMove(x, stage));
+    if (!moved.length) return;
+    if (CLOSING.includes(stage)) setClosing({ ids: moved.map((x) => x.id), stage: stage as Closing["stage"] });
+    // Канбан ждёт перечитанных задач, чтобы карточка села уже на новое место
+    await run(async () => {
+      for (const x of moved) await dropTo(x, stage);
+    });
+  };
+  const toggleDone = (x: Task) => void (x.status === "done" ? run(() => db.reopenTask(x)) : toStage([x], "done"));
   const archive = (x: Task) => run(() => db.updateTask(x.id, { status: "archived", done_at: x.done_at ?? nowStamp() }));
-  const restore = (x: Task) => run(() => db.updateTask(x.id, { status: "active", done_at: null }));
+  const restore = (x: Task) => run(() => db.updateTask(x.id, { status: "active", done_at: null, cancelled: 0 }));
 
   // С главной: отметка учитывает повторы, перенос просроченного сохраняет время напоминания
-  const toggleFromHome = (x: Task) => run(() => (x.status === "done" ? db.reopenTask(x) : db.completeTask(x)));
+  const toggleFromHome = toggleDone;
   const moveToToday = (xs: Task[]) =>
     run(async () => {
       for (const x of xs) await db.updateTask(x.id, { due_date: today(), ...remindPatch(x, { due_date: today() }) });
@@ -257,10 +270,7 @@ export default function App() {
     setSettings((st) => ({ ...st, [key]: value }));
     run(() => db.setSetting(key, value));
   };
-  const moveCards = (moved: number[], col: Stage) =>
-    run(async () => {
-      for (const x of tasks.filter((x) => moved.includes(x.id))) await dropTo(x, col);
-    });
+  const moveCards = (moved: number[], col: Stage) => toStage(tasks.filter((x) => moved.includes(x.id)), col);
 
   // Клик по пустому месту календаря: задача на этот день и время, название сразу выделено для правки.
   // Если в фильтре одно пространство, задача сразу в нём, иначе фильтр бы её спрятал
@@ -294,8 +304,10 @@ export default function App() {
     (async () => {
       try {
         const id = await db.addTask(title, note, draft);
-        await reload();
-        setView("inbox");
+        const all = await reload();
+        // Записанная сразу в «К выполнению» или «Готово» открывается там, где теперь лежит
+        const x = all.find((t) => t.id === id);
+        setView(x && draft.stage ? homeOf(x) : "inbox");
         setSel(id);
       } catch (e) {
         setError(String(e));
@@ -308,7 +320,7 @@ export default function App() {
   const [dropOnDetails, setDropOnDetails] = useState(false);
   const live = useRef({ sel, tasks, busy: false });
   const lastRow = useRef<number | null>(null);
-  live.current = { sel, tasks, busy: newOpen || !!projectDlg || helpOpen };
+  live.current = { sel, tasks, busy: newOpen || !!projectDlg || helpOpen || !!closing };
   useEffect(() => {
     // Над панелью задачи зона горит всё время, пока там курсор: решает панель целиком, а не то, что под курсором внутри неё.
     // Между строками списка остаётся последняя строка, иначе подсветка моргала бы на каждом зазоре.
@@ -347,7 +359,7 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey && e.code === "Comma") return e.preventDefault(), setSettingsOpen(true);
-      if (newOpen || projectDlg || settingsOpen) return; // формы сами ловят Enter и Esc
+      if (newOpen || projectDlg || settingsOpen || closing) return; // формы сами ловят Enter и Esc
       if (helpOpen) {
         if (e.key === "Escape" || (e.metaKey && e.code === "Slash")) setHelpOpen(false);
         return;
@@ -480,7 +492,7 @@ export default function App() {
         <CalendarView tasks={shown} projects={projects} selected={sel} onSelect={setSel}
           filterButton={<FilterButton filter={filt} projects={projects} tags={tags} people={people} onChange={setFilter} />}
           filterBar={<FilterBar filter={filt} projects={projects} tags={tags} onChange={setFilter} />}
-          onToggle={(x) => run(() => (x.status === "done" ? db.reopenTask(x) : db.completeTask(x)))}
+          onToggle={toggleDone}
           onMove={(id, p) => {
             if (p.remind_at) ensurePermission();
             run(() => db.updateTask(id, p));
@@ -575,7 +587,7 @@ export default function App() {
         <Details key={task.id} task={task} projects={projects} tags={tags} people={people} remindBefore={defaultBefore(settings)}
           onPatch={(p) => patch(task.id, p)} onCreateProject={createProject} run={run} onError={setError}
           dropping={dropTarget === task.id && dropOnDetails}
-          onTriage={() => triage(task)} onToggleDone={() => toggleDone(task)}
+          onTriage={() => triage(task)} onToggleDone={() => toggleDone(task)} onStage={(st) => toStage([task], st)}
           onArchive={() => archive(task)} onRestore={() => restore(task)}
           onDelete={() => run(() => db.deleteTask(task.id))} />
       ) : (
@@ -593,6 +605,17 @@ export default function App() {
           onSave={(p) => saveTag(tag.id, p)} onDelete={() => (setTagEdit(null), run(() => db.deleteTag(tag.id)))} />
       )}
       {helpOpen && <Help onClose={() => setHelpOpen(false)} />}
+      {closing && (
+        <SummaryDialog key={`sum:${closing.ids.join(",")}`} closing={closing} tasks={tasks.filter((x) => closing.ids.includes(x.id))}
+          onSkip={() => setClosing(null)}
+          onSave={(text) => {
+            const ids = closing.ids;
+            setClosing(null);
+            run(async () => {
+              for (const id of ids) await db.setSummary(id, text);
+            });
+          }} />
+      )}
       <Tooltips />
       {!settingsOpen && <QuickKeyBanner error={shortcutError} onSettings={() => setSettingsOpen(true)} />}
       {settingsOpen && (
@@ -657,13 +680,14 @@ function TaskRow(props: {
     if (props.selected) ref.current?.scrollIntoView({ block: "nearest" });
   }, [props.selected]);
   const done = x.status === "done" || x.status === "archived";
+  const cancelled = done && !!x.cancelled;
   const overdue = x.status === "active" && !!x.due_date && x.due_date < today();
   return (
     <div ref={ref} role="option" aria-selected={props.selected} data-task-id={x.id}
-      className={`row ${x.kind === "meeting" ? "meeting" : ""} ${props.selected ? "sel" : ""} ${props.picked ? "picked" : ""} ${done ? "done" : ""} ${props.dropping ? "drop" : ""} ${project ? "pc" : ""}`}
+      className={`row ${x.kind === "meeting" ? "meeting" : ""} ${props.selected ? "sel" : ""} ${props.picked ? "picked" : ""} ${done ? "done" : ""} ${cancelled ? "cancelled" : ""} ${props.dropping ? "drop" : ""} ${project ? "pc" : ""}`}
       style={spaceVars(project?.color)}
       onMouseDown={(e) => props.onSelect({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey })} onDoubleClick={props.onOpen}>
-      <button className="chk" title={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
+      <button className="chk" title={done ? "Вернуть в работу" : "Сделано"} disabled={x.status === "archived"}
         onMouseDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), props.onToggle())} />
       <MeetingMark task={x} />
       <span className="t">{props.query ? marks(x.title, props.query).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part)) : x.title}</span>
@@ -680,7 +704,7 @@ function TaskRow(props: {
       <DueFlag task={x} />
       {x.remind_at && !x.reminded && !done && <span className="meta" title="Напоминание">⏰ {stampTime(x.remind_at)}</span>}
       {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
-      {x.status !== "archived" && <StageChip task={x} />}
+      {(x.status !== "archived" || cancelled) && <StageChip task={x} />}
       {project && <span className="tag" style={{ background: `var(--${project.color})`, color: `var(--${project.color}-ink, var(--on-acc))` }}>{project.name}</span>}
       {x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`}>{fmtDay(x.due_date)}</span>}
       <CreatedMeta task={x} />
@@ -688,7 +712,7 @@ function TaskRow(props: {
   );
 }
 
-/** Этап задачи в строке, как столбец канбана: Новые, К выполнению, Готово */
+/** Этап задачи в строке, как столбец канбана: Новые, К выполнению, Готово, Отменено. В архиве виден только «Отменено» */
 function StageChip({ task }: { task: Task }) {
   const st = STAGES.find((s) => s.key === stageOf(task))!;
   return (

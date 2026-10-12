@@ -20,7 +20,7 @@ function haystack(x: Task, space?: Project): string {
 function placeOf(x: Task, t: string): { rank: number; name: string } {
   if (x.status === "inbox") return { rank: 0, name: "Новые" };
   if (x.status === "active") return x.due_date && x.due_date <= t ? { rank: 1, name: "Сегодня" } : { rank: 2, name: "Скоро" };
-  if (x.status === "done") return { rank: 3, name: "Сделано" };
+  if (x.status === "done") return x.cancelled ? { rank: 3, name: "Отменено" } : { rank: 3, name: "Сделано" };
   return { rank: 4, name: "Архив" };
 }
 

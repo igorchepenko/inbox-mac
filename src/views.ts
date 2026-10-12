@@ -1,4 +1,4 @@
-import type { Task } from "./db";
+import { isCancelled, type Task } from "./db";
 import { fmtDay, stampDay, stampTime, today } from "./dates";
 import { quickKeyLabel } from "./prefs";
 import { PRIORITY } from "./priority";
@@ -95,7 +95,7 @@ export const NO_PERSON_GROUP = "Сам себе";
 /** Заголовок группы при сортировке не по дате: видно, где кончается один уровень и начинается другой.
  * Задача с несколькими тегами стоит в группе первого по алфавиту */
 function groupName(x: Task, sort: SortBy): string {
-  if (x.status === "done") return "Сделано";
+  if (x.status === "done") return x.cancelled ? "Отменено" : "Сделано";
   if (sort === "created") return `Создано ${fmtDay(stampDay(x.created_at)).toLowerCase()}`;
   if (sort === "tag") return firstTag(x) ?? NO_TAG_GROUP;
   if (sort === "assignee") return x.assigned_by ?? NO_PERSON_GROUP;
@@ -103,10 +103,12 @@ function groupName(x: Task, sort: SortBy): string {
   return x.quadrant ? QUAD_NAMES[x.quadrant] : "Вне матрицы";
 }
 
-/** Открытые выше сделанных, внутри по выбранной сортировке; при важности и матрице с заголовками групп */
+/** Открытые выше сделанных и отменённых, внутри по выбранной сортировке; при важности и матрице с заголовками групп */
 function arrange(xs: Task[], sort: SortBy, rev: boolean): ListItem[] {
   const cmp = compareBy(sort, rev);
-  const sorted = [...xs].sort((a, b) => (a.status === "done" ? 1 : 0) - (b.status === "done" ? 1 : 0) || cmp(a, b));
+  // Открытые, затем сделанные, в самом низу отменённые
+  const rank = (x: Task) => (x.status === "done" ? (x.cancelled ? 2 : 1) : 0);
+  const sorted = [...xs].sort((a, b) => rank(a) - rank(b) || cmp(a, b));
   if (sort === "date") return sorted.map((task) => ({ task }));
   let last = "";
   return sorted.map((task) => {
@@ -173,13 +175,17 @@ export function progressFor(view: ViewId, tasks: Task[]): Progress | null {
     return { fraction: left + sorted ? sorted / (left + sorted) : 0, count: left, accent: "move", subtitle };
   }
   if (view === "today") {
-    const items = listFor("today", tasks);
+    // Отменённые не в счёт: ни в план, ни в сделанное
+    const all = listFor("today", tasks);
+    const cancelled = all.filter((i) => isCancelled(i.task)).length;
+    const items = all.filter((i) => !isCancelled(i.task));
     const done = items.filter((i) => i.task.status === "done").length;
+    const tail = cancelled ? `, отменено ${cancelled}` : "";
     return {
       fraction: items.length ? done / items.length : 0,
       count: items.length - done,
       accent: "exercise",
-      subtitle: items.length ? `${done} из ${items.length} сделано` : "На сегодня ничего не запланировано",
+      subtitle: items.length ? `${done} из ${items.length} сделано${tail}` : cancelled ? `Всё отменено: ${cancelled}` : "На сегодня ничего не запланировано",
     };
   }
   return null;

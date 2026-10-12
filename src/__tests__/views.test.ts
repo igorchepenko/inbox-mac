@@ -165,7 +165,7 @@ describe("канбан", () => {
       task({ id: 4, status: "active" }),
     ];
     const cols = boardFor("today", xs, "date");
-    expect(cols.map((c) => c.key)).toEqual(["new", "todo", "done"]);
+    expect(cols.map((c) => c.key)).toEqual(["new", "todo", "done", "cancelled"]);
     expect(ids(cols[2].items)).toEqual([2, 1]);
     expect(ids(cols[1].items)).toEqual([4]);
   });

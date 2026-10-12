@@ -36,6 +36,8 @@ export interface Task {
   assigned_by: string | null; // кто поставил задачу, имя как ввели (миграция 008)
   remind_before: number | null; // напоминание за столько минут до задачи (миграция 010), NULL — своё время, см. remind.ts
   kind: TaskKind;
+  cancelled: number; // 1 — закрыта отменой, а не сделана (миграция 012). Статус при этом done или archived
+  summary: string; // итоги: почему отменил или что получилось, в свободной форме (миграция 012)
   // Не колонки tasks: подтягиваются из своих таблиц в loadTasks
   subtasks: Subtask[];
   links: Link[];
@@ -43,6 +45,13 @@ export interface Task {
   tags: Tag[]; // в порядке, в каком добавлены
   participants: string[]; // участники встречи, из списка «Кто назначил» (миграция 011)
 }
+
+/** Закрыта: сделана или отменена, в том числе уже в архиве */
+export const isClosed = (x: Pick<Task, "status">) => x.status === "done" || x.status === "archived";
+/** Закрыта отменой */
+export const isCancelled = (x: Pick<Task, "status" | "cancelled">) => isClosed(x) && !!x.cancelled;
+/** Сделана по-настоящему: для счётчиков «сделано», отменённые туда не идут */
+export const isDoneReal = (x: Pick<Task, "status" | "cancelled">) => isClosed(x) && !x.cancelled;
 
 export interface Tag {
   id: number;
@@ -125,6 +134,8 @@ export async function loadProjects(): Promise<Project[]> {
 /** Необязательные поля, которые можно задать сразу при записи задачи. tags — названия, новые теги создаются сами.
  * participants — участники встречи, link — ссылка на встречу (уже проверенный адрес) */
 export type Draft = Partial<Pick<Task, "priority" | "project_id" | "due_date" | "remind_at" | "start_time" | "end_time" | "quadrant" | "recurrence" | "assigned_by" | "remind_before" | "kind">> & {
+  /** Этап при записи: new — в «Новые» (по умолчанию), todo — сразу разобрана, done — сразу сделана */
+  stage?: "new" | "todo" | "done";
   tags?: string[];
   participants?: string[];
   link?: string;
@@ -132,11 +143,13 @@ export type Draft = Partial<Pick<Task, "priority" | "project_id" | "due_date" | 
 
 const DRAFT_KEYS = ["priority", "project_id", "due_date", "remind_at", "start_time", "end_time", "quadrant", "recurrence", "assigned_by", "remind_before", "kind"] as const;
 
-/** Новая задача всегда попадает в «На разбор», даже если поля заполнены сразу */
+/** Новая задача попадает в «Новые», если при записи не выбрали другой этап */
 export async function addTask(title: string, note: string, draft: Draft = {}): Promise<number> {
   const keys = DRAFT_KEYS.filter((k) => draft[k] != null);
-  const cols = ["title", "note", "status", "created_at", ...keys];
-  const vals = [title, note, "inbox", nowStamp(), ...keys.map((k) => draft[k])];
+  const stamp = nowStamp();
+  const triaged = draft.stage === "todo" || draft.stage === "done";
+  const cols = ["title", "note", "status", "created_at", "triaged_at", ...keys];
+  const vals = [title, note, triaged ? "active" : "inbox", stamp, triaged ? stamp : null, ...keys.map((k) => draft[k])];
   const r = await (await db()).execute(
     `INSERT INTO tasks (${cols.join(", ")}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(", ")})`,
     vals,
@@ -145,10 +158,15 @@ export async function addTask(title: string, note: string, draft: Draft = {}): P
   if (id && draft.tags?.length) await setTaskTags(id, draft.tags);
   if (id && draft.participants?.length) await setTaskPeople(id, draft.participants);
   if (id && draft.link) await addLink(id, draft.link, "", 1);
+  // Сразу сделанная: через completeTask, чтобы у повторяющейся появился следующий повтор
+  if (id && draft.stage === "done") {
+    const x = (await loadTasks()).find((t) => t.id === id);
+    if (x) await completeTask(x);
+  }
   return id;
 }
 
-type Editable = Pick<Task, "title" | "note" | "priority" | "project_id" | "due_date" | "remind_at" | "status" | "reminded" | "triaged_at" | "done_at" | "start_time" | "end_time" | "quadrant" | "recurrence" | "series_id" | "next_id" | "started_at" | "assigned_by" | "remind_before" | "kind">;
+type Editable = Pick<Task, "title" | "note" | "priority" | "project_id" | "due_date" | "remind_at" | "status" | "reminded" | "triaged_at" | "done_at" | "start_time" | "end_time" | "quadrant" | "recurrence" | "series_id" | "next_id" | "started_at" | "assigned_by" | "remind_before" | "kind" | "cancelled" | "summary">;
 
 export async function updateTask(id: number, patch: Partial<Editable>): Promise<void> {
   const keys = Object.keys(patch) as (keyof Editable)[];
@@ -171,8 +189,31 @@ export async function deleteTask(id: number): Promise<void> {
 /**
  * Отметить сделанной. У повторяющейся рядом создаётся следующий повтор: та же задача с новой датой,
  * чеклист снова не отмечен, ссылки и файлы те же. Сделанная остаётся в истории и уходит в архив как обычно.
+ * Отменённую просто переводим в сделанные: повтор она уже создала при отмене
  */
 export async function completeTask(x: Task): Promise<void> {
+  if (isCancelled(x)) return updateTask(x.id, { status: "done", done_at: nowStamp(), cancelled: 0 });
+  await close(x);
+}
+
+/**
+ * Отменить. Можно из любого этапа, кроме сделанной: сделанную сначала возвращают в работу.
+ * Закрывается так же, как сделанная: у повторяющейся появляется следующий повтор, серия продолжается
+ */
+export async function cancelTask(x: Task): Promise<void> {
+  if (isClosed(x)) {
+    if (x.cancelled) return;
+    throw new Error("Сделанную задачу нельзя отменить. Сначала верни её в работу");
+  }
+  await close(x, 1);
+}
+
+/** Итоги задачи: почему отменил или что получилось */
+export async function setSummary(id: number, summary: string): Promise<void> {
+  await updateTask(id, { summary });
+}
+
+async function close(x: Task, cancelled = 0): Promise<void> {
   const stamp = nowStamp();
   const rule = parseRule(x.recurrence);
   const next = rule && nextOccurrence(rule, x.due_date, stampDay(stamp));
@@ -201,7 +242,7 @@ export async function completeTask(x: Task): Promise<void> {
       if (x.participants.length) await setTaskPeople(nextId, x.participants);
     }
   }
-  await updateTask(x.id, { status: "done", done_at: stamp, next_id: nextId });
+  await updateTask(x.id, { status: "done", done_at: stamp, next_id: nextId, cancelled });
 }
 
 /** Вернуть сделанную в работу. Если она успела создать следующий повтор и тот ещё не сделан, он убирается */
@@ -210,7 +251,7 @@ export async function reopenTask(x: Task): Promise<void> {
     const [n] = await (await db()).select<Task[]>("SELECT * FROM tasks WHERE id = $1", [x.next_id]);
     if (n && (n.status === "active" || n.status === "inbox")) await deleteTask(n.id);
   }
-  await updateTask(x.id, { status: "active", done_at: null, next_id: null });
+  await updateTask(x.id, { status: "active", done_at: null, next_id: null, cancelled: 0 });
 }
 
 // Теги. Создаются сами, когда их впервые ставят задаче; цвет подбирается подальше от уже занятых

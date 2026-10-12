@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as db from "./db";
-import type { Draft, Project, Tag, Task } from "./db";
+import { isCancelled, isClosed, type Draft, type Project, type Tag, type Task } from "./db";
 import { fmtStamp, today } from "./dates";
 import { useAutosize } from "./widgets";
 import { firstOccurrence, parseRule } from "./recurrence";
@@ -12,6 +12,8 @@ import { fmtCreated, KindSwitch, RemindField } from "./TaskBits";
 import { anchorOf, remindPatch, remindAtFor, type When } from "./remind";
 import { SpacePicker } from "./SpaceUI";
 import { addTagName, canonicalPerson, parseQuick } from "./tags";
+import { canMove, STAGES, stageOf, type Stage } from "./boardOps";
+import { Icon } from "./icons";
 
 export { PRIORITY } from "./priority";
 
@@ -31,7 +33,7 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
   useEffect(() => titleRef.current?.focus(), []);
   const set = (patch: Partial<typeof d>) => setD((cur) => ({ ...cur, ...patch }));
   const meeting = d.kind === "meeting";
-  const filled = [d.due_date, d.start_time ?? d.end_time, d.remind_at, d.recurrence, d.project_id, d.priority, d.quadrant, d.assigned_by].filter((v) => v != null && v !== "").length
+  const filled = [d.stage, d.due_date, d.start_time ?? d.end_time, d.remind_at, d.recurrence, d.project_id, d.priority, d.quadrant, d.assigned_by].filter((v) => v != null && v !== "").length
     + (d.tags?.length ? 1 : 0) + (meeting ? 1 : 0) + (d.participants?.length ? 1 : 0) + (link.trim() ? 1 : 0);
   const when: When = { due_date: d.due_date ?? null, start_time: d.start_time ?? null, end_time: d.end_time ?? null, remind_at: d.remind_at ?? null, remind_before: d.remind_before ?? null };
   // Напоминание едет вместе с датой и временем, как в панели задачи
@@ -94,6 +96,16 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
       <textarea ref={noteRef} rows={2} className="field qi-note" placeholder="Заметка, если нужна" value={note} onChange={(e) => setNote(e.target.value)} />
       {more && (
         <div className="qi-more lines">
+          <Line label="Статус">
+            <div className="stage-seg">
+              {NEW_STAGES.map((st) => (
+                <button key={st.key} type="button" role="radio" aria-checked={(d.stage ?? "new") === st.key} className={(d.stage ?? "new") === st.key ? "on" : ""}
+                  style={{ "--c": `var(--${st.accent})` } as React.CSSProperties} onClick={() => set({ stage: st.key === "new" ? undefined : st.key })}>
+                  <Icon name={st.icon} size={12} /> {st.name}
+                </button>
+              ))}
+            </div>
+          </Line>
           <Line label="Тип"><KindSwitch value={d.kind ?? "task"} onChange={setKind} /></Line>
           <Line label="Важность"><PriorityPicker value={d.priority} onChange={(p) => set({ priority: p ?? undefined })} /></Line>
           {meeting ? (
@@ -132,7 +144,7 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
           {more ? "Скрыть параметры" : filled ? `Параметры · ${filled}` : "+ Дата, напоминание, теги…"}
         </button>
         <span className="grow" />
-        <span>Попадёт в «Новые»{props.profile && <> профиля <b className="qi-profile">{props.profile}</b></>}</span>
+        <span>{d.stage === "done" ? "Сразу в «Готово»" : d.stage === "todo" ? "Сразу в «К выполнению»" : "Попадёт в «Новые»"}{props.profile && <> профиля <b className="qi-profile">{props.profile}</b></>}</span>
         <button className="cta" type="submit">Сохранить ⏎</button>
       </div>
     </form>
@@ -171,6 +183,7 @@ export function Details(props: {
   dropping?: boolean;
   onTriage: () => void;
   onToggleDone: () => void;
+  onStage: (stage: Stage) => void; // переключатель статуса; «Готово» и «Отменено» спрашивают итоги
   onArchive: () => void;
   onRestore: () => void;
   onDelete: () => void;
@@ -178,9 +191,16 @@ export function Details(props: {
   const { task: x, projects, onPatch } = props;
   const [title, setTitle] = useState(x.title);
   const [note, setNote] = useState(x.note);
+  const [summary, setSummary] = useState(x.summary);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const noteRef = useRef<HTMLTextAreaElement>(null);
+  const sumRef = useRef<HTMLTextAreaElement>(null);
   useAutosize(noteRef, note);
+  useAutosize(sumRef, summary, 240);
+  // Итоги могли записать в окне при закрытии, пока панель открыта
+  useEffect(() => setSummary(x.summary), [x.summary]);
+  const closed = isClosed(x);
+  const cancelled = isCancelled(x);
   const isInbox = x.status === "inbox";
   const locked = x.status === "archived";
   const t = today();
@@ -206,7 +226,9 @@ export function Details(props: {
 
   const asideRef = useRef<HTMLElement>(null);
   return (
-    <aside ref={asideRef} className={`det ${props.dropping ? "dropping" : ""}`}>
+    <aside ref={asideRef} className={`det split ${props.dropping ? "dropping" : ""}`}>
+      {/* Прокручивается только содержимое, кнопки внизу живут отдельно и ничего не закрывают */}
+      <div className="det-body">
       <div>
         <div className="lbl">{isInbox ? "Разбор" : locked ? "В архиве" : x.kind === "meeting" ? "Встреча" : "Задача"}</div>
         <textarea className="det-title" rows={1} value={title} disabled={locked}
@@ -216,6 +238,19 @@ export function Details(props: {
       </div>
 
       <div className="det-created hint" data-tip={`Создана ${fmtStamp(x.created_at)}`}>Создана {fmtCreated(x.created_at).toLowerCase()}</div>
+
+      <fieldset className="det-sec" disabled={locked}>
+        <div className="lbl">Статус</div>
+        <StageSwitch task={x} onChange={props.onStage} />
+      </fieldset>
+
+      {/* Итоги видны всегда и правятся даже в архиве: их дописывают задним числом. Заполняются при «Готово» и «Отменено» */}
+      <div className="det-sec">
+        <div className="lbl">Итоги <span className="opt">{cancelled ? "почему отменил" : closed ? "что получилось" : "при закрытии"}</span></div>
+        <textarea ref={sumRef} rows={1} className="field note sum-field" value={summary}
+          placeholder={cancelled ? "Почему отменил" : closed ? "Что получилось, к чему пришли" : "Спрошу при «Готово» или «Отменено»"}
+          onChange={(e) => setSummary(e.target.value)} onBlur={() => summary !== x.summary && props.run(() => db.setSummary(x.id, summary.trim()))} />
+      </div>
 
       <fieldset className="det-sec" disabled={locked}>
         <div className="lbl">Тип</div>
@@ -289,10 +324,16 @@ export function Details(props: {
         <div className="lbl">Файлы{x.files.length ? <span className="opt"> {x.files.length}</span> : null}</div>
         <Files task={x} locked={locked} run={props.run} onError={props.onError} />
       </div>
+      </div>
 
       <div className="det-actions">
         {isInbox && <button className="cta" onClick={props.onTriage}>Разобрано ⏎</button>}
-        {x.status === "active" && <button className="cta go" onClick={props.onToggleDone}>Сделано</button>}
+        {x.status === "active" && (
+          <div className="row-btns">
+            <button className="cta go" onClick={props.onToggleDone}>Сделано</button>
+            <button className="btn" onClick={() => props.onStage("cancelled")}>Отменить</button>
+          </div>
+        )}
         {x.status === "done" && (
           <div className="row-btns">
             <button className="btn" onClick={props.onToggleDone}>Вернуть</button>
@@ -306,8 +347,8 @@ export function Details(props: {
               ? "После разбора задача уйдёт в нужные списки."
               : "Без пространства и даты задача после разбора окажется в «Скоро», в группе «Без даты»."
             : x.status === "done"
-              ? x.recurrence && x.next_id ? "Следующий повтор уже в списке. Сделанные сами уйдут в архив завтра." : "Сделанные сами уйдут в архив завтра."
-              : x.recurrence ? "Когда отметишь сделанной, появится следующий повтор." : null}
+              ? `${x.recurrence && x.next_id ? "Следующий повтор уже в списке. " : ""}${cancelled ? "Отменённые" : "Сделанные"} сами уйдут в архив завтра.`
+              : x.recurrence ? "Когда отметишь сделанной или отменишь, появится следующий повтор." : null}
         </div>
         <button className={`link danger ${confirmDelete ? "armed" : ""}`}
           onClick={() => (confirmDelete ? props.onDelete() : setConfirmDelete(true))}
@@ -319,6 +360,29 @@ export function Details(props: {
     </aside>
   );
 }
+
+/** Статус задачи в панели: те же этапы, что столбцы канбана. Сделанную отменить нельзя, сначала её возвращают */
+export function StageSwitch({ task, onChange }: { task: Task; onChange: (s: Stage) => void }) {
+  const cur = stageOf(task);
+  return (
+    <div className="stage-seg" role="radiogroup" aria-label="Статус">
+      {STAGES.map((s) => {
+        const ok = canMove(task, s.key);
+        return (
+          <button key={s.key} type="button" role="radio" aria-checked={cur === s.key} disabled={!ok && cur !== s.key}
+            className={cur === s.key ? "on" : ""} style={{ "--c": `var(--${s.accent})` } as React.CSSProperties}
+            data-tip={!ok ? "Сделанную задачу нельзя отменить. Сначала верни её в работу" : s.key === cur ? undefined : s.hint}
+            onClick={() => cur !== s.key && onChange(s.key)}>
+            <Icon name={s.icon} size={12} /> {s.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Этап новой задачи в форме записи: отменить ещё не созданную задачу нельзя */
+const NEW_STAGES = STAGES.filter((s) => s.key !== "cancelled") as (typeof STAGES[number] & { key: "new" | "todo" | "done" })[];
 
 /** Зона «отпусти здесь» поверх панели задачи, пока над ней держат файлы из Finder.
  * Фиксированная по видимой области панели: рамка целиком на экране, даже если панель прокручена */

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { spaceVars } from "./palette";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Bell, CalendarDays, CalendarPlus, Check, Clock, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Bell, CalendarDays, CalendarPlus, Check, Clock, X, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound } from "lucide-react";
 import { Assignee, TagChip } from "./TagsUI";
 import { CreatedMeta, DueFlag, MeetingMark } from "./TaskBits";
-import type { Project, Task } from "./db";
+import { isCancelled, type Project, type Task } from "./db";
 import { addDays, fmtDay, fmtRange, nextMonday, stampTime, today } from "./dates";
 import { TARGETS, type BoardColumn, type Layout, type Stage } from "./boardOps";
 import * as board from "./boardOps";
@@ -175,7 +175,7 @@ export function BoardView(props: {
       }
       const g = ghost;
       document.body.classList.remove("dragging");
-      const target = over && over !== from ? over : null;
+      const target = over && over !== from && !(over === "cancelled" && from === "done") ? over : null;
       if (target) await props.onMove(ids, target);
       setDrag(null);
       // Ждём, пока React дорисует доску с новыми данными
@@ -204,29 +204,32 @@ export function BoardView(props: {
       {props.columns.map(({ key: col, name, accent, icon, hint, items }) => {
         const open = items.filter((i) => i.task.status === "inbox" || i.task.status === "active").length;
         const isOver = drag?.over === col && drag.from !== col;
+        // Сделанную отменить нельзя: столбец «Отменено» не примет карточку из «Готово»
+        const blocked = isOver && col === "cancelled" && drag?.from === "done";
         return (
           <section key={col} ref={(el) => void (el ? colRefs.current.set(col, el) : colRefs.current.delete(col))}
-            className={`col ${isOver ? "over" : ""}`} style={{ "--c": `var(--${accent})` } as React.CSSProperties}>
+            className={`col ${isOver ? "over" : ""} ${blocked ? "blocked" : ""}`} style={{ "--c": `var(--${accent})` } as React.CSSProperties}>
             <header className="col-head">
               <span className="col-icon"><Icon name={icon} size={14} /></span>
               <span className="col-name">{name}</span>
               <span className="col-n">{open || items.length || ""}</span>
             </header>
             <div className="col-body">
-              {isOver && <div className="col-hint">{hint}</div>}
+              {isOver && <div className="col-hint">{blocked ? "Сделанную нельзя отменить. Сначала верни её в работу" : hint}</div>}
               {items.map(({ task: x, group }) => {
                 const project = props.projects.find((p) => p.id === x.project_id);
                 const done = x.status === "done" || x.status === "archived";
+                const cancelled = isCancelled(x);
                 const lifted = drag?.ids.includes(x.id);
                 return (
                   <div key={x.id}>
                     {group && <div className="group col-group">{group}</div>}
                     <article data-card={x.id} data-task-id={x.id} onPointerDown={(e) => start(e, x, col)}
-                      className={`kcard ${x.kind === "meeting" ? "meeting" : ""} ${props.sel === x.id ? "sel" : ""} ${props.fileDrop === x.id ? "filedrop" : ""} ${props.picked.includes(x.id) ? "picked" : ""} ${done ? "done" : ""} ${lifted ? "lifted" : ""} ${project ? "pc" : ""}`}
+                      className={`kcard ${x.kind === "meeting" ? "meeting" : ""} ${props.sel === x.id ? "sel" : ""} ${props.fileDrop === x.id ? "filedrop" : ""} ${props.picked.includes(x.id) ? "picked" : ""} ${done ? "done" : ""} ${cancelled ? "cancelled" : ""} ${lifted ? "lifted" : ""} ${project ? "pc" : ""}`}
                       style={spaceVars(project?.color)}>
                       <div className="kcard-top">
                         <button className="chk kchk" aria-label={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
-                          onClick={(e) => (e.stopPropagation(), props.onToggle(x))}><Check size={11} strokeWidth={3.2} /></button>
+                          onClick={(e) => (e.stopPropagation(), props.onToggle(x))}>{cancelled ? <X size={11} strokeWidth={3.2} /> : <Check size={11} strokeWidth={3.2} />}</button>
                         <MeetingMark task={x} />
                         <span className="t">{x.title}</span>
                         {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
@@ -274,7 +277,8 @@ export function BulkPanel(props: {
   const dates = [t, addDays(t, 1), nextMonday()].filter((d, i, a) => a.indexOf(d) === i);
 
   return (
-    <aside className="det bulk">
+    <aside className="det split bulk">
+      <div className="det-body">
       <div>
         <div className="lbl">Выбрано</div>
         <div className="bulk-title">{xs.length ? plural(xs.length, "задача", "задачи", "задач") : "Ничего"}</div>
@@ -333,6 +337,7 @@ export function BulkPanel(props: {
             </button>
           ))}
         </div>
+      </div>
       </div>
 
       <div className="det-actions">

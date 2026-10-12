@@ -152,8 +152,7 @@ kbd { font-family: var(--mono); font-size: 11px; padding: 2px 6px; border-radius
 .time-in span { color: var(--muted); }
 .time-in.disabled { opacity: .6; }
 .det-actions { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
-/* «Разобрано» и остальные действия всегда внизу панели, даже когда содержимое длиннее окна */
-.det-actions { position: sticky; bottom: 0; z-index: 2; margin-bottom: -16px; padding: 12px 0 16px; background: var(--surface); box-shadow: 0 -1px 0 var(--line); }
+/* «Разобрано» и остальные действия всегда внизу панели: отдельной полосой под прокруткой (.det.split в status.css), а не поверх содержимого */
 .row-btns { display: flex; gap: 8px; }
 .row-btns > * { flex: 1; }
 

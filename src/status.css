@@ -1,0 +1,51 @@
+/* Статус «Отменено», итоги и низ правой панели (0.9.0) */
+
+/* Правая панель делится на прокручиваемое содержимое и полосу действий под ним.
+   Раньше полоса висела поверх содержимого (sticky) и закрывала файлы; теперь у неё своё место */
+.det.split { padding: 0; gap: 0; overflow: hidden; }
+.det-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px 16px; display: flex; flex-direction: column; gap: 14px; }
+.det.split > .det-actions { flex: none; margin: 0; padding: 12px 16px 14px; gap: 8px; border-top: 1px solid var(--line); background: var(--surface); }
+.det-actions .hint:empty { display: none; }
+.det-actions .link.danger { align-self: center; }
+.det-actions .row-btns .btn { flex: 0 0 auto; }
+
+/* Переключатель статуса: те же этапы и цвета, что столбцы канбана */
+.stage-seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.stage-seg button { --c: var(--muted); display: inline-flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 9px;
+  font-size: 12px; font-weight: 600; color: var(--fg); background: var(--surface); border: 1px solid var(--border); }
+.stage-seg button svg { color: var(--c); }
+.stage-seg button:hover:not(:disabled) { border-color: var(--c); }
+.stage-seg button.on { color: var(--c); border-color: var(--c); background: color-mix(in srgb, var(--c) 14%, var(--surface)); }
+.stage-seg button:disabled { opacity: .4; cursor: not-allowed; }
+.qi-more .stage-seg button { padding: 4px 8px; }
+
+/* Итоги в панели */
+.sum-field { min-height: 0; }
+
+/* Отменённые: серые и зачёркнутые, вместо галочки крестик */
+.row.cancelled .t, .kcard.cancelled .t { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 70%, transparent); }
+.row.cancelled .chk { position: relative; background: var(--muted); border-color: var(--muted); }
+.row.cancelled .chk::after { content: ""; position: absolute; inset: 0; margin: auto; width: 9px; height: 2px; border-radius: 1px; background: var(--surface); transform: rotate(45deg);
+  box-shadow: none; }
+.row.cancelled .chk::before { content: ""; position: absolute; inset: 0; margin: auto; width: 9px; height: 2px; border-radius: 1px; background: var(--surface); transform: rotate(-45deg); }
+.kcard.cancelled .kchk { background: var(--muted); border-color: var(--muted); color: var(--surface); }
+.kcard.cancelled { opacity: .85; }
+
+/* Столбец «Отменено» не принимает сделанную */
+.col.blocked { --c: var(--move); border-style: dashed; }
+
+/* Окно итогов */
+.sum-dlg { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 18px 20px 16px; width: min(480px, 100%);
+  box-shadow: 0 18px 40px -24px rgba(0, 0, 0, .45); display: flex; flex-direction: column; }
+.sum-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; min-width: 0; }
+.sum-badge { --c: var(--exercise); flex: none; font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+  color: var(--c); background: color-mix(in srgb, var(--c) 15%, transparent); }
+.sum-dlg.cancelled .sum-badge { --c: var(--muted); }
+.sum-what { font-weight: 700; font-size: 15px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sum-text { width: 100%; min-height: 72px; padding: 9px 11px; resize: none; line-height: 1.5; display: block; }
+.sum-foot { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.sum-foot .hint { font-size: 11px; flex: 1 0 100%; }
+.cta.muted { --c: var(--muted); color: var(--surface); }
+
+/* Четыре столбца канбана помещаются рядом с обеими панелями */
+.board .col { flex-basis: 165px; }

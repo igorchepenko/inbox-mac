@@ -1,5 +1,5 @@
 import * as db from "./db";
-import type { Task } from "./db";
+import { isCancelled, isClosed, type Task } from "./db";
 import { addDays, nowStamp, stampDay, today } from "./dates";
 import { compareBy, VIEWS, type ListItem, type SortBy, type ViewId } from "./views";
 import { remindPatch } from "./remind";
@@ -14,7 +14,7 @@ export type Target = "inbox" | "today" | "soon" | "archive";
 const TARGET_IDS: string[] = ["inbox", "today", "soon", "archive"];
 export const TARGETS = VIEWS.filter((v) => TARGET_IDS.includes(v.id)) as { id: Target; name: string; accent: string; icon: string }[];
 
-/** Канбан строится только по этапу работы: Новые, К выполнению, Готово */
+/** Канбан строится только по этапу работы: Новые, К выполнению, Готово, Отменено */
 export interface BoardColumn {
   key: Stage;
   name: string;
@@ -37,19 +37,26 @@ function scoped(view: ViewId, tasks: Task[]): Task[] {
 
 const isOpen = (x: Task) => x.status === "inbox" || x.status === "active";
 
-export type Stage = "new" | "todo" | "done";
+export type Stage = "new" | "todo" | "done" | "cancelled";
 export const STAGES: Omit<BoardColumn, "items">[] = [
   { key: "new", name: "Новые", accent: "move", icon: "inbox", hint: "Вернётся в «Новые»" },
   { key: "todo", name: "К выполнению", accent: "stand", icon: "flag", hint: "Разобрана, ждёт очереди" },
   { key: "done", name: "Готово", accent: "exercise", icon: "target", hint: "Отметится сделанной" },
+  { key: "cancelled", name: "Отменено", accent: "muted", icon: "cancel", hint: "Отменится" },
 ];
+/** Этапы, при переходе в которые спрашиваем итоги */
+export const CLOSING: Stage[] = ["done", "cancelled"];
 
 /** Этап задачи: тот же, что столбец канбана. Отметка «в работе» из прошлой версии больше не учитывается */
 export function stageOf(x: Task): Stage {
   if (x.status === "inbox") return "new";
-  if (x.status === "done" || x.status === "archived") return "done";
+  if (isCancelled(x)) return "cancelled";
+  if (isClosed(x)) return "done";
   return "todo";
 }
+
+/** Можно ли перевести задачу в этап. Отменить нельзя только сделанную */
+export const canMove = (x: Task, key: Stage) => !(key === "cancelled" && stageOf(x) === "done");
 
 export function boardFor(view: ViewId, tasks: Task[], sort: SortBy, rev = false): BoardColumn[] {
   const since = addDays(today(), -DONE_DAYS);
@@ -68,9 +75,10 @@ export function boardFor(view: ViewId, tasks: Task[], sort: SortBy, rev = false)
  * иначе сломаются повторы.
  */
 export async function dropTo(x: Task, key: Stage): Promise<void> {
-  if (stageOf(x) === key) return;
+  if (stageOf(x) === key || !canMove(x, key)) return;
   if (key === "done") return db.completeTask(x);
-  if (x.status === "done" || x.status === "archived") await db.reopenTask(x);
+  if (key === "cancelled") return db.cancelTask(x);
+  if (isClosed(x)) await db.reopenTask(x);
   if (key === "new") return db.updateTask(x.id, { status: "inbox", triaged_at: null, started_at: null });
   return db.updateTask(x.id, { status: "active", triaged_at: x.triaged_at ?? nowStamp(), started_at: null });
 }
@@ -100,7 +108,7 @@ export async function moveTo(x: Task, col: Target): Promise<void> {
     await db.updateTask(x.id, { status: "archived" });
     return;
   }
-  if (x.status === "done" || x.status === "archived") await db.reopenTask(x);
+  if (isClosed(x)) await db.reopenTask(x);
   if (col === "inbox") return db.updateTask(x.id, { status: "inbox", triaged_at: null, started_at: null });
   const triaged = { status: "active" as const, triaged_at: x.triaged_at ?? nowStamp() };
   if (col === "today") return db.updateTask(x.id, { ...triaged, ...withDate(x, t) });

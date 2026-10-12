@@ -1,5 +1,5 @@
 // Расчёты для главной: всё считается из задач на лету, отдельных таблиц для статистики нет
-import type { Project, Task } from "../db";
+import { isCancelled, isDoneReal, type Project, type Task } from "../db";
 import { addDays, daysBetween, fmtMin, hoursBetween, monthEnd, monthStart, stampDay, toMin, today, weekdayShort, weekStart } from "../dates";
 
 export const BLOCKS = [
@@ -86,13 +86,14 @@ export const timeRange = (x: Task) => (x.start_time ? `${x.start_time}–${fmtMi
 
 // Состояния задач
 
-export const isDone = (x: Task) => x.status === "done" || x.status === "archived";
+// Отменённые на главной не считаются ни сделанными, ни запланированными: их будто и не было
+export const isDone = (x: Task) => isDoneReal(x);
 const doneDay = (x: Task) => (isDone(x) && x.done_at ? stampDay(x.done_at) : null);
 const byStart = (a: Task, b: Task) => (a.start_time ?? "99") < (b.start_time ?? "99") ? -1 : (a.start_time ?? "99") > (b.start_time ?? "99") ? 1 : 0;
 
 /** Задачи дня: разобранные с этой датой, открытые и сделанные */
 export function dayTasks(tasks: Task[], day: string): Task[] {
-  return tasks.filter((x) => x.status !== "inbox" && x.due_date === day).sort(byStart);
+  return tasks.filter((x) => x.status !== "inbox" && !isCancelled(x) && x.due_date === day).sort(byStart);
 }
 
 export function overdue(tasks: Task[]): Task[] {
@@ -250,7 +251,7 @@ export function stats(tasks: Task[], period: Period, cfg: DayConfig): Stats {
   // Запланированное: вся текущая неделя с понедельника или весь месяц
   const pFrom = period === "week" ? weekStart(t) : monthStart(t);
   const pTo = period === "week" ? addDays(pFrom, 6) : monthEnd(t);
-  const planned = busyMinutes(tasks.filter((x) => x.status !== "inbox" && !!x.due_date && x.due_date >= pFrom && x.due_date <= pTo));
+  const planned = busyMinutes(tasks.filter((x) => x.status !== "inbox" && !isCancelled(x) && !!x.due_date && x.due_date >= pFrom && x.due_date <= pTo));
   return {
     bars,
     goal: period === "week" ? cfg.goal : cfg.goal * 5,
@@ -288,7 +289,7 @@ export function meetingStats(tasks: Task[], period: Period): MeetingStats {
   const t = today();
   const from = period === "week" ? weekStart(t) : monthStart(t);
   const to = period === "week" ? addDays(from, 6) : monthEnd(t);
-  const list = tasks.filter((x) => x.kind === "meeting" && x.status !== "inbox" && !!x.due_date && x.due_date >= from && x.due_date <= to);
+  const list = tasks.filter((x) => x.kind === "meeting" && x.status !== "inbox" && !isCancelled(x) && !!x.due_date && x.due_date >= from && x.due_date <= to);
   const byName = new Map<string, MeetingPerson>();
   for (const x of list) {
     // С кем: кто назначил и участники, каждый человек раз на встречу
