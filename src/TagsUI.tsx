@@ -1,14 +1,20 @@
 // Теги и «Кто назначил» в интерфейсе: чипсы, поля ввода с подсказками, правка тега, фильтр списка.
 // Поля работают и в правой панели, и в форме записи задачи (⌥Space и N)
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { ListFilter, Search, UserRound, X } from "lucide-react";
+import { ListFilter, Search, Sparkles, UserRound, X } from "lucide-react";
 import type { Project, Tag, TagPatch } from "./db";
 import { Icon } from "./icons";
 import { PALETTE } from "./palette";
 import { addTagName, canonicalPerson, EMPTY_FILTER, filterOn, NO_PERSON, NO_SPACE, pickColor, sameName, suggest, TAG_COLORS, TAG_MAX, TAG_MAX_LEN, type TaskFilter } from "./tags";
 import { ColorGrid, Popover } from "./widgets";
 import { tips } from "./fields";
-import { plural } from "./views";
+import { plural, SMART, type ViewId } from "./views";
+
+/** Умный список в фильтрах раздела «Задачи»: null — все задачи */
+export interface SmartFilter {
+  value: ViewId | null;
+  onChange: (v: ViewId | null) => void;
+}
 
 const tagVars = (color: string | undefined) => ({ "--c": color ? `var(--${color})` : "var(--muted)" }) as CSSProperties;
 export const colorOf = (tags: Tag[], name: string) => tags.find((t) => sameName(t.name, name))?.color;
@@ -313,11 +319,12 @@ export function SearchField(props: { value: string; onChange: (v: string) => voi
 /** Кнопка «Фильтры» в шапке: пространства и теги (любое из выбранных) и кто назначил. Внутри пространства его фильтра нет */
 export function FilterButton(props: {
   filter: TaskFilter; projects: Project[]; tags: Tag[]; people: string[]; lockTag?: number; noSpaces?: boolean; onChange: (f: TaskFilter) => void;
+  smart?: SmartFilter;
 }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const { filter: f } = props;
   // Запрос поиска виден в своём поле, в счётчик кнопки не входит
-  const n = f.spaces.length + f.tags.length + (f.person !== null ? 1 : 0);
+  const n = f.spaces.length + f.tags.length + (f.person !== null ? 1 : 0) + (props.smart?.value ? 1 : 0);
   const tags = props.tags.filter((t) => t.id !== props.lockTag);
   const toggleTag = (id: number) => props.onChange({ ...f, tags: toggle(f.tags, id) });
   const toggleSpace = (id: number) => props.onChange({ ...f, spaces: toggle(f.spaces, id) });
@@ -330,9 +337,22 @@ export function FilterButton(props: {
       </button>
       {anchor && (
         <Popover anchor={anchor} onClose={() => setAnchor(null)} width={320}>
+          {props.smart && (
+            <>
+              <div className="lbl">Умный список <span className="opt">готовая подборка задач</span></div>
+              <div className="seg">
+                {SMART.map((x) => (
+                  <button type="button" key={x.id} className={`fchip person ${props.smart!.value === x.id ? "on" : ""}`}
+                    onClick={() => props.smart!.onChange(props.smart!.value === x.id ? null : x.id)}>
+                    <Sparkles size={11} /> {x.name}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
           {!props.noSpaces && (
             <>
-              <div className="lbl">Пространства <span className="opt">задачи из любого выбранного</span></div>
+              <div className={`lbl ${props.smart ? "sub-lbl" : ""}`}>Пространства <span className="opt">задачи из любого выбранного</span></div>
               <div className="seg">
                 {props.projects.map((p) => <SpaceChip key={p.id} project={p} on={f.spaces.includes(p.id)} onClick={() => toggleSpace(p.id)} />)}
                 <SpaceChip on={f.spaces.includes(NO_SPACE)} onClick={() => toggleSpace(NO_SPACE)} />
@@ -357,7 +377,7 @@ export function FilterButton(props: {
             ))}
             <button type="button" className={`fchip person ${f.person === NO_PERSON ? "on" : ""}`} onClick={() => setPerson(NO_PERSON)}>Сам себе</button>
           </div>
-          {n > 0 && <button type="button" className="link tag-del" onClick={() => props.onChange({ ...EMPTY_FILTER, text: f.text })}>Сбросить фильтры</button>}
+          {n > 0 && <button type="button" className="link tag-del" onClick={() => (props.onChange({ ...EMPTY_FILTER, text: f.text }), props.smart?.onChange(null))}>Сбросить фильтры</button>}
         </Popover>
       )}
     </>
@@ -365,12 +385,19 @@ export function FilterButton(props: {
 }
 
 /** Что сейчас отфильтровано: под шапкой, у каждого условия крестик */
-export function FilterBar(props: { filter: TaskFilter; projects: Project[]; tags: Tag[]; shown?: number; onChange: (f: TaskFilter) => void }) {
-  const { filter: f } = props;
-  if (!filterOn(f)) return null;
+export function FilterBar(props: { filter: TaskFilter; projects: Project[]; tags: Tag[]; shown?: number; onChange: (f: TaskFilter) => void; smart?: SmartFilter }) {
+  const { filter: f, smart } = props;
+  const smartName = smart?.value ? SMART.find((x) => x.id === smart.value)?.name : undefined;
+  if (!filterOn(f) && !smartName) return null;
   return (
     <div className="filter-bar">
       <ListFilter size={13} />
+      {smartName && (
+        <span className="fchip person on static" data-tip="Умный список. Крестик покажет все задачи">
+          <Sparkles size={11} /> {smartName}
+          <button type="button" className="tchip-x" aria-label="Показать все задачи" onClick={() => smart!.onChange(null)}><X size={10} strokeWidth={2.6} /></button>
+        </span>
+      )}
       {f.text.trim() && (
         <span className="fchip person on static">
           <Search size={11} /> «{f.text.trim()}»
@@ -392,7 +419,7 @@ export function FilterBar(props: { filter: TaskFilter; projects: Project[]; tags
         </span>
       )}
       {props.shown != null && <span className="meta">{props.shown ? `показано ${plural(props.shown, "задача", "задачи", "задач")}` : "ничего не подходит"}</span>}
-      <button type="button" className="link" onClick={() => props.onChange(EMPTY_FILTER)}>сбросить</button>
+      <button type="button" className="link" onClick={() => (props.onChange(EMPTY_FILTER), smart?.onChange(null))}>сбросить</button>
     </div>
   );
 }

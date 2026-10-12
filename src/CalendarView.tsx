@@ -14,6 +14,7 @@ import { profileKey } from "./profile";
 import { PriorityIcon } from "./priority";
 import { remindPatch } from "./remind";
 import { MeetingMark } from "./TaskBits";
+import { ALL_SHOWN, type Shown } from "./fields";
 
 type Patch = Parameters<typeof db.updateTask>[1];
 
@@ -59,7 +60,9 @@ export default function CalendarView(props: {
   onCreate: (day: string, start: number | null, end: number | null) => void;
   filterButton?: ReactNode;
   filterBar?: ReactNode;
+  show?: Shown; // какие поля видны на плашке, Настройки → «Поля задач» → Календарь
 }) {
+  const show = props.show ?? ALL_SHOWN;
   const [mode, setModeState] = useState<CalMode>(() => loadPref("cal:mode", ["day", "week", "month"] as const, "week"));
   const [anchor, setAnchor] = useState(today());
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -272,9 +275,9 @@ export default function CalendarView(props: {
       <div key={it.key} className={cls} style={accent(p?.color)} title={tip(it, p)} data-task-id={it.virtual ? undefined : it.task.id}
         onPointerDown={(e) => begin(e, it, "move")} onDoubleClick={(e) => e.stopPropagation()}>
         <Check it={it} onToggle={props.onToggle} />
-        {it.start != null && <span className="cal-chip-time">{label(it.start)}</span>}
-        {it.task.priority > 0 && !it.done && <PriorityIcon p={it.task.priority} size={12} />}
-        <MeetingMark task={it.task} />
+        {show("time") && it.start != null && <span className="cal-chip-time">{label(it.start)}</span>}
+        {show("priority") && it.task.priority > 0 && !it.done && <PriorityIcon p={it.task.priority} size={12} />}
+        {show("kind") && <MeetingMark task={it.task} />}
         <span className="cal-chip-t">{it.task.title}</span>
         {it.virtual && <Repeat size={11} className="cal-rep" />}
       </div>
@@ -304,11 +307,16 @@ export default function CalendarView(props: {
         {canResize && h >= 30 && <div className="cal-grip top" onPointerDown={(e) => begin(e, it, "start")} />}
         <div className="cal-ev-head">
           <Check it={it} onToggle={props.onToggle} />
-          {it.task.priority > 0 && !it.done && <PriorityIcon p={it.task.priority} size={12} />}
-          <span className="cal-ev-t"><MeetingMark task={it.task} />{it.task.title}</span>
+          {show("priority") && it.task.priority > 0 && !it.done && <PriorityIcon p={it.task.priority} size={12} />}
+          <span className="cal-ev-t">{show("kind") && <MeetingMark task={it.task} />}{it.task.title}</span>
           {it.virtual && <Repeat size={11} className="cal-rep" />}
         </div>
-        {h >= 30 && <span className="cal-ev-time">{label(it.start!)}<span className="cal-ev-rest">–{label(it.end!)}{p ? ` · ${p.name}` : ""}</span></span>}
+        {h >= 30 && (show("time") || (show("space") && p)) && (
+          <span className="cal-ev-time">
+            {show("time") ? label(it.start!) : ""}
+            <span className="cal-ev-rest">{show("time") ? `–${label(it.end!)}` : ""}{show("space") && p ? `${show("time") ? " · " : ""}${p.name}` : ""}</span>
+          </span>
+        )}
         {canResize && <div className="cal-grip bottom" onPointerDown={(e) => begin(e, it, "end")} />}
       </div>
     );

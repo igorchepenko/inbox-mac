@@ -6,17 +6,17 @@ import { invoke } from "@tauri-apps/api/core";
 import * as db from "./db";
 import type { Project, ProjectFields, Tag, Task } from "./db";
 import { fmtDay, fmtRange, nowStamp, stampTime, today, toHHMM } from "./dates";
-import { listFor, progressFor, revKey, revOf, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
+import { ALWAYS, inTasks, isSmart, listFor, plural, progressFor, revKey, revOf, scopeOf, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
 import { marks } from "./search";
 import "./search.css";
 import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
 import { Icon } from "./icons";
 import { ProjectDialog } from "./widgets";
-import { Check, CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Tag as TagIcon, Users } from "lucide-react";
+import { Check, CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Rows3, Tag as TagIcon, Users } from "lucide-react";
 import { applyFilter, EMPTY_FILTER, filterOn, NO_SPACE, peopleOf, type TaskFilter } from "./tags";
-import { Assignee, FilterBar, FilterButton, FIND_EVENT, SearchField, TagChips, TagEditor } from "./TagsUI";
+import { Assignee, FilterBar, FilterButton, FIND_EVENT, SearchField, TagChips, TagEditor, type SmartFilter } from "./TagsUI";
 import { QuadrantGlyph } from "./extras";
-import { CreatedMeta, DueFlag, MeetingMark } from "./TaskBits";
+import { CreatedMeta, DueFlag, FoundIn, MeetingMark } from "./TaskBits";
 import { defaultBefore, remindPatch } from "./remind";
 import { boardFor, canMove, CLOSING, dropTo, layoutOf, STAGES, stageOf, type Layout, type Stage } from "./boardOps";
 import { SummaryDialog, type Closing } from "./Summary";
@@ -58,6 +58,8 @@ export default function App() {
   const [closing, setClosing] = useState<Closing | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Раздел настроек, открытый сразу: кнопка «Поля» в шапке открывает «Поля задач»
+  const [settingsTab, setSettingsTab] = useState<string | undefined>();
   const [shortcutError, setShortcutError] = useState<string | null>(null);
   const settingsRef = useRef<Record<string, string>>({});
   const started = useRef(false);
@@ -166,7 +168,22 @@ export default function App() {
     db.setSetting("last.view", v).catch(() => {}); // для начального экрана «Где остановился»
   };
 
-  const hidden = (v: ViewId) => v !== "inbox" && settings[`hidden:${v}`] === "1";
+  const hidden = (v: ViewId) => !ALWAYS.includes(v) && settings[`hidden:${v}`] === "1";
+  // Умный список в фильтрах «Задач»: тот же раздел, поиск и остальные фильтры остаются
+  const switchSmart = (v: ViewId | null) => {
+    setView(v ?? "tasks");
+    clearPick();
+    lastIdx.current = 0;
+    setSel(null);
+    db.setSetting("last.view", v ?? "tasks").catch(() => {});
+  };
+  const smart: SmartFilter | undefined = inTasks(view) ? { value: isSmart(view) ? view : null, onChange: switchSmart } : undefined;
+  const fieldsButton = (
+    <button className="icon-btn" data-tip="Какие поля задачи видны: отдельно для списка, канбана и календаря"
+      onClick={() => (setSettingsTab("fields"), setSettingsOpen(true))}>
+      <Rows3 size={13} /> Поля
+    </button>
+  );
 
   // Сочетание быстрого ввода: Rust при запуске занимает ⌥Space, здесь меняем на сохранённое в настройках
   const applyShortcut = async (accel: string): Promise<string | null> => {
@@ -260,11 +277,12 @@ export default function App() {
   };
   const setLayout = (l: Layout) => {
     if (l !== layout) (setSel(null), togglePane("det", true)); // смена вида — тоже «переход»: панель закрыта, выделения нет
-    run(() => db.setSetting(`layout:${view}`, l));
+    run(() => db.setSetting(`layout:${scopeOf(view)}`, l));
   };
   const setSort = (s: SortBy) => {
-    setSettings((st) => ({ ...st, [`sort:${view}`]: s }));
-    run(() => db.setSetting(`sort:${view}`, s));
+    const key = `sort:${scopeOf(view)}`;
+    setSettings((st) => ({ ...st, [key]: s }));
+    run(() => db.setSetting(key, s));
   };
   // Направление помнится для каждой сортировки в каждом списке
   const reverseSort = () => {
@@ -309,7 +327,8 @@ export default function App() {
         const all = await reload();
         // Записанная сразу в «К выполнению» или «Готово» открывается там, где теперь лежит
         const x = all.find((t) => t.id === id);
-        setView(x && draft.stage ? homeOf(x) : "inbox");
+        // Во «Всех задачах» новая и так видна, оттуда не уводим
+        setView(x && draft.stage ? homeOf(x) : view === "tasks" ? "tasks" : "inbox");
         select(id);
       } catch (e) {
         setError(String(e));
@@ -375,10 +394,10 @@ export default function App() {
       if (e.metaKey && e.ctrlKey && e.code === "KeyS") return e.preventDefault(), togglePane("side");
       if (e.metaKey && e.altKey && e.code === "KeyI") return e.preventDefault(), togglePane("det");
       if (e.metaKey && e.code === "Digit0") return e.preventDefault(), openView("home");
-      if (e.metaKey && e.code === "Digit6") return e.preventDefault(), openView("projects");
+      if (e.metaKey && e.code === "Digit7") return e.preventDefault(), openView("projects");
       if (e.metaKey && e.code === "KeyP") return e.preventDefault(), window.dispatchEvent(new Event(FIND_PROJECT_EVENT));
       if (e.metaKey && e.code === "KeyF") return e.preventDefault(), window.dispatchEvent(new Event(FIND_EVENT));
-      if (e.metaKey && /^Digit[1-5]$/.test(e.code)) {
+      if (e.metaKey && /^Digit[1-6]$/.test(e.code)) {
         e.preventDefault();
         const v = VIEWS[Number(e.code.slice(5)) - 1].id;
         if (!hidden(v)) openView(v);
@@ -467,6 +486,7 @@ export default function App() {
           filterButton={<>
             <SearchField value={filter.text} onChange={setText} placeholder="Найти в календаре" tip="Поиск по задачам в календаре" />
             <FilterButton filter={filt} projects={projects} tags={tags} people={people} onChange={setFilter} />
+            {fieldsButton}
           </>}
           filterBar={<FilterBar filter={filt} projects={projects} tags={tags} onChange={setFilter} />}
           onToggle={toggleDone}
@@ -474,7 +494,7 @@ export default function App() {
             if (p.remind_at) ensurePermission();
             run(() => db.updateTask(id, p));
           }}
-          onCreate={createAt} />
+          onCreate={createAt} show={shownFields(settings, "calendar")} />
       ) : (
       <main className={`main ${project ? "in-space" : ""}`} style={spaceVars(project?.color)}>
         {view === "projects" ? (
@@ -502,7 +522,7 @@ export default function App() {
             </span>
           )}
           <div className="head-text">
-            <h2>{project?.name ?? tag?.name ?? current?.name ?? ""}</h2>
+            <h2>{project?.name ?? tag?.name ?? (inTasks(view) ? "Задачи" : current?.name) ?? ""}</h2>
             <p className="head-sub" data-tip={project?.description || undefined} data-tip-full="">{project?.description || progress?.subtitle || subtitleFor(view, list.length)}</p>
           </div>
           {project && (
@@ -518,7 +538,8 @@ export default function App() {
           <SearchField value={filter.text} onChange={setText} onArrow={stepSel} placeholder="Найти задачу"
             tip="Поиск по задачам на этом экране: название, заметка, чеклист, теги, люди, ссылки" />
           {view !== "archive" && <SortSwitch value={sort} rev={rev} onChange={setSort} onReverse={reverseSort} />}
-          <FilterButton filter={filt} projects={projects} tags={tags} people={people} lockTag={tag?.id} noSpaces={!!project} onChange={setFilter} />
+          <FilterButton filter={filt} projects={projects} tags={tags} people={people} lockTag={tag?.id} noSpaces={!!project} onChange={setFilter} smart={smart} />
+          {fieldsButton}
           <LayoutSwitch value={layout} onChange={setLayout} />
           <button className={`icon-btn ${selecting ? "on" : ""}`} data-tip="Выбрать несколько задач, ⌘-клик по строке" data-key="⌘A"
             onClick={() => (selecting ? clearPick() : (setSelecting(true), setPicked(sel != null ? [sel] : [])))}>
@@ -527,7 +548,7 @@ export default function App() {
           <button className="icon-btn" data-tip="Сочетания клавиш" data-key="⌘/" aria-label="Сочетания клавиш" onClick={() => setHelpOpen(true)}><Keyboard size={14} /></button>
         </header>
 
-        <FilterBar filter={filt} projects={projects} tags={tags} shown={ids.length} onChange={setFilter} />
+        <FilterBar filter={filt} projects={projects} tags={tags} shown={ids.length} onChange={setFilter} smart={smart} />
 
         {view !== "archive" && (
           <button className="add field" onClick={() => setNewOpen(true)}>
@@ -599,7 +620,7 @@ export default function App() {
       <Tooltips />
       {!settingsOpen && <QuickKeyBanner error={shortcutError} onSettings={() => setSettingsOpen(true)} />}
       {settingsOpen && (
-        <Settings settings={settings} shortcutError={shortcutError} onClose={() => setSettingsOpen(false)} onData={reload}
+        <Settings settings={settings} shortcutError={shortcutError} initial={settingsTab} onClose={() => (setSettingsOpen(false), setSettingsTab(undefined))} onData={reload}
           onSet={(key, value) => run(() => db.setSetting(key, value))}
           onQuickShortcut={async (accel) => {
             const err = await applyShortcut(accel);
@@ -631,7 +652,8 @@ export default function App() {
 }
 
 function subtitleFor(view: ViewId, n: number): string {
-  if (view === "archive") return n ? `${n} в архиве` : "";
+  if (view === "archive") return n ? `${plural(n, "задача сделана или отменена", "задачи сделаны или отменены", "задач сделаны или отменены")}` : "";
+  if (view === "tasks") return n ? `Все задачи, кроме завершённых: ${n}` : "";
   if (view === "soon") return n ? "Запланированное на будущее и разобранное без даты" : "";
   return n ? `${n} в работе` : "";
 }
@@ -639,7 +661,8 @@ function subtitleFor(view: ViewId, n: number): string {
 function emptyText(view: ViewId): string {
   if (view === "inbox") return `Здесь пусто. Нажми ${quickKeyLabel()} в любом приложении, чтобы записать задачу.`;
   if (view === "today") return "На сегодня ничего. Поставь дату «Сегодня» при разборе.";
-  if (view === "archive") return "Сделанные задачи попадают сюда на следующий день.";
+  if (view === "archive") return "Сделанные и отменённые задачи попадают сюда на следующий день.";
+  if (view === "tasks") return `Задач пока нет. Нажми ${quickKeyLabel()} в любом приложении, чтобы записать задачу.`;
   return "Здесь пока ничего нет.";
 }
 
@@ -677,6 +700,7 @@ function TaskRow(props: {
       <span className="t" data-tip={x.title} data-tip-full="">
         {props.query ? marks(x.title, props.query).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part)) : x.title}
       </span>
+      <FoundIn task={x} query={props.query} project={project} />
       {show("tags") && <TagChips tags={x.tags} max={2} />}
       {show("assignee") && x.assigned_by && <Assignee name={x.assigned_by} />}
       {show("participants") && x.participants.length > 0 && (
@@ -701,7 +725,7 @@ function TaskRow(props: {
   );
 }
 
-/** Этап задачи в строке, как столбец канбана: Новые, К выполнению, Готово, Отменено. В архиве виден только «Отменено» */
+/** Этап задачи в строке, как столбец канбана: Новые, К выполнению, Готово, Отменено. В «Завершённых» виден только «Отменено» */
 function StageChip({ task }: { task: Task }) {
   const st = STAGES.find((s) => s.key === stageOf(task))!;
   return (

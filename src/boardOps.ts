@@ -1,13 +1,13 @@
 import * as db from "./db";
 import { isCancelled, isClosed, type Task } from "./db";
 import { addDays, nowStamp, stampDay, today } from "./dates";
-import { compareBy, VIEWS, type ListItem, type SortBy, type ViewId } from "./views";
+import { compareBy, isSmart, listFor, scopeOf, VIEWS, type ListItem, type SortBy, type ViewId } from "./views";
 import { remindPatch } from "./remind";
 
 /** Как показан список: строками или канбаном. Хранится в settings под ключом layout:<вид> */
 export type Layout = "list" | "board";
 export const layoutOf = (view: ViewId, settings: Record<string, string>): Layout =>
-  settings[`layout:${view}`] === "board" ? "board" : "list";
+  settings[`layout:${scopeOf(view)}`] === "board" ? "board" : "list";
 
 /** Куда можно разом перенести выделенные задачи: те же списки, что в боковой панели */
 export type Target = "inbox" | "today" | "soon" | "archive";
@@ -27,8 +27,12 @@ export interface BoardColumn {
 /** «Готово» на канбане показывает сделанное за неделю, старое живёт в архиве */
 const DONE_DAYS = 7;
 
-/** В проекте и теге канбан показывает только их задачи, в остальных списках все */
+/** В проекте, теге и умном списке канбан показывает только их задачи, во «Всех задачах» все */
 function scoped(view: ViewId, tasks: Task[]): Task[] {
+  if (isSmart(view)) {
+    const ids = new Set(listFor(view, tasks).map((i) => i.task.id));
+    return tasks.filter((x) => ids.has(x.id));
+  }
   const id = Number(view.slice(2));
   if (view.startsWith("p:")) return tasks.filter((x) => x.project_id === id);
   if (view.startsWith("t:")) return tasks.filter((x) => x.tags.some((g) => g.id === id));

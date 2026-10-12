@@ -3,7 +3,7 @@ import { BellRing, Check, FolderOpen, Keyboard, LayoutDashboard, PanelLeft, Rota
 import { invoke } from "@tauri-apps/api/core";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as autostartEnabled } from "@tauri-apps/plugin-autostart";
 import { Icon } from "./icons";
-import { plural, VIEWS, type ViewId } from "./views";
+import { ALWAYS, isSmart, plural, VIEWS, type ViewId } from "./views";
 import { beforeName, defaultBefore, REMIND_BEFORE } from "./remind";
 import { loadPeopleStats, renamePerson } from "./db";
 import { sameName } from "./tags";
@@ -30,6 +30,8 @@ export interface SettingsProps {
   onClose: () => void;
   /** Перечитать задачи в главном окне после правок в базе из настроек */
   onData?: () => void;
+  /** Раздел, открытый сразу: кнопка «Поля» в шапке списка открывает «Поля задач» */
+  initial?: string;
 }
 
 // Разделы по порядку в левой колонке. Новый раздел достаточно добавить сюда
@@ -41,13 +43,13 @@ const SECTIONS: { id: string; name: string; icon: LucideIcon; render: (p: Settin
   { id: "people", name: "Кто назначил", icon: Users, render: (p) => <People {...p} /> },
   { id: "fields", name: "Поля задач", icon: Rows3, render: (p) => <FieldsSettings settings={p.settings} onSet={p.onSet} /> },
   { id: "menu", name: "Меню", icon: PanelLeft, render: (p) => <MenuItems {...p} /> },
-  { id: "home", name: "Главная", icon: LayoutDashboard, render: (p) => <HomeSettings settings={p.settings} onSet={p.onSet} /> },
+  { id: "home", name: "Дашборд", icon: LayoutDashboard, render: (p) => <HomeSettings settings={p.settings} onSet={p.onSet} /> },
   { id: "profile", name: "Профиль", icon: UserRound, render: () => <Profiles /> },
 ];
 
 /** Окно настроек поверх приложения. Открывается по ⌘, из меню Inbox и иконкой-шестерёнкой внизу меню */
 export function Settings(props: SettingsProps) {
-  const [tab, setTab] = useState(SECTIONS[0].id);
+  const [tab, setTab] = useState(SECTIONS.some((s) => s.id === props.initial) ? props.initial! : SECTIONS[0].id);
   const section = SECTIONS.find((s) => s.id === tab)!;
   // Фокус в окно, чтобы Esc сразу закрывал его
   const box = useRef<HTMLDivElement>(null);
@@ -155,9 +157,9 @@ function General(p: SettingsProps) {
       setAutostart(!on);
     }
   };
-  const visible = VIEWS.filter((v) => v.id === "inbox" || p.settings[`hidden:${v.id}`] !== "1");
+  const visible = VIEWS.filter((v) => ALWAYS.includes(v.id) || p.settings[`hidden:${v.id}`] !== "1");
   const startView = pref(p.settings, "start.view");
-  const startName = (id: string) => (id === "home" ? "Главная" : id === "last" ? "Где остановился" : VIEWS.find((v) => v.id === id)?.name ?? id);
+  const startName = (id: string) => (id === "home" ? "Дашборд" : id === "last" ? "Где остановился" : VIEWS.find((v) => v.id === id)?.name ?? id);
   const resetStart = () => p.onSet("start.view", DEFAULTS["start.view"]);
   return (
     <div className="set-group">
@@ -165,7 +167,7 @@ function General(p: SettingsProps) {
         def={{ text: startName(DEFAULTS["start.view"]), changed: startView !== DEFAULTS["start.view"], reset: resetStart }}>
         <Choice value={pref(p.settings, "start.view")} onPick={(v) => p.onSet("start.view", v)}
           options={[
-            { id: "home", name: "Главная" },
+            { id: "home", name: "Дашборд" },
             ...visible.filter((v) => v.id !== "archive").map((v) => ({ id: v.id as string, name: v.name })),
             { id: "last", name: "Где остановился" },
           ]} />
@@ -452,32 +454,34 @@ function MenuItems(p: SettingsProps) {
   return (
     <div className="set-group">
       <div className="hint">Какие списки показывать в меню слева и с какой иконкой. Иконку можно сменить и кликом по ней прямо в меню.</div>
-      {/* Главная всегда в меню: она открывается по ⌘0 и при запуске, иконка у неё своя */}
+      {/* Дашборд всегда в меню: он открывается по ⌘0 и при запуске, иконка у него своя */}
       <div className="set-row menu-row">
         <span className="nav-icon big"><HomeIcon /></span>
         <div className="set-text">
-          <div className="set-name">Главная</div>
+          <div className="set-name">Дашборд</div>
           <div className="hint">Сводка дня, поэтому этот пункт всегда виден</div>
         </div>
-        <Toggle label="Показывать «Главная»" on disabled onChange={() => {}} />
+        <Toggle label="Показывать «Дашборд»" on disabled onChange={() => {}} />
       </div>
       {VIEWS.map((v) => {
         const hidden = p.settings[`hidden:${v.id}`] === "1";
         return (
-          <div key={v.id} className={`set-row menu-row ${hidden ? "off" : ""}`}>
+          <div key={v.id} className={`set-row menu-row ${hidden ? "off" : ""} ${isSmart(v.id) ? "smart" : ""}`}>
             <button type="button" className="nav-icon big" title="Сменить иконку" style={{ color: `var(--${v.accent})` }}
               onClick={(e) => setPicker({ id: v.id, el: e.currentTarget })}>
               <Icon name={iconOf(v.id)} size={16} />
             </button>
             <div className="set-text">
               <div className="set-name">{v.name}</div>
-              {v.id === "inbox" && <div className="hint">Сюда падают все новые задачи, поэтому этот список всегда виден</div>}
+              {v.id === "tasks" && <div className="hint">Все задачи с фильтрами, поэтому этот пункт всегда виден</div>}
+              {v.id === "inbox" && <div className="hint">Умный список. Сюда падают все новые задачи, поэтому он всегда виден</div>}
+              {isSmart(v.id) && v.id !== "inbox" && <div className="hint">Умный список: «Задачи» с готовым фильтром</div>}
               <div className="set-def">
                 По умолчанию: <b>виден, иконка</b> <Icon name={v.icon} size={13} />
                 {menuChanged(v.id) && <button type="button" className="link" onClick={() => resetMenu(v.id)}>Сбросить</button>}
               </div>
             </div>
-            <Toggle label={`Показывать «${v.name}»`} on={!hidden} disabled={v.id === "inbox"}
+            <Toggle label={`Показывать «${v.name}»`} on={!hidden} disabled={ALWAYS.includes(v.id)}
               onChange={(on) => p.onSet(`hidden:${v.id}`, on ? "0" : "1")} />
           </div>
         );
