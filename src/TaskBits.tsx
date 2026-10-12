@@ -1,7 +1,6 @@
 // Напоминание, тип задачи и дата создания в интерфейсе: поле в панели задачи и в форме записи, значки в строке и на карточке
-import { CalendarPlus, CheckSquare, FlagTriangleRight, Search, Users } from "lucide-react";
-import type { Project, Task, TaskKind } from "./db";
-import { foundIn, WHERE_NAMES } from "./search";
+import { CalendarPlus, CheckSquare, FlagTriangleRight, Users } from "lucide-react";
+import type { Task, TaskKind } from "./db";
 import { fmtDay, fmtStamp, stampDay, stampTime } from "./dates";
 import { anchorOf, REMIND_BEFORE, REMIND_OFF, setBefore, setCustom, type When } from "./remind";
 import { dueState, hasDue, type DueTask } from "./due";
@@ -101,11 +100,4 @@ export function DueFlag({ task: x, day }: { task: DueTask; day?: boolean }) {
       <FlagTriangleRight size={11} /> {day ? `${fmtDay(x.due_date!)} ` : ""}до {x.end_time}
     </span>
   );
-}
-
-/** Запрос нашёлся не в названии: подписываем где, иначе непонятно, почему задача в выдаче */
-export function FoundIn({ task, query, project }: { task: Task; query?: string; project?: Project }) {
-  const where = query ? foundIn(task, query, project) : null;
-  if (!where || where === "title") return null;
-  return <span className="meta found" data-tip={`Поиск «${query!.trim()}» нашёлся ${WHERE_NAMES[where]}`}><Search size={11} /> {WHERE_NAMES[where]}</span>;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { foundIn, marks, searchNames, searchProjects, searchTasks } from "../search";
+import { marks, searchNames, searchProjects, searchTasks } from "../search";
 import { applyFilter, EMPTY_FILTER } from "../tags";
 import { task } from "./helpers";
 
@@ -16,23 +16,26 @@ describe("поиск задач в фильтрах", () => {
     task({ id: 6, title: "Встреча", kind: "meeting", participants: ["Олег"] }),
   ];
 
-  it("без регистра и с ё как е, в названии и заметке", () => {
-    expect(ids(searchTasks("ЕЛКИН", tasks))).toEqual([1, 2]);
+  it("без регистра и с ё как е", () => {
+    expect(ids(searchTasks("ЕЛКИН", tasks))).toEqual([1]);
   });
 
-  it("по тегам, по тому, кто назначил, по участникам, по пространству, по чеклисту", () => {
-    expect(ids(searchTasks("работа", tasks))).toEqual([4]);
-    expect(ids(searchTasks("маша", tasks))).toEqual([4]);
-    expect(ids(searchTasks("олег", tasks))).toEqual([6]);
-    expect(ids(searchTasks("ремонт", tasks, [space]))).toEqual([3]);
-    expect(ids(searchTasks("краск", tasks))).toEqual([5]);
+  it("буква, которой нет в названии, задачу не находит, даже если она есть в пространстве или заметке", () => {
+    const xs = [task({ id: 1, title: "задача задача", project_id: 7, note: "е; 1" })];
+    expect(ids(searchTasks("е", xs))).toEqual([]);
+    expect(ids(searchTasks("1", xs))).toEqual([]);
+  });
+
+  it("только по названию: заметка, чеклист, теги, люди, пространство и ссылки не в счёт", () => {
+    expect(ids(searchTasks("елкин", tasks))).toEqual([1]);
+    for (const q of ["работа", "маша", "олег", "ремонт", "краск", "сверить"]) expect(ids(searchTasks(q, tasks))).toEqual([]);
   });
 
   it("запрос ищется целиком, как набран: без перестановки слов, порядок не меняется", () => {
     expect(ids(searchTasks("купить плитку", tasks))).toEqual([3]);
     expect(ids(searchTasks("купить   плитку ", tasks))).toEqual([3]);
     expect(ids(searchTasks("плитку купить", tasks))).toEqual([]);
-    expect(ids(searchTasks("купить", tasks))).toEqual([3, 5]);
+    expect(ids(searchTasks("купить", tasks))).toEqual([3]);
   });
 
   it("никакой нечёткости: «прив» не находит «Проверить», цифра только там, где она есть", () => {
@@ -47,22 +50,13 @@ describe("поиск задач в фильтрах", () => {
     expect(ids(searchTasks("4", xs))).toEqual([3]);
   });
 
-  it("где нашлось: название, заметка, чеклист и остальное", () => {
-    expect(foundIn(tasks[0], "ёлкин")).toBe("title");
-    expect(foundIn(tasks[1], "елкин")).toBe("note");
-    expect(foundIn(tasks[4], "краск")).toBe("checklist");
-    expect(foundIn(tasks[3], "маш")).toBe("assignee");
-    expect(foundIn(tasks[2], "ремонт", space)).toBe("space");
-    expect(foundIn(tasks[2], "дача", space)).toBeNull();
-  });
-
   it("пустой запрос ничего не прячет", () => {
     expect(searchTasks("  ", tasks)).toBe(tasks);
   });
 
   it("текст складывается с остальным фильтром", () => {
-    expect(ids(applyFilter(tasks, { ...EMPTY_FILTER, text: "купить" }, [space]))).toEqual([3, 5]);
-    expect(ids(applyFilter(tasks, { ...EMPTY_FILTER, text: "купить", spaces: [7] }, [space]))).toEqual([3]);
+    expect(ids(applyFilter(tasks, { ...EMPTY_FILTER, text: "купить" }))).toEqual([3]);
+    expect(ids(applyFilter(tasks, { ...EMPTY_FILTER, text: "купить", spaces: [7] }))).toEqual([3]);
   });
 
   it("подсветка: чередуются обычный и найденный куски", () => {
