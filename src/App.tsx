@@ -361,7 +361,12 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey && e.code === "Comma") return e.preventDefault(), setSettingsOpen(true);
-      if (newOpen || projectDlg || settingsOpen || closing) return; // формы сами ловят Enter и Esc
+      // Формы сами ловят Enter и Esc, пока фокус в них. Если фокус выпал из окна (клик по пустому месту),
+      // Esc закрывает его отсюда; настройки и итоги закрываются сами
+      if (newOpen || projectDlg || settingsOpen || closing) {
+        if (e.key === "Escape" && !settingsOpen && !closing) (setNewOpen(false), setProjectDlg(null));
+        return;
+      }
       if (helpOpen) {
         if (e.key === "Escape" || (e.metaKey && e.code === "Slash")) setHelpOpen(false);
         return;
@@ -422,7 +427,9 @@ export default function App() {
           if (task && task.status !== "archived") patch(task.id, { due_date: today(), ...remindPatch(task, { due_date: today() }) });
           break;
         case "Escape":
+          // Esc снимает выделение и закрывает правую панель, как переход в другой раздел
           (document.activeElement as HTMLElement | null)?.blur();
+          if (sel != null || !panes.det.collapsed) (setSel(null), togglePane("det", true));
           break;
       }
     };

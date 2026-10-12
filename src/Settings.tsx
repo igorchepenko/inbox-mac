@@ -56,7 +56,10 @@ export function Settings(props: SettingsProps) {
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
       <div ref={box} tabIndex={-1} className="settings" role="dialog" aria-label="Настройки"
         onKeyDown={(e) => {
-          if (e.key === "Escape" && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement)) props.onClose();
+          if (e.key !== "Escape" || e.defaultPrevented) return;
+          // Первый Esc в поле только снимает с него фокус, следующий закрывает окно
+          if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) box.current?.focus();
+          else props.onClose();
         }}>
         <nav className="set-nav">
           <h3>Настройки</h3>

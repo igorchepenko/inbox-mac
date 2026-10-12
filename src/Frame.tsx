@@ -5,10 +5,9 @@ import { PANE_LIMITS, type PaneId, type Panes } from "./panes";
 /*
  * Каркас окна: ручки, за которые меняется ширина левого меню и правой панели, и кнопки,
  * сворачивающие их совсем. Ручка сидит на границе панели; двойной клик возвращает ширину по умолчанию.
- * Если утащить панель заметно уже минимума, она сворачивается, как боковые панели в Finder.
+ * Перетаскивание только меняет ширину и упирается в минимум: свернуть панель можно лишь кнопкой или сочетанием.
  */
 
-const COLLAPSE_SLACK = 60;
 const MAIN_MIN = 380;
 
 interface Props {
@@ -32,13 +31,13 @@ export function Frame({ panes, hasDetails, onWidth, onToggle, onReset }: Props) 
           <PanelRight size={15} />
         </button>
       )}
-      {!panes.side.collapsed && <Handle id="side" panes={panes} onWidth={onWidth} onToggle={onToggle} onReset={onReset} />}
-      {hasDetails && !panes.det.collapsed && <Handle id="det" panes={panes} onWidth={onWidth} onToggle={onToggle} onReset={onReset} />}
+      {!panes.side.collapsed && <Handle id="side" panes={panes} onWidth={onWidth} onReset={onReset} />}
+      {hasDetails && !panes.det.collapsed && <Handle id="det" panes={panes} onWidth={onWidth} onReset={onReset} />}
     </>
   );
 }
 
-function Handle({ id, panes, onWidth, onToggle, onReset }: { id: PaneId; panes: Panes } & Omit<Props, "panes" | "hasDetails">) {
+function Handle({ id, panes, onWidth, onReset }: { id: PaneId; panes: Panes } & Pick<Props, "onWidth" | "onReset">) {
   const drag = useRef<{ x: number; w: number } | null>(null);
   const width = panes[id].width;
   const sign = id === "side" ? 1 : -1;
@@ -57,16 +56,10 @@ function Handle({ id, panes, onWidth, onToggle, onReset }: { id: PaneId; panes: 
         const d = drag.current;
         if (!d) return;
         const w = d.w + sign * (e.clientX - d.x);
-        if (w < PANE_LIMITS[id].min - COLLAPSE_SLACK) {
-          drag.current = null;
-          document.body.classList.remove("pane-resizing");
-          onToggle(id, true);
-        } else {
-          // главной колонке оставляем не меньше MAIN_MIN, чтобы панели не съели список
-          const other = id === "side" ? panes.det : panes.side;
-          const room = window.innerWidth - (other.collapsed ? 0 : other.width) - MAIN_MIN;
-          onWidth(id, Math.min(w, Math.max(PANE_LIMITS[id].min, room)));
-        }
+        // главной колонке оставляем не меньше MAIN_MIN, чтобы панели не съели список
+        const other = id === "side" ? panes.det : panes.side;
+        const room = window.innerWidth - (other.collapsed ? 0 : other.width) - MAIN_MIN;
+        onWidth(id, Math.min(w, Math.max(PANE_LIMITS[id].min, room)));
       }}
       onPointerUp={() => {
         drag.current = null;
