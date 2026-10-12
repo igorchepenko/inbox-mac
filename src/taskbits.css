@@ -24,3 +24,13 @@
 .meta.due.soon, .meta.due.overdue { font-weight: 700; padding: 1px 6px; border-radius: 6px; }
 .meta.due.soon { color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); }
 .meta.due.overdue { color: var(--move); background: color-mix(in srgb, var(--move) 12%, transparent); }
+
+/* Обёртка значка (важность, матрица) ради подсказки при наведении: сам svg подсказку не держит */
+.tipped { display: inline-flex; align-items: center; flex: none; }
+
+/* Настройки → «Поля задач»: название поля и два столбца переключателей, список и канбан */
+.fields-grid { display: flex; flex-direction: column; }
+.fields-head, .fields-row { display: grid; grid-template-columns: 1fr 84px 84px; align-items: center; gap: 12px; }
+.fields-head { padding-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.fields-row { padding: 8px 0; border-top: 1px solid var(--line); }
+.fields-col { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }

@@ -138,13 +138,8 @@ export function PriorityPicker(props: { value: number | null | undefined; onChan
 
 // Матрица Эйзенхауэра
 
-export const QUADRANTS = [
-  // Свои чистые цвета (task.css): красный, синий, оранжевый, фиолетовый, без серого
-  { value: 1, name: "Срочно и важно", hint: "сделать сейчас", accent: "q1" },
-  { value: 2, name: "Важно, не срочно", hint: "запланировать", accent: "q2" },
-  { value: 3, name: "Срочно, не важно", hint: "делегировать", accent: "q3" },
-  { value: 4, name: "Не срочно, не важно", hint: "отложить", accent: "q4" },
-];
+export { QUADRANTS } from "./quadrants";
+import { QUADRANTS } from "./quadrants";
 
 /** Необязательный квадрант: 2×2, повторный клик снимает выбор */
 export function QuadrantPicker(props: { value: number | null; onChange: (q: number | null) => void }) {
@@ -172,7 +167,6 @@ export function QuadrantGlyph({ q }: { q: number }) {
   const x = q === 1 || q === 3 ? 0 : 7, y = q <= 2 ? 0 : 7;
   return (
     <svg width="13" height="13" viewBox="0 0 13 13" className="quad-glyph" aria-label={info.name}>
-      <title>{info.name}</title>
       {[0, 7].flatMap((cx) => [0, 7].map((cy) => (
         <rect key={`${cx}${cy}`} x={cx} y={cy} width="6" height="6" rx="1.5"
           fill={cx === x && cy === y ? `var(--${info.accent})` : "var(--ring-track)"} />
