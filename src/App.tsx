@@ -7,14 +7,14 @@ import * as db from "./db";
 import type { Project, ProjectFields, Tag, Task } from "./db";
 import { fmtDay, fmtRange, nowStamp, stampTime, today, toHHMM } from "./dates";
 import { listFor, progressFor, revKey, revOf, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
-import { marks, searchTasks } from "./search";
+import { marks } from "./search";
 import "./search.css";
 import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
 import { Icon } from "./icons";
 import { ProjectDialog } from "./widgets";
-import { CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Search, Tag as TagIcon, X } from "lucide-react";
+import { CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Tag as TagIcon } from "lucide-react";
 import { applyFilter, EMPTY_FILTER, filterOn, NO_SPACE, peopleOf, type TaskFilter } from "./tags";
-import { Assignee, FilterBar, FilterButton, TagChips, TagEditor } from "./TagsUI";
+import { Assignee, FilterBar, FilterButton, FIND_EVENT, SearchField, TagChips, TagEditor } from "./TagsUI";
 import { QuadrantGlyph } from "./extras";
 import { CreatedMeta, DueFlag, MeetingMark } from "./TaskBits";
 import { defaultBefore, remindPatch } from "./remind";
@@ -39,7 +39,7 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
-  // Фильтр. Теги и «кто назначил» живут, пока открыт список, при переходе в другой сбрасываются.
+  // Фильтры. Поиск, теги и «кто назначил» живут, пока открыт список, при переходе в другой сбрасываются.
   // Пространства остаются выбранными во всех списках и в календаре, пока их не сбросят
   const [filter, setFilter] = useState<TaskFilter>(EMPTY_FILTER);
   const [tagEdit, setTagEdit] = useState<HTMLElement | null>(null);
@@ -55,10 +55,6 @@ export default function App() {
   const [newOpen, setNewOpen] = useState(false);
   // Окно итогов после перевода в «Готово» или «Отменено»
   const [closing, setClosing] = useState<Closing | null>(null);
-  // Поиск по всем задачам: null закрыт. Пока открыт, вместо списка результаты, вид под ним не меняется
-  const [query, setQuery] = useState<string | null>(null);
-  const searching = query !== null;
-  const searchRef = useRef<HTMLInputElement>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutError, setShortcutError] = useState<string | null>(null);
@@ -131,20 +127,20 @@ export default function App() {
     spaces: inSpace ? [] : filter.spaces.filter((id) => id === NO_SPACE || projects.some((p) => p.id === id)),
     tags: filter.tags.filter((id) => tags.some((g) => g.id === id)),
   }), [filter, tags, projects, inSpace]);
-  const shown = useMemo(() => applyFilter(tasks, filt), [tasks, filt]);
+  const shown = useMemo(() => applyFilter(tasks, filt, projects), [tasks, filt, projects]);
   // В фильтре ровно одно пространство: новые задачи сразу записываются в него
   const oneSpace = filt.spaces.length === 1 && filt.spaces[0] !== NO_SPACE ? filt.spaces[0] : null;
-  const list = useMemo(() => (searching ? searchTasks(query, tasks, projects) : listFor(view, shown, sort, rev)), [searching, query, tasks, projects, view, shown, sort, rev]);
-  const columns = useMemo(() => (layout === "board" && !searching ? boardFor(view, shown, sort, rev) : null), [layout, searching, view, shown, sort, rev]);
+  const list = useMemo(() => listFor(view, shown, sort, rev), [view, shown, sort, rev]);
+  const columns = useMemo(() => (layout === "board" ? boardFor(view, shown, sort, rev) : null), [layout, view, shown, sort, rev]);
   const ids = columns ? columns.flatMap((c) => c.items.map((i) => i.task.id)) : list.map((i) => i.task.id);
   const pickedTasks = tasks.filter((x) => picked.includes(x.id) && ids.includes(x.id));
   const bulk = selecting || pickedTasks.length > 1;
-  const task = tasks.find((x) => x.id === sel && ((view === "calendar" && !searching) || ids.includes(x.id))) ?? null;
+  const task = tasks.find((x) => x.id === sel && (view === "calendar" || ids.includes(x.id))) ?? null;
 
   // Когда выбранная задача ушла из списка (разобрана, сделана), выбираем ту, что встала на её место
   const lastIdx = useRef(0);
   useEffect(() => {
-    if (view === "calendar" && !searching) return; // в календаре выбор не зависит от списка
+    if (view === "calendar") return; // в календаре выбор не зависит от списка
     const i = ids.indexOf(sel ?? -1);
     if (i >= 0) lastIdx.current = i;
     else setSel(ids[Math.min(lastIdx.current, ids.length - 1)] ?? null);
@@ -153,7 +149,6 @@ export default function App() {
   const clearPick = () => (setPicked([]), setSelecting(false));
   const openView = (v: ViewId, from = tasks) => {
     setView(v);
-    setQuery(null);
     clearPick();
     setFilter((f) => ({ ...EMPTY_FILTER, spaces: f.spaces }));
     setTagEdit(null);
@@ -235,17 +230,13 @@ export default function App() {
     setView(homeOf(x));
     setSel(x.id);
   };
-  // Найденная задача открывается в своём списке. Фильтр сбрасываем, иначе он мог бы её спрятать
-  const revealTask = (x: Task) => {
-    openView(homeOf(x));
-    setFilter(EMPTY_FILTER);
-    setSel(x.id);
+  // Стрелки из поля поиска двигают выбор в списке
+  const stepSel = (dir: 1 | -1) => {
+    const i = ids.indexOf(sel ?? -1);
+    const next = ids[i < 0 ? 0 : i + dir];
+    if (next != null) setSel(next);
   };
-  const openSearch = () => {
-    setQuery((q) => q ?? "");
-    clearPick();
-    requestAnimationFrame(() => searchRef.current?.select());
-  };
+  const setText = (text: string) => setFilter((f) => ({ ...f, text }));
   // Клик выбирает задачу, ⌘-клик или режим «Выбрать» добавляют к выделению, ⇧-клик берёт всё подряд от выбранной
   const pick: Pick = (id, m) => {
     if (m.shift && sel != null && ids.includes(sel)) {
@@ -370,7 +361,7 @@ export default function App() {
       if (e.metaKey && e.code === "Digit0") return e.preventDefault(), openView("home");
       if (e.metaKey && e.code === "Digit6") return e.preventDefault(), openView("projects");
       if (e.metaKey && e.code === "KeyP") return e.preventDefault(), window.dispatchEvent(new Event(FIND_PROJECT_EVENT));
-      if (e.metaKey && e.code === "KeyF") return e.preventDefault(), openSearch();
+      if (e.metaKey && e.code === "KeyF") return e.preventDefault(), window.dispatchEvent(new Event(FIND_EVENT));
       if (e.metaKey && /^Digit[1-5]$/.test(e.code)) {
         e.preventDefault();
         const v = VIEWS[Number(e.code.slice(5)) - 1].id;
@@ -384,7 +375,6 @@ export default function App() {
       }
       if (e.metaKey && e.code === "KeyA") return e.preventDefault(), setPicked(ids);
       if (e.key === "Escape" && bulk) return clearPick();
-      if (e.key === "Escape" && searching) return setQuery(null);
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const i = ids.indexOf(sel ?? -1);
       // e.code не зависит от раскладки: N работает и на русской
@@ -404,8 +394,7 @@ export default function App() {
           if (i > 0) setSel(ids[i - 1]);
           break;
         case "Enter":
-          if (searching && task) revealTask(task);
-          else if (task?.status === "inbox") triage(task);
+          if (task?.status === "inbox") triage(task);
           break;
         case "Space":
           e.preventDefault();
@@ -431,7 +420,7 @@ export default function App() {
   });
 
   // Главная и страница проектов занимают всё место справа от меню, без панели деталей
-  const wide = (view === "home" || view === "projects") && !searching;
+  const wide = view === "home" || view === "projects";
   const current = VIEWS.find((v) => v.id === view);
   const project = view.startsWith("p:") ? projects.find((p) => `p:${p.id}` === view) : undefined;
   const tag = view.startsWith("t:") ? tags.find((g) => `t:${g.id}` === view) : undefined;
@@ -449,48 +438,18 @@ export default function App() {
         onTagSave={saveTag} onTagDelete={(id) => run(() => db.deleteTag(id))}
         onNewProject={() => setProjectDlg("new")} onEditProject={(p) => setProjectDlg(p)}
         onSettings={() => setSettingsOpen(true)} onShortcuts={() => setHelpOpen(true)}
-        searching={searching} onSearch={openSearch}
         onSetting={(key, value) => {
           setSettings((st) => ({ ...st, [key]: value }));
           run(() => db.setSetting(key, value));
         }}
         onViewIcon={(id, icon) => run(() => db.setSetting(`icon:${id}`, icon))} />
 
-      {searching ? (
-        <main className="main search-main">
-          <header className="search-head">
-            <Search size={16} />
-            <input ref={searchRef} className="search-input" autoFocus placeholder="Найти задачу: название, заметка, теги, люди"
-              value={query} onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                const i = ids.indexOf(sel ?? -1);
-                if (e.key === "Escape") return e.stopPropagation(), query ? setQuery("") : setQuery(null);
-                if (e.key === "ArrowDown") return e.preventDefault(), e.stopPropagation(), ids[i + 1] != null && setSel(ids[i + 1]);
-                if (e.key === "ArrowUp") return e.preventDefault(), e.stopPropagation(), i > 0 && setSel(ids[i - 1]);
-                if (e.key === "Enter" && task) return e.preventDefault(), e.stopPropagation(), revealTask(task);
-              }} />
-            {query && <span className="search-n">{ids.length ? `Найдено: ${ids.length}` : ""}</span>}
-            <button className="icon-btn" data-tip="Закрыть поиск" data-key="Esc" aria-label="Закрыть поиск" onClick={() => setQuery(null)}><X size={14} /></button>
-          </header>
-          <div className="views">
-            <div className="list" role="listbox">
-              {list.map(({ task: x, group }) => (
-                <div key={x.id}>
-                  {group && <div className="group">{group}</div>}
-                  <TaskRow task={x} project={projects.find((p) => p.id === x.project_id)} selected={x.id === sel} query={query}
-                    picked={false} dropping={dropTarget === x.id && !dropOnDetails} onSelect={() => setSel(x.id)} onToggle={() => toggleDone(x)}
-                    onOpen={() => revealTask(x)} />
-                </div>
-              ))}
-              {!list.length && (
-                <div className="empty">{query.trim() ? "Ничего не нашлось. Ищу в названии, заметке, чеклисте, тегах, по тому, кто назначил, и по пространству." : "Начни вводить. Ищу по всем задачам, включая сделанные и архив. Enter или двойной клик открывает задачу в её списке."}</div>
-              )}
-            </div>
-          </div>
-        </main>
-      ) : view === "calendar" ? (
+      {view === "calendar" ? (
         <CalendarView tasks={shown} projects={projects} selected={sel} onSelect={setSel}
-          filterButton={<FilterButton filter={filt} projects={projects} tags={tags} people={people} onChange={setFilter} />}
+          filterButton={<>
+            <SearchField value={filter.text} onChange={setText} placeholder="Найти в календаре" tip="Поиск по задачам в календаре" />
+            <FilterButton filter={filt} projects={projects} tags={tags} people={people} onChange={setFilter} />
+          </>}
           filterBar={<FilterBar filter={filt} projects={projects} tags={tags} onChange={setFilter} />}
           onToggle={toggleDone}
           onMove={(id, p) => {
@@ -538,6 +497,8 @@ export default function App() {
               <Pencil size={13} /> Изменить
             </button>
           )}
+          <SearchField value={filter.text} onChange={setText} onArrow={stepSel} placeholder="Найти задачу"
+            tip="Поиск по задачам на этом экране: название, заметка, чеклист, теги, люди, ссылки" />
           {view !== "archive" && <SortSwitch value={sort} rev={rev} onChange={setSort} onReverse={reverseSort} />}
           <FilterButton filter={filt} projects={projects} tags={tags} people={people} lockTag={tag?.id} noSpaces={!!project} onChange={setFilter} />
           <LayoutSwitch value={layout} onChange={setLayout} />
@@ -561,18 +522,18 @@ export default function App() {
         <div className={`views ${selecting ? "selecting" : ""}`}>
           {columns ? (
             <BoardView columns={columns} projects={projects} sel={sel} picked={picked}
-              fileDrop={dropOnDetails ? null : dropTarget}
+              fileDrop={dropOnDetails ? null : dropTarget} query={filt.text}
               onPick={pick} onToggle={toggleDone} onMove={moveCards} />
           ) : (
             <div className="list" role="listbox">
               {list.map(({ task: x, group }) => (
                 <div key={x.id}>
                   {group && <div className="group">{group}</div>}
-                  <TaskRow task={x} project={projects.find((p) => p.id === x.project_id)} selected={x.id === sel}
+                  <TaskRow task={x} project={projects.find((p) => p.id === x.project_id)} selected={x.id === sel} query={filt.text}
                     picked={picked.includes(x.id)} dropping={dropTarget === x.id && !dropOnDetails} onSelect={(m) => pick(x.id, m)} onToggle={() => toggleDone(x)} />
                 </div>
               ))}
-              {!list.length && <div className="empty">{filterOn(filt) ? "С таким фильтром задач нет." : emptyText(view)}</div>}
+              {!list.length && <div className="empty">{filt.text.trim() ? "Ничего не нашлось. Ищу в названии, заметке, чеклисте, тегах, по людям, пространству и ссылкам." : filterOn(filt) ? "С такими фильтрами задач нет." : emptyText(view)}</div>}
             </div>
           )}
         </div>
@@ -671,8 +632,7 @@ function TaskRow(props: {
   dropping?: boolean;
   onSelect: (mods: { meta: boolean; shift: boolean }) => void;
   onToggle: () => void;
-  query?: string; // в поиске: подсветить найденное в названии
-  onOpen?: () => void; // двойной клик
+  query?: string; // подсветить найденное поиском в названии
 }) {
   const { task: x, project } = props;
   const ref = useRef<HTMLDivElement>(null);
@@ -686,7 +646,7 @@ function TaskRow(props: {
     <div ref={ref} role="option" aria-selected={props.selected} data-task-id={x.id}
       className={`row ${x.kind === "meeting" ? "meeting" : ""} ${props.selected ? "sel" : ""} ${props.picked ? "picked" : ""} ${done ? "done" : ""} ${cancelled ? "cancelled" : ""} ${props.dropping ? "drop" : ""} ${project ? "pc" : ""}`}
       style={spaceVars(project?.color)}
-      onMouseDown={(e) => props.onSelect({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey })} onDoubleClick={props.onOpen}>
+      onMouseDown={(e) => props.onSelect({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey })}>
       <button className="chk" title={done ? "Вернуть в работу" : "Сделано"} disabled={x.status === "archived"}
         onMouseDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), props.onToggle())} />
       <MeetingMark task={x} />

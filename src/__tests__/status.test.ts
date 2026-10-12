@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { listFor, progressFor } from "../views";
 import { boardFor, canMove, stageOf } from "../boardOps";
 import { isCancelled, isDoneReal } from "../db";
-import { searchTasks } from "../search";
 import { meetingStats, summary } from "../home/data";
 import { freezeToday, task, TODAY } from "./helpers";
 
@@ -50,11 +49,6 @@ describe("статус «Отменено»", () => {
     expect(p.subtitle).toBe("1 из 2 сделано, отменено 1");
     expect(p.fraction).toBe(0.5);
     expect(p.count).toBe(1);
-  });
-
-  it("поиск показывает отменённые отдельной группой", () => {
-    const items = searchTasks("отчёт", [cancelled({ title: "Отчёт" })], []);
-    expect(items[0].group).toBe("Отменено");
   });
 
   it("главная: отменённые не считаются ни сделанными, ни встречами", () => {

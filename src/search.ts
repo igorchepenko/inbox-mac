@@ -1,14 +1,12 @@
 import type { Project, Task } from "./db";
-import { compareBy, type ListItem } from "./views";
-import { today } from "./dates";
 
 /** Без регистра и без разницы между «е» и «ё» */
 export const fold = (s: string) => s.toLocaleLowerCase("ru").replace(/ё/g, "е");
 
-/** Слова запроса: каждое должно найтись в задаче, порядок любой */
+/** Слова запроса: каждое должно найтись, порядок любой */
 export const words = (q: string) => fold(q).split(/\s+/).filter(Boolean);
 
-/** Где искать: название, заметка, пункты чеклиста, теги, кто назначил, пространство, подписи ссылок */
+/** Где искать: название, заметка, пункты чеклиста, теги, кто назначил, участники, пространство, подписи ссылок */
 function haystack(x: Task, space?: Project): string {
   return fold([
     x.title, x.note, ...x.subtasks.map((s) => s.title), ...x.tags.map((t) => t.name), x.assigned_by ?? "", ...x.participants,
@@ -16,34 +14,31 @@ function haystack(x: Task, space?: Project): string {
   ].join("\n"));
 }
 
-/** Где задача живёт сейчас: так же, как разложены списки в меню */
-function placeOf(x: Task, t: string): { rank: number; name: string } {
-  if (x.status === "inbox") return { rank: 0, name: "Новые" };
-  if (x.status === "active") return x.due_date && x.due_date <= t ? { rank: 1, name: "Сегодня" } : { rank: 2, name: "Скоро" };
-  if (x.status === "done") return x.cancelled ? { rank: 3, name: "Отменено" } : { rank: 3, name: "Сделано" };
-  return { rank: 4, name: "Архив" };
+/** Поиск внутри списка, доски и календаря: задачи, где нашлись все слова запроса. Порядок не меняется */
+export function searchTasks(query: string, tasks: Task[], projects: Project[] = []): Task[] {
+  const ws = words(query);
+  if (!ws.length) return tasks;
+  return tasks.filter((x) => {
+    const hay = haystack(x, projects.find((p) => p.id === x.project_id));
+    return ws.every((w) => hay.includes(w));
+  });
 }
 
-/** Поиск по всем задачам, включая сделанные и архив. Группы по месту, внутри сначала совпадения в названии, затем по дате */
-export function searchTasks(query: string, tasks: Task[], projects: Project[]): ListItem[] {
+/** Поиск пространств на странице «Пространства»: по названию и описанию */
+export function searchProjects(query: string, projects: Project[]): Project[] {
   const ws = words(query);
-  if (!ws.length) return [];
-  const t = today();
-  const byDate = compareBy("date");
-  const found = tasks
-    .map((x) => ({ x, hay: haystack(x, projects.find((p) => p.id === x.project_id)), title: fold(x.title), place: placeOf(x, t) }))
-    .filter((f) => ws.every((w) => f.hay.includes(w)))
-    .map((f) => ({ ...f, inTitle: ws.every((w) => f.title.includes(w)) }));
-  found.sort((a, b) =>
-    a.place.rank - b.place.rank || Number(b.inTitle) - Number(a.inTitle)
-    // Архив и сделанные: свежие сверху
-    || (a.place.rank >= 3 ? ((a.x.done_at ?? "") < (b.x.done_at ?? "") ? 1 : -1) : byDate(a.x, b.x)));
-  let last = "";
-  return found.map(({ x, place }) => {
-    const item = place.name !== last ? { task: x, group: place.name } : { task: x };
-    last = place.name;
-    return item;
+  if (!ws.length) return projects;
+  return projects.filter((p) => {
+    const hay = fold(`${p.name}\n${p.description}`);
+    return ws.every((w) => hay.includes(w));
   });
+}
+
+/** Поиск людей в настройках «Кто назначил»: по имени */
+export function searchNames<T extends { name: string }>(query: string, rows: T[]): T[] {
+  const ws = words(query);
+  if (!ws.length) return rows;
+  return rows.filter((r) => ws.every((w) => fold(r.name).includes(w)));
 }
 
 /** Куски текста для подсветки найденного: [обычный, найденный, обычный, ...] */
