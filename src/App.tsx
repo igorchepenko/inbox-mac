@@ -12,7 +12,7 @@ import "./search.css";
 import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
 import { Icon } from "./icons";
 import { ProjectDialog } from "./widgets";
-import { CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Search, Tag as TagIcon, X } from "lucide-react";
+import { Check, CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Search, Tag as TagIcon, X } from "lucide-react";
 import { applyFilter, EMPTY_FILTER, filterOn, NO_SPACE, peopleOf, type TaskFilter } from "./tags";
 import { Assignee, FilterBar, FilterButton, TagChips, TagEditor } from "./TagsUI";
 import { QuadrantGlyph } from "./extras";
@@ -145,21 +145,27 @@ export default function App() {
   const lastIdx = useRef(0);
   useEffect(() => {
     if (view === "calendar" && !searching) return; // в календаре выбор не зависит от списка
+    if (sel == null && !searching) return; // ничего не выбрано: так и оставляем, пока не кликнут по задаче
     const i = ids.indexOf(sel ?? -1);
     if (i >= 0) lastIdx.current = i;
     else setSel(ids[Math.min(lastIdx.current, ids.length - 1)] ?? null);
   }, [ids.join(","), sel]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Выбор задачи открывает правую панель: по умолчанию она свёрнута
+  const select = (id: number | null) => {
+    setSel(id);
+    if (id != null) togglePane("det", false);
+  };
   const clearPick = () => (setPicked([]), setSelecting(false));
-  const openView = (v: ViewId, from = tasks) => {
+  const openView = (v: ViewId) => {
     setView(v);
     setQuery(null);
     clearPick();
     setFilter((f) => ({ ...EMPTY_FILTER, spaces: f.spaces }));
     setTagEdit(null);
     lastIdx.current = 0;
-    const s = sortOf(v, settings);
-    setSel(listFor(v, from, s, revOf(v, s, settings))[0]?.task.id ?? null);
+    setSel(null);
+    togglePane("det", true); // в списке, доске и календаре панель закрыта и ничего не выделено, пока не кликнешь по задаче
     db.setSetting("last.view", v).catch(() => {}); // для начального экрана «Где остановился»
   };
 
@@ -178,11 +184,11 @@ export default function App() {
   };
 
   // Первая загрузка: начальный экран и сочетание из настроек
-  function startUp(t: Task[], st: Record<string, string>) {
+  function startUp(_t: Task[], st: Record<string, string>) {
     const start = pref(st, "start.view");
     const v = (start === "last" ? st["last.view"] ?? "inbox" : start) as ViewId;
     // Удалённый проект или спрятанный список сам сменится на «Новые»
-    openView(v, t);
+    openView(v);
     const accel = pref(st, "quick.shortcut");
     // Сочетание у профиля своё, а занято оно одно на приложение: после смены профиля ставим сохранённое в нём.
     // Если не досталось ⌥Space, об этом уже говорит плашка из Rust
@@ -233,13 +239,13 @@ export default function App() {
   };
   const openTask = (x: Task) => {
     setView(homeOf(x));
-    setSel(x.id);
+    select(x.id);
   };
   // Найденная задача открывается в своём списке. Фильтр сбрасываем, иначе он мог бы её спрятать
   const revealTask = (x: Task) => {
     openView(homeOf(x));
     setFilter(EMPTY_FILTER);
-    setSel(x.id);
+    select(x.id);
   };
   const openSearch = () => {
     setQuery((q) => q ?? "");
@@ -257,9 +263,12 @@ export default function App() {
       const base = picked.length ? picked : sel != null && sel !== id ? [sel] : [];
       setPicked(base.includes(id) ? base.filter((x) => x !== id) : [...base, id]);
     } else setPicked([]);
-    setSel(id);
+    select(id);
   };
-  const setLayout = (l: Layout) => run(() => db.setSetting(`layout:${view}`, l));
+  const setLayout = (l: Layout) => {
+    if (l !== layout) (setSel(null), togglePane("det", true)); // смена вида — тоже «переход»: панель закрыта, выделения нет
+    run(() => db.setSetting(`layout:${view}`, l));
+  };
   const setSort = (s: SortBy) => {
     setSettings((st) => ({ ...st, [`sort:${view}`]: s }));
     run(() => db.setSetting(`sort:${view}`, s));
@@ -280,7 +289,7 @@ export default function App() {
         project_id: oneSpace, due_date: day, start_time: start == null ? null : toHHMM(start), end_time: end == null ? null : toHHMM(end),
       });
       await reload();
-      setSel(id);
+      select(id);
       setTimeout(() => {
         const el = document.querySelector<HTMLTextAreaElement>(".det-title");
         el?.focus();
@@ -308,7 +317,7 @@ export default function App() {
         // Записанная сразу в «К выполнению» или «Готово» открывается там, где теперь лежит
         const x = all.find((t) => t.id === id);
         setView(x && draft.stage ? homeOf(x) : "inbox");
-        setSel(id);
+        select(id);
       } catch (e) {
         setError(String(e));
       }
@@ -344,7 +353,7 @@ export default function App() {
       if (p.type === "drop") {
         setDropTarget(null);
         if (id != null && p.paths.length) {
-          setSel(id);
+          select(id);
           run(() => db.attachFiles(id, p.paths));
         }
         return;
@@ -396,12 +405,12 @@ export default function App() {
         case "ArrowDown":
         case "KeyJ":
           e.preventDefault();
-          if (ids[i + 1] != null) setSel(ids[i + 1]);
+          if (ids[i + 1] != null) select(ids[i + 1]);
           break;
         case "ArrowUp":
         case "KeyK":
           e.preventDefault();
-          if (i > 0) setSel(ids[i - 1]);
+          if (i > 0) select(ids[i - 1]);
           break;
         case "Enter":
           if (searching && task) revealTask(task);
@@ -489,7 +498,7 @@ export default function App() {
           </div>
         </main>
       ) : view === "calendar" ? (
-        <CalendarView tasks={shown} projects={projects} selected={sel} onSelect={setSel}
+        <CalendarView tasks={shown} projects={projects} selected={sel} onSelect={select}
           filterButton={<FilterButton filter={filt} projects={projects} tags={tags} people={people} onChange={setFilter} />}
           filterBar={<FilterBar filter={filt} projects={projects} tags={tags} onChange={setFilter} />}
           onToggle={toggleDone}
@@ -688,7 +697,9 @@ function TaskRow(props: {
       style={spaceVars(project?.color)}
       onMouseDown={(e) => props.onSelect({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey })} onDoubleClick={props.onOpen}>
       <button className="chk" title={done ? "Вернуть в работу" : "Сделано"} disabled={x.status === "archived"}
-        onMouseDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), props.onToggle())} />
+        onMouseDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), props.onToggle())}>
+        {done && !cancelled && <Check size={11} strokeWidth={3.2} />}
+      </button>
       <MeetingMark task={x} />
       <span className="t">{props.query ? marks(x.title, props.query).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part)) : x.title}</span>
       <TagChips tags={x.tags} max={2} />

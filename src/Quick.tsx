@@ -37,9 +37,9 @@ export default function QuickApp() {
   // Пока окно спрятано, браузер может не сообщать об изменениях, поэтому меряем ещё и при открытии
   const fit = () => {
     if (!root.current) return;
-    // Окно стоит на шестой части экрана (lib.rs, place_quick) и растёт вниз не дальше Dock: дальше прокручиваются параметры
+    // Верх карточки стоит на двадцатой части экрана, как у окна по N (lib.rs, place_quick) и растёт вниз не дальше Dock: дальше прокручиваются параметры
     const zoom = currentZoom();
-    root.current.style.setProperty("--qmax", `${Math.floor((screen.availHeight * 5) / 6 - 24) / zoom}px`);
+    root.current.style.setProperty("--qmax", `${Math.floor((screen.availHeight * 19) / 20 - 14) / zoom}px`);
     // Размер текста в настройках масштабирует окно: высота карточки в пикселях окна больше на этот множитель
     const h = Math.ceil(root.current.getBoundingClientRect().height * zoom);
     win.setSize(new LogicalSize(580, h)).catch(() => {});
