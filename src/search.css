@@ -1,12 +1,22 @@
-/* Поиск по задачам (⌘F) и направление сортировки */
-.search-head { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 8px 0 14px; color: var(--muted);
-  background: var(--field); border: 1px solid var(--line); border-radius: 12px; }
-.search-head:focus-within { border-color: var(--stand); }
-.search-input { flex: 1; min-width: 0; font: 600 17px var(--font); color: var(--fg); background: none; border: 0; outline: none; padding: 10px 0; }
-.search-input:focus-visible { outline: none; }
-.search-input::placeholder { color: var(--muted); font-weight: 600; }
-.search-n { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
-.row .t mark { background: color-mix(in srgb, var(--stand) 28%, transparent); color: inherit; border-radius: 3px; }
+/* Поиск в шапке рядом с сортировкой и фильтрами (⌘F) */
+.fsearch { display: inline-flex; align-items: center; gap: 6px; height: 26px; width: 150px; padding: 0 6px 0 8px; flex: none;
+  color: var(--muted); background: var(--field); border: 1px solid var(--line); border-radius: 8px; transition: width .15s; }
+.fsearch:focus-within, .fsearch.has { width: 210px; }
+.fsearch:focus-within { border-color: var(--stand); }
+.fsearch.has { color: var(--fg); }
+.fsearch input { flex: 1; min-width: 0; border: 0; background: none; outline: none; padding: 0; font-size: 12px; color: var(--fg); }
+.fsearch input:focus-visible { outline: none; }
+.fsearch input::placeholder { color: var(--muted); }
+.fsearch-x { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; color: var(--muted); flex: none; }
+.fsearch-x:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 8%, transparent); }
+@container (max-width: 800px) {
+  .head .fsearch { width: 120px; }
+  .head .fsearch:focus-within, .head .fsearch.has { width: 170px; }
+}
+@media (prefers-reduced-motion: reduce) { .fsearch { transition: none; } }
+.set-group > .fsearch { width: 100%; height: 30px; margin-bottom: 4px; }
+.pp-none { grid-column: 1 / -1; color: var(--muted); padding: 8px 2px; }
+.row .t mark, .kcard .t mark { background: color-mix(in srgb, var(--stand) 28%, transparent); color: inherit; border-radius: 3px; }
 
 .sort-switch { display: inline-flex; align-items: center; gap: 4px; }
 .sort-dir { padding: 3px 6px; }

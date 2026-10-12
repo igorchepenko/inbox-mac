@@ -1,9 +1,11 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { Pencil, Plus } from "lucide-react";
 import { isDoneReal, type Project, type Task } from "./db";
 import { fmtDay, today } from "./dates";
 import { Icon } from "./icons";
 import { plural, type ViewId } from "./views";
+import { searchProjects } from "./search";
+import { SearchField } from "./TagsUI";
 
 interface Card {
   project: Project;
@@ -45,20 +47,23 @@ export default function ProjectsPage(props: {
   onEdit: (p: Project) => void;
   onNew: () => void;
 }) {
-  const cards = cardsFor(props.projects, props.tasks);
-  const open = cards.reduce((n, c) => n + c.open, 0);
-  const overdue = cards.reduce((n, c) => n + c.overdue, 0);
+  const [query, setQuery] = useState("");
+  const all = cardsFor(props.projects, props.tasks);
+  const cards = cardsFor(searchProjects(query, props.projects), props.tasks);
+  const open = all.reduce((n, c) => n + c.open, 0);
+  const overdue = all.reduce((n, c) => n + c.overdue, 0);
   return (
     <div className="pp">
       <header className="pp-head" data-tauri-drag-region>
         <div>
           <h2>Пространства</h2>
           <p>
-            {cards.length ? plural(cards.length, "пространство", "пространства", "пространств") : "Пока ни одного пространства"}
+            {all.length ? plural(all.length, "пространство", "пространства", "пространств") : "Пока ни одного пространства"}
             {open > 0 && <> · {plural(open, "открытая задача", "открытые задачи", "открытых задач")}</>}
             {overdue > 0 && <> · <span className="pp-bad">{overdue} просрочено</span></>}
           </p>
         </div>
+        {all.length > 0 && <SearchField value={query} onChange={setQuery} placeholder="Найти пространство" tip="Поиск по названию и описанию пространства" />}
         <button className="cta stand narrow" onClick={props.onNew}><Plus size={14} /> Новое пространство</button>
       </header>
       <div className="pp-grid">
@@ -94,6 +99,7 @@ export default function ProjectsPage(props: {
             </div>
           );
         })}
+        {query.trim() && !cards.length && <div className="pp-none">Ничего не нашлось. Ищу в названии и описании пространства.</div>}
         <button className="pp-card pp-new" onClick={props.onNew}><Plus size={18} /> Новое пространство</button>
       </div>
     </div>

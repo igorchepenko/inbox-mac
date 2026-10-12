@@ -14,6 +14,7 @@ import { Calendar, Popover } from "./widgets";
 import { QuadrantGlyph } from "./extras";
 import { EASE, edgeScroll, pastThreshold, reduceMotion, trackPointer, useFlip } from "./drag";
 import "./board.css";
+import { marks } from "./search";
 import { PriorityIcon } from "./priority";
 import { ALL_SHOWN, tips, type Shown } from "./fields";
 
@@ -58,7 +59,7 @@ export function SortSwitch({ value, rev, onChange, onReverse }: { value: SortBy;
             className={value === s.id ? "on" : ""} onClick={() => (value === s.id ? onReverse() : onChange(s.id))}>{icons[s.id]}</button>
         ))}
       </div>
-      <button className={`icon-btn sort-dir ${rev ? "on" : ""}`} aria-label={dir.asc ? "По возрастанию" : "По убыванию"}
+      <button className="icon-btn sort-dir" aria-label={dir.asc ? "По возрастанию" : "По убыванию"}
         data-tip={`${dir.asc ? "По возрастанию" : "По убыванию"}: ${dir.text}. Нажми: ${other.text}`} onClick={onReverse}>
         {dir.asc ? <ArrowUpNarrowWide size={14} /> : <ArrowDownWideNarrow size={14} />}
       </button>
@@ -108,6 +109,7 @@ export function BoardView(props: {
   sel: number | null;
   picked: number[];
   fileDrop: number | null; // над какой карточкой держат файлы из Finder
+  query?: string; // подсветить найденное поиском в названии
   onPick: Pick;
   onToggle: (x: Task) => void;
   onMove: (ids: number[], col: Stage) => Promise<void>;
@@ -235,7 +237,7 @@ export function BoardView(props: {
                         <button className="chk kchk" aria-label={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
                           onClick={(e) => (e.stopPropagation(), props.onToggle(x))}>{cancelled ? <X size={11} strokeWidth={3.2} /> : <Check size={11} strokeWidth={3.2} />}</button>
                         {show("kind") && <MeetingMark task={x} />}
-                        <span className="t" data-tip={x.title} data-tip-full="">{x.title}</span>
+                        <span className="t" data-tip={x.title} data-tip-full="">{props.query ? marks(x.title, props.query).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part)) : x.title}</span>
                         {show("priority") && x.priority > 0 && !done && <span className="tipped" data-tip={tips.priority(x.priority)}><PriorityIcon p={x.priority} /></span>}
                       </div>
                       <Meta task={x} project={project} show={show} />
