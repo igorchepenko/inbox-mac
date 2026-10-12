@@ -61,7 +61,12 @@ export default function QuickApp() {
       listen("quick-reset", () => setKey((k) => k + 1)),
       win.onFocusChanged(({ payload }) => payload && focusTitle()),
     ];
-    return () => un.forEach((p) => p.then((f) => f()));
+    // Esc, когда фокус вне формы (панель не активирует приложение, и webview может не держать фокус): закрываем окно
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !e.defaultPrevented) (e.preventDefault(), hideQuick());
+    };
+    addEventListener("keydown", onEsc);
+    return () => (removeEventListener("keydown", onEsc), un.forEach((p) => p.then((f) => f())));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async (title: string, note: string, draft: Draft) => {
@@ -90,7 +95,7 @@ export default function QuickApp() {
 
   return (
     <div ref={root} className="quick-root">
-      <QuickForm key={key} projects={projects} tags={tags} people={people} remindBefore={remindBefore} onSave={save} onCancel={cancel} onCreateProject={createProject} profile={profileName(activeProfile())} />
+      <QuickForm key={key} projects={projects} tags={tags} people={people} remindBefore={remindBefore} onSave={save} onCancel={cancel} closable onCreateProject={createProject} profile={profileName(activeProfile())} />
       {error && <div className="error">Не сохранилось: {error}</div>}
     </div>
   );
