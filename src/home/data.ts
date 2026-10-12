@@ -10,6 +10,7 @@ export const BLOCKS = [
   { id: "matrix", name: "Матрица Эйзенхауэра", hint: "необязательно", span: 5 },
   { id: "stats", name: "Статистика", hint: "", span: 8 },
   { id: "projects", name: "Пространства", hint: "", span: 4 },
+  { id: "meetings", name: "Встречи", hint: "статистика", span: 12 },
 ] as const;
 
 export type BlockId = (typeof BLOCKS)[number]["id"];
@@ -264,6 +265,47 @@ export function fmtHours(h: number): string {
   if (h < 1) return `${Math.max(1, Math.round(h * 60))} мин`;
   if (h < 24) return `${Math.round(h)} ч`;
   return `${(h / 24).toFixed(1).replace(".", ",")} дн.`;
+}
+
+// Встречи
+
+export interface MeetingPerson {
+  name: string;
+  count: number;
+  minutes: number;
+}
+
+export interface MeetingStats {
+  count: number;
+  done: number; // уже прошедшие (отмеченные сделанными)
+  minutes: number; // только встречи со временем начала
+  untimed: number; // встречи без времени: в часы не входят
+  people: MeetingPerson[]; // по убыванию числа встреч
+}
+
+/** Встречи (kind='meeting') с датой в текущей неделе (с понедельника) или месяце. Работает по assigned_by */
+export function meetingStats(tasks: Task[], period: Period): MeetingStats {
+  const t = today();
+  const from = period === "week" ? weekStart(t) : monthStart(t);
+  const to = period === "week" ? addDays(from, 6) : monthEnd(t);
+  const list = tasks.filter((x) => x.kind === "meeting" && x.status !== "inbox" && !!x.due_date && x.due_date >= from && x.due_date <= to);
+  const byName = new Map<string, MeetingPerson>();
+  for (const x of list) {
+    const name = x.assigned_by?.trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    const p = byName.get(key) ?? { name, count: 0, minutes: 0 };
+    p.count++;
+    p.minutes += duration(x);
+    byName.set(key, p);
+  }
+  return {
+    count: list.length,
+    done: list.filter(isDone).length,
+    minutes: list.reduce((s, x) => s + duration(x), 0),
+    untimed: list.filter((x) => !x.start_time).length,
+    people: [...byName.values()].sort((a, b) => b.count - a.count || b.minutes - a.minutes || a.name.localeCompare(b.name, "ru")),
+  };
 }
 
 // Проекты

@@ -54,6 +54,7 @@ export default function Home(props: HomeProps) {
       case "matrix": return <MatrixBlock tasks={tasks} row={row} />;
       case "stats": return <StatsBlock tasks={tasks} projects={projects} cfg={cfg} />;
       case "projects": return <ProjectsBlock tasks={tasks} projects={projects} onNew={props.onNewProject} />;
+      case "meetings": return <MeetingsBlock tasks={tasks} />;
     }
   };
 
@@ -456,6 +457,44 @@ function ProjectsBlock(props: { tasks: Task[]; projects: Project[]; onNew: () =>
         ))}
         {!list.length && <div className="h-note">Пространств пока нет.</div>}
       </div>
+    </>
+  );
+}
+
+// 8. Встречи
+
+function MeetingsBlock(props: { tasks: Task[] }) {
+  const [period, setPeriod] = useState<Period>("week");
+  const m = useMemo(() => H.meetingStats(props.tasks, period), [props.tasks, period]);
+  const top = m.people.slice(0, 6);
+  const max = Math.max(1, ...top.map((p) => p.count));
+  const when = period === "week" ? "на этой неделе" : "в этом месяце";
+  return (
+    <>
+      <Head title="Встречи">
+        <span className="h-seg">
+          <button className={period === "week" ? "on" : ""} onClick={() => setPeriod("week")}>Неделя</button>
+          <button className={period === "month" ? "on" : ""} onClick={() => setPeriod("month")}>Месяц</button>
+        </span>
+      </Head>
+      <div className="h-kpis h-kpis-3">
+        <div className="h-kpi"><b>{m.count}</b><span>{plural(m.count, "встреча", "встречи", "встреч").replace(/^\d+ /, "")} {when}{m.done ? `, прошло ${m.done}` : ""}</span></div>
+        <div className="h-kpi"><b>{m.minutes ? fmtDuration(m.minutes) : "0 ч"}</b><span>в календаре{m.untimed ? `, ещё ${m.untimed} без времени` : ""}</span></div>
+        <div className="h-kpi"><b>{m.people.length}</b><span>{m.people.length === 1 ? "человек назначил" : "людей назначили"} встречи</span></div>
+      </div>
+      {top.length ? (
+        <div className="h-mtg-people">
+          {top.map((p) => (
+            <div key={p.name} className="h-mtg-p">
+              <b title={p.name}>{p.name}</b>
+              <span className="mono h-pj-n">{p.count} · {p.minutes ? fmtDuration(p.minutes) : "—"}</span>
+              <span className="pb"><i style={{ width: `${(p.count / max) * 100}%`, background: "var(--stand)" }} /></span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="h-note">{m.count ? "У встреч не указано, кто назначил." : `Встреч ${when} нет. Тип «Встреча» ставится в карточке задачи.`}</div>
+      )}
     </>
   );
 }
