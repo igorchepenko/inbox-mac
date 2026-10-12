@@ -187,7 +187,8 @@ fn toggle_quick(app: &AppHandle) {
     let _ = app.emit_to("quick", "quick-open", ());
 }
 
-/// Как Spotlight: по центру по горизонтали, верх на шестой части высоты экрана без Dock и строки меню.
+/// Как Spotlight: по центру по горизонтали, карточка на той же высоте, что у окна «Новая задача» по N в главном окне
+/// (5% высоты, `.overlay:has(> .qi)` в styles.css): верх карточки на двадцатой части высоты экрана без Dock и строки меню.
 /// Окно растёт вниз под длину формы, поэтому по центру по вертикали его не ставим: длинная форма уходила под Dock.
 /// Сколько можно расти вниз, считает само окно (Quick.tsx, maxHeight)
 fn place_quick(w: &tauri::WebviewWindow) {
@@ -197,7 +198,9 @@ fn place_quick(w: &tauri::WebviewWindow) {
     };
     let area = m.work_area();
     let x = area.position.x + (area.size.width as i32 - size.width as i32) / 2;
-    let y = area.position.y + area.size.height as i32 / 6;
+    // Вокруг карточки в окне 10 px отступа (.quick-root), их вычитаем, чтобы сама карточка встала на 5%
+    let pad = (10.0 * m.scale_factor()) as i32;
+    let y = area.position.y + area.size.height as i32 / 20 - pad;
     let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
 }
 
