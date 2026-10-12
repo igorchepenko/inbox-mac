@@ -7,6 +7,7 @@ import { Icon } from "./icons";
 import { PALETTE } from "./palette";
 import { addTagName, canonicalPerson, EMPTY_FILTER, filterOn, NO_PERSON, NO_SPACE, pickColor, sameName, suggest, TAG_COLORS, TAG_MAX, TAG_MAX_LEN, type TaskFilter } from "./tags";
 import { ColorGrid, Popover } from "./widgets";
+import { tips } from "./fields";
 import { plural } from "./views";
 
 const tagVars = (color: string | undefined) => ({ "--c": color ? `var(--${color})` : "var(--muted)" }) as CSSProperties;
@@ -32,8 +33,8 @@ export function TagChips({ tags, max = 3 }: { tags: Tag[]; max?: number }) {
   const rest = tags.length - max;
   return (
     <span className="tchips">
-      {tags.slice(0, rest > 0 ? max : tags.length).map((t) => <TagChip key={t.id} name={t.name} color={t.color} />)}
-      {rest > 0 && <span className="meta" title={tags.slice(max).map((t) => t.name).join(", ")}>+{rest}</span>}
+      {tags.slice(0, rest > 0 ? max : tags.length).map((t) => <TagChip key={t.id} name={t.name} color={t.color} title={tips.tag(t.name)} />)}
+      {rest > 0 && <span className="meta" title={tips.tagsRest(tags.slice(max).map((t) => t.name))}>+{rest}</span>}
     </span>
   );
 }

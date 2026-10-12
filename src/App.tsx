@@ -12,7 +12,7 @@ import "./search.css";
 import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
 import { Icon } from "./icons";
 import { ProjectDialog } from "./widgets";
-import { CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Search, Tag as TagIcon, X } from "lucide-react";
+import { CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Search, Tag as TagIcon, Users, X } from "lucide-react";
 import { applyFilter, EMPTY_FILTER, filterOn, NO_SPACE, peopleOf, type TaskFilter } from "./tags";
 import { Assignee, FilterBar, FilterButton, TagChips, TagEditor } from "./TagsUI";
 import { QuadrantGlyph } from "./extras";
@@ -31,6 +31,7 @@ import { PriorityIcon } from "./priority";
 import { FIND_PROJECT_EVENT, Sidebar, viewIcon } from "./Sidebar";
 import ProjectsPage from "./ProjectsPage";
 import { Tooltips } from "./Tooltips";
+import { ALL_SHOWN, shownFields, tips, type Shown } from "./fields";
 import { QuickKeyBanner } from "./QuickKeyCheck";
 import { usePanes } from "./panes";
 import { Frame } from "./Frame";
@@ -121,6 +122,7 @@ export default function App() {
   }, [reload]);
 
   const layout = layoutOf(view, settings);
+  const listFields = useMemo(() => shownFields(settings, "list"), [settings]);
   const sort = sortOf(view, settings);
   const rev = revOf(view, sort, settings);
   const people = useMemo(() => peopleOf(tasks), [tasks]);
@@ -562,14 +564,15 @@ export default function App() {
           {columns ? (
             <BoardView columns={columns} projects={projects} sel={sel} picked={picked}
               fileDrop={dropOnDetails ? null : dropTarget}
-              onPick={pick} onToggle={toggleDone} onMove={moveCards} />
+              onPick={pick} onToggle={toggleDone} onMove={moveCards} show={shownFields(settings, "board")} />
           ) : (
             <div className="list" role="listbox">
               {list.map(({ task: x, group }) => (
                 <div key={x.id}>
                   {group && <div className="group">{group}</div>}
                   <TaskRow task={x} project={projects.find((p) => p.id === x.project_id)} selected={x.id === sel}
-                    picked={picked.includes(x.id)} dropping={dropTarget === x.id && !dropOnDetails} onSelect={(m) => pick(x.id, m)} onToggle={() => toggleDone(x)} />
+                    picked={picked.includes(x.id)} dropping={dropTarget === x.id && !dropOnDetails} onSelect={(m) => pick(x.id, m)} onToggle={() => toggleDone(x)}
+                    show={listFields} />
                 </div>
               ))}
               {!list.length && <div className="empty">{filterOn(filt) ? "С таким фильтром задач нет." : emptyText(view)}</div>}
@@ -673,8 +676,10 @@ function TaskRow(props: {
   onToggle: () => void;
   query?: string; // в поиске: подсветить найденное в названии
   onOpen?: () => void; // двойной клик
+  show?: Shown; // какие поля видны, Настройки → «Поля задач»
 }) {
   const { task: x, project } = props;
+  const show = props.show ?? ALL_SHOWN;
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (props.selected) ref.current?.scrollIntoView({ block: "nearest" });
@@ -689,25 +694,31 @@ function TaskRow(props: {
       onMouseDown={(e) => props.onSelect({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey })} onDoubleClick={props.onOpen}>
       <button className="chk" title={done ? "Вернуть в работу" : "Сделано"} disabled={x.status === "archived"}
         onMouseDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), props.onToggle())} />
-      <MeetingMark task={x} />
-      <span className="t">{props.query ? marks(x.title, props.query).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part)) : x.title}</span>
-      <TagChips tags={x.tags} max={2} />
-      {x.assigned_by && <Assignee name={x.assigned_by} />}
-      {x.subtasks.length > 0 && (
-        <span className="meta badge" title="Чеклист"><ListChecks size={12} /> {x.subtasks.filter((s) => s.done).length}/{x.subtasks.length}</span>
+      {show("kind") && <MeetingMark task={x} />}
+      {/* Обрезанное название целиком в подсказке, сразу при наведении */}
+      <span className="t" data-tip={x.title} data-tip-full="">
+        {props.query ? marks(x.title, props.query).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part)) : x.title}
+      </span>
+      {show("tags") && <TagChips tags={x.tags} max={2} />}
+      {show("assignee") && x.assigned_by && <Assignee name={x.assigned_by} />}
+      {show("participants") && x.participants.length > 0 && (
+        <span className="meta badge" data-tip={tips.participants(x.participants)}><Users size={12} /> {x.participants.length}</span>
       )}
-      {x.links.length > 0 && <span className="meta badge" title="Ссылки"><Link2 size={12} />{x.links.length > 1 ? ` ${x.links.length}` : ""}</span>}
-      {x.files.length > 0 && <span className="meta badge" title="Файлы"><Paperclip size={12} />{x.files.length > 1 ? ` ${x.files.length}` : ""}</span>}
-      {x.recurrence && !done && <span className="meta badge" title="Повторяется"><Repeat size={12} /></span>}
-      {x.quadrant && !done && <QuadrantGlyph q={x.quadrant} />}
-      {x.start_time && <span className="meta" title="Время">{fmtRange(x.start_time, x.end_time)}</span>}
-      <DueFlag task={x} />
-      {x.remind_at && !x.reminded && !done && <span className="meta" title="Напоминание">⏰ {stampTime(x.remind_at)}</span>}
-      {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
-      {(x.status !== "archived" || cancelled) && <StageChip task={x} />}
-      {project && <span className="tag" style={{ background: `var(--${project.color})`, color: `var(--${project.color}-ink, var(--on-acc))` }}>{project.name}</span>}
-      {x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`}>{fmtDay(x.due_date)}</span>}
-      <CreatedMeta task={x} />
+      {show("checklist") && x.subtasks.length > 0 && (
+        <span className="meta badge" data-tip={tips.checklist(x)}><ListChecks size={12} /> {x.subtasks.filter((s) => s.done).length}/{x.subtasks.length}</span>
+      )}
+      {show("links") && x.links.length > 0 && <span className="meta badge" data-tip={tips.links(x)}><Link2 size={12} />{x.links.length > 1 ? ` ${x.links.length}` : ""}</span>}
+      {show("files") && x.files.length > 0 && <span className="meta badge" data-tip={tips.files(x)}><Paperclip size={12} />{x.files.length > 1 ? ` ${x.files.length}` : ""}</span>}
+      {show("repeat") && x.recurrence && !done && <span className="meta badge" data-tip={tips.repeat(x)}><Repeat size={12} /></span>}
+      {show("matrix") && x.quadrant && !done && <span className="tipped" data-tip={tips.matrix(x.quadrant)}><QuadrantGlyph q={x.quadrant} /></span>}
+      {show("time") && x.start_time && <span className="meta" data-tip={tips.time(x)}>{fmtRange(x.start_time, x.end_time)}</span>}
+      {show("due") && <DueFlag task={x} />}
+      {show("remind") && x.remind_at && !x.reminded && !done && <span className="meta" data-tip={tips.remind(x)}>⏰ {stampTime(x.remind_at)}</span>}
+      {show("priority") && x.priority > 0 && !done && <span className="tipped" data-tip={tips.priority(x.priority)}><PriorityIcon p={x.priority} /></span>}
+      {show("stage") && (x.status !== "archived" || cancelled) && <StageChip task={x} />}
+      {show("space") && project && <span className="tag" data-tip={tips.space(project.name)} style={{ background: `var(--${project.color})`, color: `var(--${project.color}-ink, var(--on-acc))` }}>{project.name}</span>}
+      {show("date") && x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`} data-tip={tips.date(x, overdue)}>{fmtDay(x.due_date)}</span>}
+      {show("created") && <CreatedMeta task={x} />}
     </div>
   );
 }
@@ -716,7 +727,7 @@ function TaskRow(props: {
 function StageChip({ task }: { task: Task }) {
   const st = STAGES.find((s) => s.key === stageOf(task))!;
   return (
-    <span className="stage" style={{ "--c": `var(--${st.accent})` } as React.CSSProperties}>
+    <span className="stage" data-tip={tips.stage(task)} style={{ "--c": `var(--${st.accent})` } as React.CSSProperties}>
       <Icon name={st.icon} size={11} /> {st.name}
     </span>
   );

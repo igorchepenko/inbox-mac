@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { spaceVars } from "./palette";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Bell, CalendarDays, CalendarPlus, Check, Clock, X, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Bell, CalendarDays, CalendarPlus, Check, Clock, X, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound, Users } from "lucide-react";
 import { Assignee, TagChip } from "./TagsUI";
 import { CreatedMeta, DueFlag, MeetingMark } from "./TaskBits";
 import { isCancelled, type Project, type Task } from "./db";
@@ -15,6 +15,7 @@ import { QuadrantGlyph } from "./extras";
 import { EASE, edgeScroll, pastThreshold, reduceMotion, trackPointer, useFlip } from "./drag";
 import "./board.css";
 import { PriorityIcon } from "./priority";
+import { ALL_SHOWN, tips, type Shown } from "./fields";
 
 /** Переключатель вида списка в шапке */
 export function LayoutSwitch({ value, onChange }: { value: Layout; onChange: (l: Layout) => void }) {
@@ -69,26 +70,27 @@ export function SortSwitch({ value, rev, onChange, onReverse }: { value: SortBy;
 export type Pick = (id: number, mods: { meta: boolean; shift: boolean }) => void;
 const mods = (e: React.MouseEvent | MouseEvent) => ({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey });
 
-/** Подписи под названием: дата, время, напоминание, проект, чеклист, ссылки, файлы */
-function Meta({ task: x, project }: { task: Task; project?: Project }) {
+/** Подписи под названием: дата, время, напоминание, проект, чеклист, ссылки, файлы. Какие видны — Настройки → «Поля задач» */
+function Meta({ task: x, project, show }: { task: Task; project?: Project; show: Shown }) {
   const done = x.status === "done" || x.status === "archived";
   const overdue = x.status === "active" && !!x.due_date && x.due_date < today();
   const checked = x.subtasks.filter((s) => s.done).length;
   return (
     <div className="card-meta">
-      {x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`}><CalendarDays size={11} /> {fmtDay(x.due_date)}</span>}
-      {x.start_time && <span className="meta"><Clock size={11} /> {fmtRange(x.start_time, x.end_time)}</span>}
-      <DueFlag task={x} />
-      {x.remind_at && !x.reminded && !done && <span className="meta"><Bell size={11} /> {stampTime(x.remind_at)}</span>}
-      {x.subtasks.length > 0 && <span className="meta"><ListChecks size={11} /> {checked}/{x.subtasks.length}</span>}
-      {x.links.length > 0 && <span className="meta"><Link2 size={11} /> {x.links.length}</span>}
-      {x.files.length > 0 && <span className="meta"><Paperclip size={11} /> {x.files.length}</span>}
-      {x.recurrence && !done && <span className="meta" title="Повторяется"><Repeat size={11} /></span>}
-      {x.quadrant && !done && <QuadrantGlyph q={x.quadrant} />}
-      {project && <span className="tag" style={{ background: `var(--${project.color})`, color: `var(--${project.color}-ink, var(--on-acc))` }}>{project.name}</span>}
-      {x.assigned_by && <Assignee name={x.assigned_by} />}
-      {x.tags.map((t) => <TagChip key={t.id} name={t.name} color={t.color} />)}
-      <CreatedMeta task={x} />
+      {show("date") && x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`} data-tip={tips.date(x, overdue)}><CalendarDays size={11} /> {fmtDay(x.due_date)}</span>}
+      {show("time") && x.start_time && <span className="meta" data-tip={tips.time(x)}><Clock size={11} /> {fmtRange(x.start_time, x.end_time)}</span>}
+      {show("due") && <DueFlag task={x} />}
+      {show("remind") && x.remind_at && !x.reminded && !done && <span className="meta" data-tip={tips.remind(x)}><Bell size={11} /> {stampTime(x.remind_at)}</span>}
+      {show("checklist") && x.subtasks.length > 0 && <span className="meta" data-tip={tips.checklist(x)}><ListChecks size={11} /> {checked}/{x.subtasks.length}</span>}
+      {show("links") && x.links.length > 0 && <span className="meta" data-tip={tips.links(x)}><Link2 size={11} /> {x.links.length}</span>}
+      {show("files") && x.files.length > 0 && <span className="meta" data-tip={tips.files(x)}><Paperclip size={11} /> {x.files.length}</span>}
+      {show("repeat") && x.recurrence && !done && <span className="meta" data-tip={tips.repeat(x)}><Repeat size={11} /></span>}
+      {show("matrix") && x.quadrant && !done && <span className="tipped" data-tip={tips.matrix(x.quadrant)}><QuadrantGlyph q={x.quadrant} /></span>}
+      {show("space") && project && <span className="tag" data-tip={tips.space(project.name)} style={{ background: `var(--${project.color})`, color: `var(--${project.color}-ink, var(--on-acc))` }}>{project.name}</span>}
+      {show("assignee") && x.assigned_by && <Assignee name={x.assigned_by} />}
+      {show("participants") && x.participants.length > 0 && <span className="meta" data-tip={tips.participants(x.participants)}><Users size={11} /> {x.participants.length}</span>}
+      {show("tags") && x.tags.map((t) => <TagChip key={t.id} name={t.name} color={t.color} title={tips.tag(t.name)} />)}
+      {show("created") && <CreatedMeta task={x} />}
     </div>
   );
 }
@@ -109,7 +111,9 @@ export function BoardView(props: {
   onPick: Pick;
   onToggle: (x: Task) => void;
   onMove: (ids: number[], col: Stage) => Promise<void>;
+  show?: Shown; // какие поля видны на карточке
 }) {
+  const show = props.show ?? ALL_SHOWN;
   const root = useRef<HTMLDivElement>(null);
   const colRefs = useRef(new Map<Stage, HTMLElement>());
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -230,11 +234,11 @@ export function BoardView(props: {
                       <div className="kcard-top">
                         <button className="chk kchk" aria-label={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
                           onClick={(e) => (e.stopPropagation(), props.onToggle(x))}>{cancelled ? <X size={11} strokeWidth={3.2} /> : <Check size={11} strokeWidth={3.2} />}</button>
-                        <MeetingMark task={x} />
-                        <span className="t">{x.title}</span>
-                        {x.priority > 0 && !done && <PriorityIcon p={x.priority} />}
+                        {show("kind") && <MeetingMark task={x} />}
+                        <span className="t" data-tip={x.title} data-tip-full="">{x.title}</span>
+                        {show("priority") && x.priority > 0 && !done && <span className="tipped" data-tip={tips.priority(x.priority)}><PriorityIcon p={x.priority} /></span>}
                       </div>
-                      <Meta task={x} project={project} />
+                      <Meta task={x} project={project} show={show} />
                     </article>
                   </div>
                 );
