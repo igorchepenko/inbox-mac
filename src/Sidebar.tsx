@@ -111,7 +111,7 @@ export function Sidebar(props: {
     const n = countFor(id, props.tasks);
     return (
       <div key={id} className={`nav ${cur === id ? "on" : ""} ${space ? "space" : ""} ${extra}`} onClick={() => props.onOpen(id)} role="button"
-        data-tip={key ? label : undefined} data-key={key} style={space ? spaceVars(accent) : undefined}>
+        data-tip={key ? label : undefined} data-key={key} data-onb={`nav:${id}`} style={space ? spaceVars(accent) : undefined}>
         <button className="nav-icon" data-tip={space ? "Изменить пространство" : "Сменить иконку"} style={space ? undefined : { color: `var(--${accent})` }}
           onClick={(e) => (e.stopPropagation(), onIcon(e.currentTarget))}>
           <Icon name={icon} size={15} />
@@ -137,7 +137,7 @@ export function Sidebar(props: {
 
       <div className="side-div" role="separator" />
 
-      <div className="sec-row">
+      <div className="sec-row" data-onb="spaces">
         <button className="sec-toggle" aria-expanded={!collapsed} onClick={() => setFolded(!collapsed)}
           data-tip={collapsed ? "Показать пространства" : "Свернуть пространства"}>
           <ChevronDown size={13} className={`chev ${collapsed ? "folded" : ""}`} />
@@ -151,7 +151,7 @@ export function Sidebar(props: {
       </div>
 
       {!collapsed && (<>
-        <button className="nav add-project" onClick={props.onNewProject}>
+        <button className="nav add-project" data-onb="spaces-add" onClick={props.onNewProject}>
           <span className="nav-icon"><Plus size={15} /></span>
           <span className="nav-name">Новое пространство</span>
         </button>
@@ -179,7 +179,7 @@ export function Sidebar(props: {
       </>)}
 
       <div className="side-div" role="separator" />
-      <div className="sec-row">
+      <div className="sec-row" data-onb="tags">
         <button className="sec-toggle" aria-expanded={!tagsFolded} onClick={() => props.onSetting(KEY_TAGS_COLLAPSED, tagsFolded ? "0" : "1")}
           data-tip={tagsFolded ? "Показать теги" : "Свернуть теги"}>
           <ChevronDown size={13} className={`chev ${tagsFolded ? "folded" : ""}`} />
@@ -188,7 +188,7 @@ export function Sidebar(props: {
         </button>
       </div>
       {!tagsFolded && (
-        <div className="proj-list tag-list">
+        <div className="proj-list tag-list" data-onb="tags-list">
           {props.tags.map((t) => {
             const id: ViewId = `t:${t.id}`;
             return (

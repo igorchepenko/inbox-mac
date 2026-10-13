@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BellRing, Check, FolderOpen, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, Rows3, SlidersHorizontal, Type, UserRound, Users, X, type LucideIcon } from "lucide-react";
+import { BellRing, Check, FolderOpen, Info, GraduationCap, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, Rows3, SlidersHorizontal, Type, UserRound, Users, X, type LucideIcon } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as autostartEnabled } from "@tauri-apps/plugin-autostart";
 import { Icon } from "./icons";
@@ -17,6 +17,7 @@ import { HomeIcon } from "./home/Home";
 import { QuickKeyTest } from "./QuickKeyCheck";
 import { activeProfile, PROFILES, switchProfile } from "./profile";
 import { notify, permission } from "./reminders";
+import { fmtDate, ONB_INTRO, ONB_TOUR, statusText, type OnbKind } from "./onb";
 import {
   accelFromEvent, DEFAULT_APPEARANCE, DEFAULTS, FONTS, labelFromAccel, pref, savedAppearance, setAppearance, SIZES, SOUNDS, type Appearance,
 } from "./prefs";
@@ -30,6 +31,8 @@ export interface SettingsProps {
   onClose: () => void;
   /** Перечитать задачи в главном окне после правок в базе из настроек */
   onData?: () => void;
+  /** Запустить онбординг из настроек */
+  onOnboarding: (kind: OnbKind) => void;
   /** Раздел, открытый сразу: кнопка «Поля» в шапке списка открывает «Поля задач» */
   initial?: string;
 }
@@ -44,7 +47,9 @@ const SECTIONS: { id: string; name: string; icon: LucideIcon; render: (p: Settin
   { id: "fields", name: "Поля задач", icon: Rows3, render: (p) => <FieldsSettings settings={p.settings} onSet={p.onSet} /> },
   { id: "menu", name: "Меню", icon: PanelLeft, render: (p) => <MenuItems {...p} /> },
   { id: "home", name: "Дашборд", icon: LayoutDashboard, render: (p) => <HomeSettings settings={p.settings} onSet={p.onSet} /> },
-  { id: "profile", name: "Профиль", icon: UserRound, render: () => <Profiles /> },
+  { id: "profile", name: "Профиль", icon: UserRound, render: (p) => <Profiles {...p} /> },
+  { id: "onboarding", name: "Онбординг", icon: GraduationCap, render: (p) => <Onboardings {...p} /> },
+  { id: "about", name: "О приложении", icon: Info, render: () => <About /> },
 ];
 
 /** Окно настроек поверх приложения. Открывается по ⌘, из меню Inbox и иконкой-шестерёнкой внизу меню */
@@ -183,11 +188,18 @@ function General(p: SettingsProps) {
   );
 }
 
-function Profiles() {
+function Profiles(p: SettingsProps) {
   const cur = activeProfile();
   const [err, setErr] = useState<string | null>(null);
+  const [name, setName] = useState(p.settings["home:name"] ?? "Игорь");
   return (
     <div className="set-group">
+      <Row name="Твоё имя" hint="Так приложение обращается к тебе: в приветствии на дашборде и в онбординге. Своё у каждого профиля">
+        <input className="field" style={{ padding: "7px 10px", width: 200 }} value={name} placeholder="Игорь" spellCheck={false}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={() => name.trim() ? p.onSet("home:name", name.trim()) : setName(p.settings["home:name"] ?? "Игорь")}
+          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />
+      </Row>
       <Row name="Активный профиль"
         hint="«Тест» для проверки новых сборок, «Игорь» для настоящих задач. У каждого свои задачи, пространства и настройки. Быстрый ввод пишет в активный. Переключиться можно и в меню Inbox в строке меню">
         <div className="seg">
@@ -207,6 +219,31 @@ function Profiles() {
         </button>
       </Row>
       {err && <div className="error">{err}</div>}
+    </div>
+  );
+}
+
+function Onboardings(p: SettingsProps) {
+  const rows: { kind: OnbKind; name: string; hint: string; key: string }[] = [
+    { kind: "intro", name: "Знакомство", hint: "4 слайда: что это за приложение и что оно умеет", key: ONB_INTRO },
+    { kind: "tour", name: "Показать на деле", hint: "Подсветим элементы интерфейса и проведём учебную задачу от быстрого ввода до «Завершённых». Она удалится в конце", key: ONB_TOUR },
+  ];
+  return (
+    <div className="set-group">
+      {rows.map((r) => (
+        <Row key={r.kind} name={r.name} hint={<>{r.hint}. <b>{statusText(p.settings, r.kind)}</b></>}>
+          <button type="button" className="btn small" onClick={() => p.onOnboarding(r.kind)}>{p.settings[r.key] ? "Пройти заново" : "Пройти"}</button>
+        </Row>
+      ))}
+    </div>
+  );
+}
+
+function About() {
+  return (
+    <div className="set-group">
+      <Row name="Версия"><b>{__APP_VERSION__}</b></Row>
+      <Row name="Дата выпуска" hint="Дата сборки этой версии"><b>{fmtDate(__BUILD_DATE__)}</b></Row>
     </div>
   );
 }
