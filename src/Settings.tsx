@@ -10,7 +10,7 @@ import { sameName } from "./tags";
 import { searchNames } from "./search";
 import { SearchField } from "./TagsUI";
 import { CloseX, IconGrid, Popover, ThemeSwitch, TimeInput, Toggle } from "./widgets";
-import { savedTheme, setTheme } from "./theme";
+import { savedLook, savedTheme, setLook, setTheme, type Look } from "./theme";
 import { HomeSettings } from "./HomeSettings";
 import { FieldsSettings } from "./FieldsSettings";
 import { HomeIcon } from "./home/Home";
@@ -214,6 +214,7 @@ function Profiles() {
 function Look() {
   const [a, setA] = useState<Appearance>(savedAppearance());
   const [theme, setT] = useState(savedTheme());
+  const [look, setL] = useState<Look>(savedLook());
   const set = (next: Appearance) => (setA(next), setAppearance(next));
   const D = DEFAULT_APPEARANCE;
   const resetTheme = () => (setTheme("system"), setT("system"));
@@ -223,12 +224,16 @@ function Look() {
     window.addEventListener("inbox-theme", on);
     return () => window.removeEventListener("inbox-theme", on);
   }, []);
-  const changed = theme !== "system" || a.font !== D.font || a.size !== D.size;
+  const changed = theme !== "system" || look !== "flat" || a.font !== D.font || a.size !== D.size;
   return (
     <div className="set-group">
       <Row name="Тема" hint="Быстрый переключатель остаётся и внизу меню слева"
         def={{ text: "как в системе", changed: theme !== "system", reset: resetTheme }}>
         <ThemeSwitch wide />
+      </Row>
+      <Row name="Стиль" hint="«Стекло» делает меню, панели и окна полупрозрачными. Работает и со светлой, и с тёмной темой"
+        def={{ text: "плоский", changed: look !== "flat", reset: () => (setLook("flat"), setL("flat")) }}>
+        <Choice value={look} onPick={(v) => (setLook(v), setL(v))} options={[{ id: "flat", name: "Плоский" }, { id: "glass", name: "Стекло" }]} />
       </Row>
       <Row name="Шрифт" def={{ text: FONTS.find((f) => f.id === D.font)!.name, changed: a.font !== D.font, reset: () => set({ ...a, font: D.font }) }}>
         <div className="seg">
@@ -244,7 +249,7 @@ function Look() {
         def={{ text: SIZES.find((s) => s.id === D.size)!.name, changed: a.size !== D.size, reset: () => set({ ...a, size: D.size }) }}>
         <Choice value={a.size} onPick={(size) => set({ ...a, size })} options={SIZES.map((s) => ({ id: s.id, name: s.name }))} />
       </Row>
-      <ResetSection name="Внешний вид" changed={changed} onReset={() => (resetTheme(), set(D))} />
+      <ResetSection name="Внешний вид" changed={changed} onReset={() => (resetTheme(), setLook("flat"), setL("flat"), set(D))} />
     </div>
   );
 }

@@ -10,8 +10,9 @@ import "./space.css";
 import "./profile.css";
 import "./tags.css";
 import "./status.css";
+import "./glass.css";
 import { installPalette } from "./palette";
-import { applyTheme, followThemeChanges, savedTheme } from "./theme";
+import { applyLook, applyTheme, followLookChanges, followThemeChanges, savedLook, savedTheme } from "./theme";
 import { applyAppearance, followAppearanceChanges, savedAppearance } from "./prefs";
 import { followProfileChanges } from "./profile";
 
@@ -22,6 +23,8 @@ followProfileChanges(!isQuick);
 installPalette();
 applyTheme(savedTheme());
 followThemeChanges();
+applyLook(savedLook());
+followLookChanges();
 applyAppearance(savedAppearance());
 followAppearanceChanges();
 

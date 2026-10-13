@@ -36,3 +36,35 @@ export function setTheme(t: Theme) {
 export function followThemeChanges() {
   listen<Theme>("theme-changed", (e) => applyTheme(e.payload)).catch(() => {});
 }
+
+/** Стиль оформления поверх светлой или тёмной темы: плоский (по умолчанию) или «Стекло» */
+export type Look = "flat" | "glass";
+const LOOK_KEY = "inbox.look";
+
+export function savedLook(): Look {
+  try {
+    return localStorage.getItem(profileKey(LOOK_KEY)) === "glass" ? "glass" : "flat";
+  } catch {
+    return "flat";
+  }
+}
+
+export function applyLook(l: Look) {
+  if (l === "glass") document.documentElement.setAttribute("data-look", "glass");
+  else document.documentElement.removeAttribute("data-look");
+}
+
+export function setLook(l: Look) {
+  try {
+    localStorage.setItem(profileKey(LOOK_KEY), l);
+  } catch {
+    // без localStorage стиль не переживёт перезапуск
+  }
+  applyLook(l);
+  window.dispatchEvent(new CustomEvent<Look>("inbox-look", { detail: l }));
+  emit("look-changed", l).catch(() => {});
+}
+
+export function followLookChanges() {
+  listen<Look>("look-changed", (e) => applyLook(e.payload)).catch(() => {});
+}
