@@ -19,8 +19,8 @@ export { PRIORITY } from "./priority";
 
 /** Карточка записи задачи. Используется и в отдельном окне ⌥Space, и внутри приложения по N.
  * Дата, время, проект и остальное по желанию: блок свёрнут, открывается кнопкой или ⌘E */
-export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: string[]; onSave: (title: string, note: string, draft: Draft) => void; onCancel: () => void; closable?: boolean; profile?: string; initial?: Draft; prefill?: string; remindBefore: number; onCreateProject?: (name: string) => Promise<number> }) {
-  const [title, setTitle] = useState(props.prefill ?? "");
+export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: string[]; onSave: (title: string, note: string, draft: Draft) => void; onCancel: () => void; closable?: boolean; profile?: string; initial?: Draft; remindBefore: number; onCreateProject?: (name: string) => Promise<number> }) {
+  const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
   const [more, setMore] = useState(false);
   const [d, setD] = useState<Draft>(props.initial ?? {});
@@ -91,7 +91,7 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
   };
 
   return (
-    <form className="qi" data-onb="form" onSubmit={(e) => (e.preventDefault(), submit())} onKeyDown={onKey}>
+    <form className="qi" onSubmit={(e) => (e.preventDefault(), submit())} onKeyDown={onKey}>
       {props.closable && <CloseX onClick={props.onCancel} />}
       <input ref={titleRef} className="field qi-title" placeholder="Что нужно сделать? #тег @кто назначил" value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="off" spellCheck={false} />
       <textarea ref={noteRef} rows={2} className="field qi-note" placeholder="Заметка, если нужна" value={note} onChange={(e) => setNote(e.target.value)} />

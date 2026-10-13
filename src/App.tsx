@@ -35,8 +35,6 @@ import { ALL_SHOWN, shownFields, tips, type Shown } from "./fields";
 import { QuickKeyBanner } from "./QuickKeyCheck";
 import { usePanes } from "./panes";
 import { Frame } from "./Frame";
-import { Intro, Tour, Welcome } from "./Onboarding";
-import { doneKey, localDay, needsWelcome, ONB_BANNER_OFF, ONB_SEEN, showBanner, type OnbKind } from "./onb";
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -58,12 +56,6 @@ export default function App() {
   const [picked, setPicked] = useState<number[]>([]);
   const [selecting, setSelecting] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
-  // Название, вписанное в форму заранее: учебная задача онбординга
-  const [newTitle, setNewTitle] = useState("");
-  useEffect(() => { if (!newOpen) setNewTitle(""); }, [newOpen]);
-  // Запущенный онбординг и готовность настроек (до чтения базы первый экран не показываем)
-  const [onb, setOnb] = useState<OnbKind | null>(null);
-  const [ready, setReady] = useState(false);
   // Окно итогов после перевода в «Готово» или «Отменено»
   const [closing, setClosing] = useState<Closing | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -84,7 +76,6 @@ export default function App() {
       setProjects(p);
       setTags(g);
       setSettings(st);
-      setReady(true);
       settingsRef.current = st;
       setError(null);
       // Будущие напоминания сразу в расписание macOS: придут, даже если окно спрячут
@@ -253,7 +244,7 @@ export default function App() {
   const toStage = async (xs: Task[], stage: Stage) => {
     const moved = xs.filter((x) => stageOf(x) !== stage && canMove(x, stage));
     if (!moved.length) return;
-    if (CLOSING.includes(stage) && onb !== "tour") setClosing({ ids: moved.map((x) => x.id), stage: stage as Closing["stage"] });
+    if (CLOSING.includes(stage)) setClosing({ ids: moved.map((x) => x.id), stage: stage as Closing["stage"] });
     // Канбан ждёт перечитанных задач, чтобы карточка села уже на новое место
     await run(async () => {
       for (const x of moved) await dropTo(x, stage);
@@ -403,7 +394,6 @@ export default function App() {
   // Клавиатура
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (onb === "intro") return;
       if (e.metaKey && e.code === "Comma") return e.preventDefault(), setSettingsOpen(true);
       // Формы сами ловят Enter и Esc, пока фокус в них. Если фокус выпал из окна (клик по пустому месту),
       // Esc закрывает его отсюда; настройки и итоги закрываются сами
@@ -481,16 +471,6 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const setSetting = (key: string, value: string) => {
-    setSettings((st) => ({ ...st, [key]: value }));
-    run(() => db.setSetting(key, value));
-  };
-  // Пройденный онбординг помечается датой, брошенный остаётся непройденным
-  const finishOnb = (kind: OnbKind, finished: boolean) => {
-    setOnb(null);
-    if (finished) setSetting(doneKey(kind), localDay());
-  };
-
   // Главная и страница проектов занимают всё место справа от меню, без панели деталей
   const wide = view === "home" || view === "projects";
   const current = VIEWS.find((v) => v.id === view);
@@ -536,13 +516,7 @@ export default function App() {
           <ProjectsPage projects={projects} tasks={tasks} onOpen={openView}
             onEdit={(p) => setProjectDlg(p)} onNew={() => setProjectDlg("new")} />
         ) : view === "home" ? (
-          <Home tasks={tasks} projects={projects} settings={settings} banner={ready && !onb && showBanner(settings) && (
-            <div className="onb-banner">
-              <div><b>Познакомиться с Inbox?</b><span>Короткое знакомство или подсказки прямо по интерфейсу.</span></div>
-              <button className="cta stand narrow" onClick={() => setOnb("intro")}>Знакомство</button>
-              <button className="btn" onClick={() => setOnb("tour")}>Показать на деле</button>
-              <button className="btn" onClick={() => setSetting(ONB_BANNER_OFF, "1")}>Скрыть</button>
-            </div>)}
+          <Home tasks={tasks} projects={projects} settings={settings}
             onOpenInbox={() => openView("inbox")} onOpenToday={() => openView("today")}
             onOpenTask={openTask} onToggle={toggleFromHome} onMoveToToday={moveToToday}
             onNewProject={() => setProjectDlg("new")}
@@ -579,7 +553,7 @@ export default function App() {
           <SearchField value={filter.text} onChange={setText} onArrow={stepSel} placeholder="Найти задачу"
             tip="Поиск по задачам на этом экране: название, заметка, чеклист, теги, люди, ссылки" />
           {view !== "archive" && <SortSwitch value={sort} rev={rev} onChange={setSort} onReverse={reverseSort} />}
-          <span className="onb-wrap" data-onb="filter"><FilterButton filter={filt} projects={projects} tags={tags} people={people} lockTag={tag?.id} noSpaces={!!project} onChange={setFilter} smart={smart} /></span>
+          <FilterButton filter={filt} projects={projects} tags={tags} people={people} lockTag={tag?.id} noSpaces={!!project} onChange={setFilter} smart={smart} />
           {fieldsButton}
           <LayoutSwitch value={layout} onChange={setLayout} />
           <button className={`icon-btn ${selecting ? "on" : ""}`} data-tip="Выбрать несколько задач, ⌘-клик по строке" data-key="⌘A"
@@ -605,7 +579,7 @@ export default function App() {
               fileDrop={dropOnDetails ? null : dropTarget} query={filt.text}
               onPick={pick} onToggle={toggleDone} onMove={moveCards} show={shownFields(settings, "board")} />
           ) : (
-            <div className="list" role="listbox" data-onb="list">
+            <div className="list" role="listbox">
               {list.map(({ task: x, group }) => (
                 <div key={x.id}>
                   {group && <div className="group">{group}</div>}
@@ -638,7 +612,7 @@ export default function App() {
 
       {newOpen && (
         <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && setNewOpen(false)}>
-          <QuickForm projects={projects} tags={tags} people={people} remindBefore={defaultBefore(settings)} onSave={saveNew} onCancel={() => setNewOpen(false)} closable onCreateProject={createProject} prefill={newTitle || undefined}
+          <QuickForm projects={projects} tags={tags} people={people} remindBefore={defaultBefore(settings)} onSave={saveNew} onCancel={() => setNewOpen(false)} closable onCreateProject={createProject}
             initial={project ? { project_id: project.id } : oneSpace != null ? { project_id: oneSpace } : undefined} />
         </div>
       )}
@@ -658,26 +632,10 @@ export default function App() {
             });
           }} />
       )}
-      {ready && !onb && needsWelcome(settings) && (
-        <Welcome name={settings["home:name"] ?? "Игорь"} onDone={(name, next) => {
-          setSettings((st) => ({ ...st, "home:name": name, [ONB_SEEN]: "1" }));
-          run(async () => {
-            await db.setSetting("home:name", name);
-            await db.setSetting(ONB_SEEN, "1");
-          });
-          setOnb(next === "later" ? null : next);
-        }} />
-      )}
-      {onb === "intro" && <Intro quickKey={quickKeyLabel()} onClose={(ok) => finishOnb("intro", ok)} />}
-      {onb === "tour" && (
-        <Tour tasks={tasks} tags={tags} sel={sel} formOpen={newOpen} quickKey={quickKeyLabel()} openView={openView}
-          openForm={(t) => (setNewTitle(t), setNewOpen(true))} closeForm={() => setNewOpen(false)}
-          setSetting={setSetting} reload={reload} onClose={(ok) => finishOnb("tour", ok)} />
-      )}
       <Tooltips />
       {!settingsOpen && <QuickKeyBanner error={shortcutError} onSettings={() => setSettingsOpen(true)} />}
       {settingsOpen && (
-        <Settings settings={settings} onOnboarding={(k) => (setSettingsOpen(false), setSettingsTab(undefined), setOnb(k))} shortcutError={shortcutError} initial={settingsTab} onClose={() => (setSettingsOpen(false), setSettingsTab(undefined))} onData={reload}
+        <Settings settings={settings} shortcutError={shortcutError} initial={settingsTab} onClose={() => (setSettingsOpen(false), setSettingsTab(undefined))} onData={reload}
           onSet={(key, value) => run(() => db.setSetting(key, value))}
           onQuickShortcut={async (accel) => {
             const err = await applyShortcut(accel);

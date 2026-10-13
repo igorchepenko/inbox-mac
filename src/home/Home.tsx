@@ -20,8 +20,6 @@ export interface HomeProps {
   onMoveToToday: (xs: Task[]) => void;
   onNewProject: () => void;
   onSaveLayout: (order: BlockId[], hidden: BlockId[]) => void;
-  /** Плашка над блоками: предложение пройти онбординг */
-  banner?: ReactNode;
 }
 
 export default function Home(props: HomeProps) {
@@ -69,7 +67,6 @@ export default function Home(props: HomeProps) {
           {custOpen && <Customize order={order} hidden={hidden} onSave={props.onSaveLayout} onClose={() => setCustOpen(false)} />}
         </div>
       </div>
-      {props.banner}
       <div className="h-grid" ref={gridRef}>
         {shown.map((k, i) => (
           <section key={k} className={`w w-${k}`} style={{ gridColumn: `span ${spans[i]}` }}>{render(k)}</section>
