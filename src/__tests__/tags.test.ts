@@ -108,6 +108,10 @@ describe("фильтр", () => {
   it("теги: задачи с любым из выбранных", () => expect(fid({ spaces: [], tags: [1, 3], person: null, text: "" })).toEqual([1, 2]));
   it("человек без учёта регистра", () => expect(fid({ spaces: [], tags: [], person: "андрей", text: "" })).toEqual([1]));
   it("«Сам себе»: без назначившего", () => expect(fid({ spaces: [], tags: [], person: NO_PERSON, text: "" })).toEqual([2]));
+  it("«Жду от»: открытые задачи, где ждут этого человека", () => {
+    const w = [task({ id: 1, waiting_for: "Андрей" }), task({ id: 2, waiting_for: "Андрей", status: "done" }), task({ id: 3, waiting_for: "Маша" }), task({ id: 4 })];
+    expect(applyFilter(w, { spaces: [], tags: [], person: null, waiting: "андрей", text: "" }).map((x) => x.id)).toEqual([1]);
+  });
   it("тег и человек вместе", () => {
     expect(fid({ spaces: [], tags: [1, 2], person: "Андрей", text: "" })).toEqual([1]);
     expect(fid({ spaces: [], tags: [2], person: "Маша", text: "" })).toEqual([]);
