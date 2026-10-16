@@ -166,6 +166,10 @@ describe("поля страницы", () => {
   it("у скрытого поля нет колонки", () => {
     expect(peopleColumns([]).split(" ").length).toBeGreaterThan(peopleColumns(["tags", "tasks"]).split(" ").length);
   });
+  it("имя забирает свободное место, теги фиксированные, остальное по содержимому", () => {
+    expect(peopleColumns([])).toBe("18px 30px minmax(0, 1fr) 190px max-content max-content max-content");
+    expect(peopleColumns(["tags", "birthday"])).toBe("18px 30px minmax(0, 1fr) max-content max-content");
+  });
   it("направление сортировки", () => {
     expect(peopleDirection("name", false).asc).toBe(true);
     expect(peopleDirection("active", false).asc).toBe(false);

@@ -187,12 +187,17 @@ export function togglePeopleField(settings: Record<string, string>, id: PeopleFi
   return JSON.stringify(PEOPLE_FIELDS.map((f) => f.id).filter((x) => hidden.includes(x)));
 }
 
-/** Колонки строки: у каждого скрытого поля колонка пропадает */
+/** Колонки списка: имя с должностью и компанией забирает всё свободное место, теги занимают фиксированную колонку, остальные ровно по содержимому.
+ *  Строки берут эти колонки через subgrid, поэтому ширина считается по самому длинному значению во всём списке. У скрытого поля колонка пропадает. */
 export function peopleColumns(hidden: PeopleFieldId[]): string {
   const on = (id: PeopleFieldId) => !hidden.includes(id);
-  return ["18px", "30px", "minmax(150px, 1.3fr)", on("tags") && "minmax(0, 1fr)", on("contacts") && "minmax(0, 1.1fr)", on("birthday") && "120px", on("tasks") && "96px"]
+  return ["18px", "30px", "minmax(0, 1fr)", on("tags") && `${TAGS_COL}px`, on("contacts") && "max-content", on("birthday") && "max-content", on("tasks") && "max-content"]
     .filter(Boolean).join(" ");
 }
+
+/** Ширина колонки тегов и самого длинного названия тега в ней (по числу знаков, чтобы «квазиквадропуперлось» помещалось целиком) */
+export const TAGS_COL = 190;
+export const TAG_NAME_CH = 20;
 
 /** Событие «записать человека» из горячей клавиши N, пока открыт раздел «Люди» */
 export const NEW_PERSON_EVENT = "inbox:new-person";
