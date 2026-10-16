@@ -83,10 +83,10 @@ export function MeetingMark({ task }: { task: Task }) {
 export const fmtCreated = (stamp: string) => `${fmtDay(stampDay(stamp))} в ${stampTime(stamp)}`;
 
 /** Дата создания в строке и на карточке: день, а полностью в подсказке «Создана 16.10.2026 14:30» */
-export function CreatedMeta({ task }: { task: Task }) {
+export function CreatedMeta({ task, label }: { task: Task; label?: boolean }) {
   return (
     <span className="meta created" data-tip={`Создана ${fmtStamp(task.created_at)}`}>
-      <CalendarPlus size={11} /> {fmtDay(stampDay(task.created_at))}
+      <CalendarPlus size={11} /> {label ? "создана " : ""}{fmtDay(stampDay(task.created_at))}
     </span>
   );
 }

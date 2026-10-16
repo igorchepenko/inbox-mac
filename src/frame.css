@@ -20,8 +20,10 @@ body.pane-resizing * { cursor: col-resize !important; }
 /* Узкая главная колонка: подписи кнопок в шапке прячутся (остаются иконки с подсказками),
    заголовку всегда остаётся место, а если и так тесно, кнопки переносятся на вторую строку */
 .main { container-type: inline-size; }
-.head { flex-wrap: wrap; row-gap: 8px; }
-.head-text { flex: 1 1 140px; }
+.head { flex-wrap: nowrap; }
+.head-text { flex: 1 1 140px; min-width: 110px; }
+/* Кнопки шапки живут в своей зоне справа от названия: не помещаются в строку — переносятся внутри неё, под названием ничего нет */
+.head-tools, .cal-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 10px; flex: 0 1 auto; min-width: 0; }
 @container (max-width: 800px) {
   .head { gap: 10px; }
   .head .icon-btn { font-size: 0; gap: 0; }

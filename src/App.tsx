@@ -540,27 +540,29 @@ export default function App() {
             <h2>{project?.name ?? tag?.name ?? (inTasks(view) ? "Задачи" : current?.name) ?? ""}</h2>
             <p className="head-sub" data-tip={project?.description || undefined} data-tip-full="">{project?.description || progress?.subtitle || subtitleFor(view, list.length)}</p>
           </div>
-          {project && (
-            <button className="icon-btn" data-tip="Изменить пространство" onClick={() => setProjectDlg(project)}>
-              <Pencil size={13} /> Изменить
+          <div className="head-tools">
+            {project && (
+              <button className="icon-btn" data-tip="Изменить пространство" onClick={() => setProjectDlg(project)}>
+                <Pencil size={13} /> Изменить
+              </button>
+            )}
+            {tag && (
+              <button className="icon-btn" data-tip="Переименовать, сменить цвет, удалить" onClick={(e) => setTagEdit(tagEdit ? null : e.currentTarget)}>
+                <Pencil size={13} /> Изменить
+              </button>
+            )}
+            <SearchField value={filter.text} onChange={setText} onArrow={stepSel} placeholder="Найти задачу"
+              tip="Поиск по задачам на этом экране: название, заметка, чеклист, теги, люди, ссылки" />
+            {view !== "archive" && <SortSwitch value={sort} rev={rev} onChange={setSort} onReverse={reverseSort} />}
+            <FilterButton filter={filt} projects={projects} tags={tags} people={people} lockTag={tag?.id} noSpaces={!!project} onChange={setFilter} smart={smart} />
+            {fieldsButton}
+            <LayoutSwitch value={layout} onChange={setLayout} />
+            <button className={`icon-btn ${selecting ? "on" : ""}`} data-tip="Выбрать несколько задач, ⌘-клик по строке" data-key="⌘A"
+              onClick={() => (selecting ? clearPick() : (setSelecting(true), setPicked(sel != null ? [sel] : [])))}>
+              <CheckCheck size={13} /> Выбрать
             </button>
-          )}
-          {tag && (
-            <button className="icon-btn" data-tip="Переименовать, сменить цвет, удалить" onClick={(e) => setTagEdit(tagEdit ? null : e.currentTarget)}>
-              <Pencil size={13} /> Изменить
-            </button>
-          )}
-          <SearchField value={filter.text} onChange={setText} onArrow={stepSel} placeholder="Найти задачу"
-            tip="Поиск по задачам на этом экране: название, заметка, чеклист, теги, люди, ссылки" />
-          {view !== "archive" && <SortSwitch value={sort} rev={rev} onChange={setSort} onReverse={reverseSort} />}
-          <FilterButton filter={filt} projects={projects} tags={tags} people={people} lockTag={tag?.id} noSpaces={!!project} onChange={setFilter} smart={smart} />
-          {fieldsButton}
-          <LayoutSwitch value={layout} onChange={setLayout} />
-          <button className={`icon-btn ${selecting ? "on" : ""}`} data-tip="Выбрать несколько задач, ⌘-клик по строке" data-key="⌘A"
-            onClick={() => (selecting ? clearPick() : (setSelecting(true), setPicked(sel != null ? [sel] : [])))}>
-            <CheckCheck size={13} /> Выбрать
-          </button>
-          <button className="icon-btn" data-tip="Сочетания клавиш" data-key="⌘/" aria-label="Сочетания клавиш" onClick={() => setHelpOpen(true)}><Keyboard size={14} /></button>
+            <button className="icon-btn" data-tip="Сочетания клавиш" data-key="⌘/" aria-label="Сочетания клавиш" onClick={() => setHelpOpen(true)}><Keyboard size={14} /></button>
+          </div>
         </header>
 
         <FilterBar filter={filt} projects={projects} tags={tags} shown={ids.length} onChange={setFilter} smart={smart} />

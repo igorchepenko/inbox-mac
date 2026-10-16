@@ -78,7 +78,7 @@ function Meta({ task: x, project, show }: { task: Task; project?: Project; show:
   const checked = x.subtasks.filter((s) => s.done).length;
   return (
     <div className="card-meta">
-      {show("date") && x.due_date && <span className={`meta ${overdue ? "overdue" : ""}`} data-tip={tips.date(x, overdue)}><CalendarDays size={11} /> {fmtDay(x.due_date)}</span>}
+      {show("date") && x.due_date && <span className={`meta when ${overdue ? "overdue" : ""}`} data-tip={tips.date(x, overdue)}><CalendarDays size={11} /> {fmtDay(x.due_date)}</span>}
       {show("time") && x.start_time && <span className="meta" data-tip={tips.time(x)}><Clock size={11} /> {fmtRange(x.start_time, x.end_time)}</span>}
       {show("due") && <DueFlag task={x} />}
       {show("remind") && x.remind_at && !x.reminded && !done && <span className="meta" data-tip={tips.remind(x)}><Bell size={11} /> {stampTime(x.remind_at)}</span>}
@@ -91,7 +91,7 @@ function Meta({ task: x, project, show }: { task: Task; project?: Project; show:
       {show("assignee") && x.assigned_by && <Assignee name={x.assigned_by} />}
       {show("participants") && x.participants.length > 0 && <span className="meta" data-tip={tips.participants(x.participants)}><Users size={11} /> {x.participants.length}</span>}
       {show("tags") && x.tags.map((t) => <TagChip key={t.id} name={t.name} color={t.color} title={tips.tag(t.name)} />)}
-      {show("created") && <CreatedMeta task={x} />}
+      {show("created") && <CreatedMeta task={x} label />}
     </div>
   );
 }

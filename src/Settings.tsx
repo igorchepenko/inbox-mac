@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BellRing, Check, FolderOpen, Info, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, Rows3, SlidersHorizontal, Type, UserRound, Users, X, type LucideIcon } from "lucide-react";
+import { BellRing, Check, FolderOpen, Info, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, Rows3, SlidersHorizontal, Type, UserRound, Users, type LucideIcon } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as autostartEnabled } from "@tauri-apps/plugin-autostart";
 import { Icon } from "./icons";
@@ -77,7 +77,6 @@ export function Settings(props: SettingsProps) {
         <div className="set-body">
           <div className="set-head">
             <h2>{section.name}</h2>
-            <button className="cal-nav" onClick={props.onClose} title="Закрыть (Esc)"><X size={16} /></button>
           </div>
           {section.render(props)}
         </div>
