@@ -1,4 +1,4 @@
-import type { Person, Task } from "./db";
+import { isClosed, type Person, type Task } from "./db";
 import { MONTHS_GEN } from "./dates";
 import { fold } from "./search";
 import { byName, sameName } from "./tags";
@@ -68,16 +68,21 @@ export function birthdayTitle(p: Person, day: string): string {
   return `День рождения: ${p.name}${age != null && age > 0 ? `, ${age}` : ""}`;
 }
 
-export type PeopleSort = "name" | "birthday" | "tag" | "company" | "job";
-export const PEOPLE_SORTS: { id: PeopleSort; name: string }[] = [
-  { id: "name", name: "По алфавиту" },
-  { id: "birthday", name: "По дню рождения" },
-  { id: "tag", name: "По тегу" },
-  { id: "company", name: "По компании" },
-  { id: "job", name: "По должности" },
+export type PeopleSort = "name" | "birthday" | "company" | "job" | "active";
+export const PEOPLE_SORTS: { id: PeopleSort; name: string; hint: string }[] = [
+  { id: "name", name: "По алфавиту", hint: "По имени" },
+  { id: "birthday", name: "По дню рождения", hint: "Ближайший по календарю года, без даты в конце" },
+  { id: "company", name: "По компании", hint: "Компании по алфавиту, без компании в конце" },
+  { id: "job", name: "По должности", hint: "Должности по алфавиту, без должности в конце" },
+  { id: "active", name: "По активным задачам", hint: "Больше всего активных задач сверху. Отменённые и завершённые не считаются" },
 ];
 
-const firstTagName = (p: Person) => (p.tags.length ? p.tags.map((t) => t.name).sort(byName)[0] : null);
+/** Подпись направления для подсказки: что значит «вперёд» и «назад» при этой сортировке */
+export function peopleDirection(sort: PeopleSort, rev: boolean): { asc: boolean; text: string } {
+  if (sort === "birthday") return { asc: !rev, text: rev ? "с конца года" : "с 1 января" };
+  if (sort === "active") return { asc: rev, text: rev ? "сначала с меньшим числом задач" : "сначала с большим числом задач" };
+  return { asc: !rev, text: rev ? "от Я к А" : "от А к Я" };
+}
 
 /** День рождения как число для сортировки «от 1 января»: месяц*100 + день; без даты null */
 export function birthdayRank(p: Pick<Person, "birthday">): number | null {
@@ -85,13 +90,16 @@ export function birthdayRank(p: Pick<Person, "birthday">): number | null {
   return b ? b.month * 100 + b.day : null;
 }
 
-/** Сначала с значением, без него в конце. rev разворачивает только порядок значений. Равные идут по имени */
-export function sortPeople(people: Person[], sort: PeopleSort, rev = false): Person[] {
+/**
+ * Сначала с значением, без него в конце. rev разворачивает только порядок значений. Равные идут по имени.
+ * Для «active» нужны числа активных задач по id человека (см. activeCount)
+ */
+export function sortPeople(people: Person[], sort: PeopleSort, rev = false, active?: Map<number, number>): Person[] {
   const key = (p: Person): string | number | null => {
     if (sort === "birthday") return birthdayRank(p);
-    if (sort === "tag") return firstTagName(p);
     if (sort === "company") return p.company.trim() || null;
     if (sort === "job") return p.job_title.trim() || null;
+    if (sort === "active") return -(active?.get(p.id) ?? 0);
     return p.name;
   };
   return [...people].sort((a, b) => {
@@ -106,29 +114,88 @@ export function sortPeople(people: Person[], sort: PeopleSort, rev = false): Per
   });
 }
 
-const digits = (s: string) => s.replace(/\D/g, "");
-const tg = (s: string) => fold(s).replace(/^@/, "");
-
-/**
- * Поиск по имени, тегам, компании, должности, телефону и нику в Telegram. Запрос целиком, без регистра;
- * телефон ищется по цифрам («915 12» найдёт «+7 (915) 123-45-67»), ник с @ и без
- */
+/** Поиск по имени: запрос целиком, без регистра, ё = е */
 export function searchPeople(query: string, people: Person[]): Person[] {
   const q = fold(query).replace(/\s+/g, " ").trim();
   if (!q) return people;
-  const qd = digits(q);
-  const qt = tg(q);
-  const text = (s: string) => fold(s).replace(/\s+/g, " ").includes(q);
+  return people.filter((p) => fold(p.name).replace(/\s+/g, " ").includes(q));
+}
+
+/** Фильтры страницы «Люди»: внутри группы «любой из выбранных», группы складываются через «и» */
+export interface PeopleFilter {
+  companies: string[];
+  jobs: string[];
+  tags: number[];
+}
+export const EMPTY_PEOPLE_FILTER: PeopleFilter = { companies: [], jobs: [], tags: [] };
+export const peopleFilterCount = (f: PeopleFilter) => f.companies.length + f.jobs.length + f.tags.length;
+
+const same = (a: string, b: string) => fold(a).trim() === fold(b).trim();
+
+export function filterPeople(people: Person[], f: PeopleFilter): Person[] {
+  if (!peopleFilterCount(f)) return people;
   return people.filter((p) =>
-    text(p.name) || text(p.company) || text(p.job_title) || p.tags.some((t) => text(t.name)) ||
-    (qd.length >= 2 && /^[\d\s+()-]+$/.test(q) && digits(p.phone).includes(qd)) || text(p.phone) ||
-    (qt.length > 0 && tg(p.telegram).includes(qt)));
+    (!f.companies.length || f.companies.some((c) => same(c, p.company))) &&
+    (!f.jobs.length || f.jobs.some((j) => same(j, p.job_title))) &&
+    (!f.tags.length || p.tags.some((t) => f.tags.includes(t.id))));
+}
+
+/** Значения для фильтров «Компания» и «Должность»: без повторов (регистр не важен), по алфавиту */
+export function distinctValues(values: string[]): string[] {
+  const seen = new Map<string, string>();
+  for (const v of values) {
+    const t = v.trim();
+    if (t && !seen.has(fold(t))) seen.set(fold(t), t);
+  }
+  return [...seen.values()].sort(byName);
 }
 
 /** Сколько задач у человека: он назначил или был участником встречи */
 export function taskCount(name: string, tasks: Task[]): number {
   return tasks.filter((x) => (x.assigned_by && sameName(x.assigned_by, name)) || x.participants.some((n) => sameName(n, name))).length;
 }
+
+/** То же, но только активные: без завершённых и отменённых */
+export function activeCount(name: string, tasks: Task[]): number {
+  return taskCount(name, tasks.filter((x) => !isClosed(x)));
+}
+
+/** Какие поля видны в строке списка людей. Храним скрытые, как и поля задач: новое поле появится у всех */
+export type PeopleFieldId = "work" | "tags" | "contacts" | "birthday" | "tasks";
+export const PEOPLE_FIELDS: { id: PeopleFieldId; name: string; hint: string }[] = [
+  { id: "work", name: "Должность и компания", hint: "Под именем" },
+  { id: "tags", name: "Теги", hint: "Те же, что у задач" },
+  { id: "contacts", name: "Телефон и Telegram", hint: "Клик копирует в буфер обмена" },
+  { id: "birthday", name: "День рождения", hint: "Клик открывает календарь на этот день" },
+  { id: "tasks", name: "Задачи", hint: "«Назначил» и «жду», клик открывает задачи" },
+];
+export const PEOPLE_FIELDS_KEY = "fields:people";
+
+export function hiddenPeopleFields(settings: Record<string, string>): PeopleFieldId[] {
+  try {
+    const xs = JSON.parse(settings[PEOPLE_FIELDS_KEY] ?? "[]");
+    return Array.isArray(xs) ? PEOPLE_FIELDS.map((f) => f.id).filter((id) => xs.includes(id)) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Новое значение ключа после переключения одного поля */
+export function togglePeopleField(settings: Record<string, string>, id: PeopleFieldId, on: boolean): string {
+  const hidden = hiddenPeopleFields(settings).filter((x) => x !== id);
+  if (!on) hidden.push(id);
+  return JSON.stringify(PEOPLE_FIELDS.map((f) => f.id).filter((x) => hidden.includes(x)));
+}
+
+/** Колонки строки: у каждого скрытого поля колонка пропадает */
+export function peopleColumns(hidden: PeopleFieldId[]): string {
+  const on = (id: PeopleFieldId) => !hidden.includes(id);
+  return ["18px", "30px", "minmax(150px, 1.3fr)", on("tags") && "minmax(0, 1fr)", on("contacts") && "minmax(0, 1.1fr)", on("birthday") && "120px", on("tasks") && "96px"]
+    .filter(Boolean).join(" ");
+}
+
+/** Событие «записать человека» из горячей клавиши N, пока открыт раздел «Люди» */
+export const NEW_PERSON_EVENT = "inbox:new-person";
 
 /** Ник Telegram как храним: без @ и пробелов, а из ссылки t.me/ник берём ник */
 export function normalizeTelegram(raw: string): string {

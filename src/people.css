@@ -1,16 +1,14 @@
 /* Раздел «Люди» */
 .people { padding: 0; }
-.ppl-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.ppl-tools .fsearch { height: 30px; box-sizing: border-box; width: 240px; }
-.ppl-tools .fsearch:focus-within, .ppl-tools .fsearch.has { width: 280px; }
-.ppl-sort { height: 30px; box-sizing: border-box; padding: 0 26px 0 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); color: var(--fg); font-size: 12px; }
-.ppl-dir { height: 30px; width: 30px; box-sizing: border-box; justify-content: center; padding: 0; }
+.people .head { flex: none; }
+.pf-list { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+.pf-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.pf-row .set-name { font-size: 13px; }
 .ppl-bulk { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--stand);
   background: color-mix(in srgb, var(--stand) 8%, var(--bg)); }
 .ppl-bulk .btn.danger { color: var(--move); }
 .ppl-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 0; flex: 1; padding: 2px 6px 12px; margin: 0 -6px; }
-.ppl-all { display: flex; align-items: center; gap: 8px; padding: 0 12px; color: var(--muted); font-size: 12px; cursor: pointer; }
-.ppl-row { display: grid; grid-template-columns: 18px 30px minmax(150px, 1.3fr) minmax(0, 1fr) minmax(0, 1.1fr) 120px 96px; align-items: center; gap: 12px;
+.ppl-row { display: grid; grid-template-columns: var(--ppl-cols); align-items: center; gap: 12px;
   padding: 9px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); cursor: pointer; text-align: left; }
 .ppl-row:hover { border-color: var(--muted); }
 .ppl-row:focus-visible { outline: 2px solid var(--stand); outline-offset: 2px; }
@@ -34,21 +32,27 @@
 .ppl-bday .ppl-copy { display: inline-flex; align-items: center; gap: 4px; color: var(--fg); }
 .ppl-bday svg { color: var(--orchid, var(--stand)); flex: none; }
 .ppl-n { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; color: var(--muted); font-size: 12px; }
+.ppl-list.no-work .ppl-work { display: none; }
+.ppl-list.no-tags .ppl-tags, .ppl-list.no-contacts .ppl-contacts, .ppl-list.no-birthday .ppl-bday, .ppl-list.no-tasks .ppl-n { display: none; }
 @media (max-width: 900px) {
   .ppl-row { grid-template-columns: 18px 30px minmax(0, 1fr) 100px; }
   .ppl-tags, .ppl-contacts, .ppl-n { display: none; }
 }
 
-/* Диалог человека */
-.dialog.person-dlg { width: min(520px, 100%); }
-.overlay:has(> .person-dlg) { padding-top: 6vh; }
-.pd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
-.pd-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); min-width: 0; }
-.pd-grid .field, .pd-bday .field { padding: 8px 10px; font-size: 13px; color: var(--fg); }
-.pd-bday { display: flex; align-items: center; gap: 8px; }
-.pd-bday input:first-child { width: 64px; }
-.pd-bday select { flex: 1; min-width: 0; }
-.pd-bday input:nth-child(3) { width: 84px; }
+/* Диалог человека: форма записи, как у задачи */
+.qi.person-qi { width: min(560px, 100%); }
+.qi-more .pd-in { flex: 1; min-width: 0; height: 30px; padding: 0 10px; font-size: 13px; color: var(--fg); }
+/* День рождения: одна рамка с тремя секциями одной высоты — день, месяц, год */
+.pd-bday { display: inline-flex; align-items: stretch; height: 30px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 8px; background: var(--field); overflow: hidden; }
+.pd-bday:focus-within { border-color: var(--stand); }
+.pd-bday.bad { border-color: var(--move); }
+.pd-bday input, .pd-bday select { border: 0; border-radius: 0; background: transparent; color: var(--fg); font: inherit; font-size: 13px; height: 100%; padding: 0 8px; margin: 0; outline: none; box-sizing: border-box; }
+.pd-bday input::placeholder { color: var(--muted); }
+.pd-d { width: 56px; text-align: center; }
+.pd-m { width: 84px; border-left: 1px solid var(--line) !important; border-right: 1px solid var(--line) !important; }
+.pd-y { width: 64px; text-align: center; }
+.pd-x { display: grid; place-items: center; width: 26px; border: 0; background: transparent; color: var(--muted); cursor: pointer; border-left: 1px solid var(--line); }
+.pd-x:hover { color: var(--fg); }
 .del-fate .hint { display: block; }
 .del-fate select.field { margin-top: 6px; padding: 6px 8px; width: 100%; }
 

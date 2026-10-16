@@ -14,6 +14,7 @@ import { Details, Help, PickBox, QuickForm, Ring, type TaskPatch } from "./compo
 import { Icon } from "./icons";
 import { ProjectDialog } from "./widgets";
 import PeoplePage from "./PeoplePage";
+import { NEW_PERSON_EVENT } from "./people";
 import { Assignee, PeopleCtx } from "./PersonCard";
 import { Check, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Rows3, Tag as TagIcon, Users } from "lucide-react";
 import { applyFilter, EMPTY_FILTER, filterOn, NO_SPACE, peopleOf, type TaskFilter } from "./tags";
@@ -201,6 +202,10 @@ export default function App() {
   const smart: SmartFilter | undefined = inTasks(view)
     ? { value: smartOn, onToggle: (v) => setSmarts(smartOn.includes(v) ? smartOn.filter((x) => x !== v) : [...smartOn, v]), onClear: () => setSmarts([]) }
     : undefined;
+  const setSettingValue = (key: string, value: string) => {
+    setSettings((st) => ({ ...st, [key]: value }));
+    run(() => db.setSetting(key, value));
+  };
   const fieldsButton = (
     <button className="icon-btn" data-tip="Какие поля задачи видны: отдельно для списка, канбана и календаря"
       onClick={() => (setSettingsTab("fields"), setSettingsOpen(true))}>
@@ -444,7 +449,9 @@ export default function App() {
       switch (e.code) {
         case "KeyN":
           e.preventDefault();
-          setNewOpen(true);
+          // В «Людях» N записывает человека, а не задачу
+          if (view === "people") window.dispatchEvent(new Event(NEW_PERSON_EVENT));
+          else setNewOpen(true);
           break;
         case "ArrowDown":
         case "KeyJ":
@@ -529,7 +536,8 @@ export default function App() {
       ) : (
       <main className={`main ${project ? "in-space" : ""}`} style={spaceVars(project?.color)}>
         {view === "people" ? (
-          <PeoplePage people={roster} tasks={tasks} tags={tags} reload={reload} focus={personFocus} onFocused={() => setPersonFocus(null)}
+          <PeoplePage people={roster} tasks={tasks} tags={tags} settings={settings} onSetting={setSettingValue} onShortcuts={() => setHelpOpen(true)}
+            reload={reload} focus={personFocus} onFocused={() => setPersonFocus(null)}
             onOpenBirthday={(day) => (openView("calendar"), setCalJump(day))}
             onOpenTasks={(name, kind) => (openView("tasks"), setFilter((f) => ({ ...f, ...(kind === "by" ? { person: name } : { waiting: name }) })))} />
         ) : view === "projects" ? (

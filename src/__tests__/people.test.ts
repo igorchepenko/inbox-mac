@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Person } from "../db";
 import {
   ageOn, assignedCount, birthdayInYear, birthdayOn, birthdaysOn, birthdayTitle, fmtBirthday, formatBirthday, normalizeTelegram, parseBirthday, searchPeople, sortPeople, taskCount, waitingCount,
+  activeCount, distinctValues, filterPeople, EMPTY_PEOPLE_FILTER, hiddenPeopleFields, togglePeopleField, peopleColumns, peopleDirection,
 } from "../people";
 import { task } from "./helpers";
 
@@ -82,10 +83,15 @@ describe("сортировка людей", () => {
     expect(names(sortPeople([a, b, c, d], "birthday", true))).toEqual(["Андрей", "Вера", "Борис", "Ёлкин"]);
   });
 
-  it("по тегу, компании и должности пустые в конце", () => {
-    expect(names(sortPeople([a, b, c, d], "tag"))).toEqual(["Борис", "Андрей", "Вера", "Ёлкин"]);
+  it("по компании и должности пустые в конце", () => {
     expect(names(sortPeople([a, b, c, d], "company"))).toEqual(["Борис", "Андрей", "Вера", "Ёлкин"]);
     expect(names(sortPeople([a, b, c, d], "job"))).toEqual(["Вера", "Андрей", "Борис", "Ёлкин"]);
+  });
+
+  it("по активным задачам: больше сверху, равные по имени", () => {
+    const n = new Map([[a.id, 1], [b.id, 3], [c.id, 0], [d.id, 3]]);
+    expect(names(sortPeople([a, b, c, d], "active", false, n))).toEqual(["Борис", "Вера", "Андрей", "Ёлкин"]);
+    expect(names(sortPeople([a, b, c, d], "active", true, n))).toEqual(["Ёлкин", "Андрей", "Борис", "Вера"]);
   });
 
   it("не меняет исходный массив", () => {
@@ -106,18 +112,63 @@ describe("поиск людей", () => {
     expect(searchPeople("", all)).toBe(all);
   });
 
-  it("по тегу, компании и должности", () => {
-    expect(found("клиент")).toEqual(["Андрей Ёлкин"]);
-    expect(found("акме")).toEqual(["Борис"]);
-    expect(found("аналит")).toEqual(["Борис"]);
+  it("только по имени: тег, компания, телефон и Telegram не ищутся", () => {
+    expect(found("клиент")).toEqual([]);
+    expect(found("акме")).toEqual([]);
+    expect(found("915")).toEqual([]);
+    expect(found("elkin_a")).toEqual([]);
+    expect(found("  борис ")).toEqual(["Борис"]);
   });
+});
 
-  it("по телефону цифрами и по нику Telegram с @ и без", () => {
-    expect(found("915 12")).toEqual(["Андрей Ёлкин"]);
-    expect(found("+7915")).toEqual(["Андрей Ёлкин"]);
-    expect(found("@elkin")).toEqual(["Андрей Ёлкин"]);
-    expect(found("elkin_a")).toEqual(["Андрей Ёлкин"]);
-    expect(found("777")).toEqual([]);
+describe("фильтры людей", () => {
+  const a = person({ name: "А", company: "Ромашка", job_title: "Директор", tags: [tag("клиент")] });
+  const b = person({ name: "Б", company: "ромашка", job_title: "Аналитик", tags: [tag("друг")] });
+  const c = person({ name: "В", company: "Акме", job_title: "Директор" });
+  const all = [a, b, c];
+  const names = (f: Partial<typeof EMPTY_PEOPLE_FILTER>) => filterPeople(all, { ...EMPTY_PEOPLE_FILTER, ...f }).map((p) => p.name);
+
+  it("пустой фильтр возвращает всех как есть", () => {
+    expect(filterPeople(all, EMPTY_PEOPLE_FILTER)).toBe(all);
+  });
+  it("внутри группы любой из выбранных, группы вместе", () => {
+    expect(names({ companies: ["Ромашка"] })).toEqual(["А", "Б"]);
+    expect(names({ companies: ["Ромашка", "Акме"] })).toEqual(["А", "Б", "В"]);
+    expect(names({ companies: ["Ромашка"], jobs: ["Директор"] })).toEqual(["А"]);
+    expect(names({ tags: [a.tags[0].id] })).toEqual(["А"]);
+  });
+  it("значения для фильтров без повторов", () => {
+    expect(distinctValues(["Ромашка", "ромашка ", "", "Акме"])).toEqual(["Акме", "Ромашка"]);
+  });
+});
+
+describe("активные задачи", () => {
+  it("не считает завершённые и отменённые", () => {
+    const tasks = [
+      task({ assigned_by: "Андрей", status: "active" }),
+      task({ assigned_by: "Андрей", status: "inbox" }),
+      task({ assigned_by: "Андрей", status: "done" }),
+      task({ participants: ["Андрей"], status: "archived", cancelled: 1 }),
+    ];
+    expect(activeCount("Андрей", tasks)).toBe(2);
+    expect(taskCount("Андрей", tasks)).toBe(4);
+  });
+});
+
+describe("поля страницы", () => {
+  it("скрытые поля переключаются и мусор игнорируется", () => {
+    expect(hiddenPeopleFields({})).toEqual([]);
+    expect(hiddenPeopleFields({ "fields:people": "oops" })).toEqual([]);
+    const v = togglePeopleField({}, "tags", false);
+    expect(hiddenPeopleFields({ "fields:people": v })).toEqual(["tags"]);
+    expect(hiddenPeopleFields({ "fields:people": togglePeopleField({ "fields:people": v }, "tags", true) })).toEqual([]);
+  });
+  it("у скрытого поля нет колонки", () => {
+    expect(peopleColumns([]).split(" ").length).toBeGreaterThan(peopleColumns(["tags", "tasks"]).split(" ").length);
+  });
+  it("направление сортировки", () => {
+    expect(peopleDirection("name", false).asc).toBe(true);
+    expect(peopleDirection("active", false).asc).toBe(false);
   });
 });
 
