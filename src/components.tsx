@@ -8,7 +8,7 @@ import { Paperclip } from "lucide-react";
 import { Checklist, DateField, Files, Line, Links, normalizeUrl, PriorityPicker, QuadrantPicker, RepeatField, TimeRange, type RunDb } from "./extras";
 import { quickKeyLabel } from "./prefs";
 import { PeopleInput, PersonInput, TagInput } from "./TagsUI";
-import { fmtCreated, KindSwitch, RemindField } from "./TaskBits";
+import { fmtCreated, KindSwitch, RemindField, WaitingField } from "./TaskBits";
 import { anchorOf, remindPatch, remindAtFor, type When } from "./remind";
 import { SpacePicker } from "./SpaceUI";
 import { addTagName, canonicalPerson, parseQuick } from "./tags";
@@ -169,7 +169,7 @@ export function Ring({ fraction, accent, count }: { fraction: number; accent: st
   );
 }
 
-export type TaskPatch = Partial<Pick<Task, "title" | "note" | "priority" | "project_id" | "due_date" | "remind_at" | "reminded" | "start_time" | "end_time" | "quadrant" | "recurrence" | "assigned_by" | "remind_before" | "kind">>;
+export type TaskPatch = Partial<Pick<Task, "title" | "note" | "priority" | "project_id" | "due_date" | "remind_at" | "reminded" | "start_time" | "end_time" | "quadrant" | "recurrence" | "assigned_by" | "remind_before" | "kind" | "waiting_for" | "waiting_until">>;
 
 export function Details(props: {
   task: Task;
@@ -245,6 +245,13 @@ export function Details(props: {
         <div className="lbl">Статус</div>
         <StageSwitch task={x} onChange={props.onStage} />
       </fieldset>
+
+      {!closed && (
+        <fieldset className="det-sec" disabled={locked}>
+          <div className="lbl">Жду{x.waiting_for ? null : <span className="opt"> ответа от человека</span>}</div>
+          <WaitingField task={x} people={props.people} disabled={locked} onPatch={onPatch} />
+        </fieldset>
+      )}
 
       <fieldset className="det-sec" disabled={locked}>
         <div className="lbl">Тип</div>

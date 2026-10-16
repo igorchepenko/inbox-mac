@@ -6,7 +6,8 @@ import { invoke } from "@tauri-apps/api/core";
 import * as db from "./db";
 import type { Project, ProjectFields, Tag, Task } from "./db";
 import { fmtDay, fmtRange, nowStamp, stampTime, today, toHHMM } from "./dates";
-import { ALWAYS, inTasks, isSmart, listFor, plural, progressFor, revKey, revOf, scopeOf, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
+import { isWaiting, pingDue } from "./waiting";
+import { ALWAYS, HOTKEY_VIEWS, inTasks, isSmart, listFor, plural, progressFor, revKey, revOf, scopeOf, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
 import { marks } from "./search";
 import "./search.css";
 import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
@@ -16,7 +17,7 @@ import { Check, CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repe
 import { applyFilter, EMPTY_FILTER, filterOn, NO_SPACE, peopleOf, type TaskFilter } from "./tags";
 import { Assignee, FilterBar, FilterButton, FIND_EVENT, SearchField, TagChips, TagEditor, type SmartFilter } from "./TagsUI";
 import { QuadrantGlyph } from "./extras";
-import { CreatedMeta, DueFlag, MeetingMark } from "./TaskBits";
+import { CreatedMeta, DueFlag, MeetingMark, WaitingBadge } from "./TaskBits";
 import { defaultBefore, remindPatch } from "./remind";
 import { boardFor, canMove, CLOSING, dropTo, layoutOf, STAGES, stageOf, type Layout, type Stage } from "./boardOps";
 import { SummaryDialog, type Closing } from "./Summary";
@@ -263,7 +264,7 @@ export default function App() {
   // Задача с главной открывается в своём списке
   const homeOf = (x: Task): ViewId => {
     const t = today();
-    return x.status === "inbox" ? "inbox" : x.status === "archived" ? "archive"
+    return x.status === "inbox" ? "inbox" : x.status === "archived" ? "archive" : pingDue(x, t) ? "today" : isWaiting(x) ? "waiting"
       : x.due_date && x.due_date <= t ? "today" : x.status === "done" ? "today" : "soon";
   };
   const openTask = (x: Task) => {
@@ -414,7 +415,7 @@ export default function App() {
       if (e.metaKey && e.code === "KeyF") return e.preventDefault(), window.dispatchEvent(new Event(FIND_EVENT));
       if (e.metaKey && /^Digit[1-6]$/.test(e.code)) {
         e.preventDefault();
-        const v = VIEWS[Number(e.code.slice(5)) - 1].id;
+        const v = HOTKEY_VIEWS[Number(e.code.slice(5)) - 1].id;
         if (!hidden(v)) openView(v);
         return;
       }
@@ -671,12 +672,14 @@ export default function App() {
 function subtitleFor(view: ViewId, n: number): string {
   if (view === "archive") return n ? `${plural(n, "задача сделана или отменена", "задачи сделаны или отменены", "задач сделаны или отменены")}` : "";
   if (view === "tasks") return n ? `Все задачи, кроме завершённых: ${n}` : "";
+  if (view === "waiting") return n ? "Задачи, которые ждут ответа или результата от других людей" : "";
   if (view === "soon") return n ? "Запланированное на будущее и разобранное без даты" : "";
   return n ? `${n} в работе` : "";
 }
 
 function emptyText(view: ViewId): string {
   if (view === "inbox") return `Здесь пусто. Нажми ${quickKeyLabel()} в любом приложении, чтобы записать задачу.`;
+  if (view === "waiting") return "Никого не ждёшь. В панели задачи поле «Жду» ставит задачу сюда.";
   if (view === "today") return "На сегодня ничего. Поставь дату «Сегодня» при разборе.";
   if (view === "archive") return "Сделанные и отменённые задачи попадают сюда на следующий день.";
   if (view === "tasks") return `Задач пока нет. Нажми ${quickKeyLabel()} в любом приложении, чтобы записать задачу.`;
@@ -718,6 +721,7 @@ function TaskRow(props: {
         {props.query ? marks(x.title, props.query).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part)) : x.title}
       </span>
       {show("tags") && <TagChips tags={x.tags} max={2} />}
+      <WaitingBadge task={x} />
       {show("assignee") && x.assigned_by && <Assignee name={x.assigned_by} />}
       {show("participants") && x.participants.length > 0 && (
         <span className="meta badge" data-tip={tips.participants(x.participants)}><Users size={12} /> {x.participants.length}</span>

@@ -2,6 +2,7 @@ import type { Task } from "./db";
 import type { Layout } from "./boardOps";
 import { STAGES, stageOf } from "./boardOps";
 import { fmtDay, fmtRange, fmtStamp, parseDay, stampDay, stampTime } from "./dates";
+import { pingDue } from "./waiting";
 import { dueState, type DueTask } from "./due";
 import { describe, parseRule } from "./recurrence";
 import { priorityName } from "./priority";
@@ -125,6 +126,7 @@ export const tips = {
   tag: (name: string) => `Тег: ${name}`,
   tagsRest: (names: string[]) => lines("Ещё теги:", names),
   assignee: (name: string) => `Назначил: ${name}`,
+  waiting: (x: Task) => pingDue(x) ? `Пора напомнить: жду ${x.waiting_for}` : `Жду: ${x.waiting_for}${x.waiting_until ? `. Напомнить ${fmtDay(x.waiting_until).toLowerCase()}` : ""}`,
   participants: (names: string[]) => lines(`Участники: ${names.length}`, names),
   checklist: (x: Task) =>
     lines(`Чеклист: выполнено ${x.subtasks.filter((s) => s.done).length} из ${x.subtasks.length}`,

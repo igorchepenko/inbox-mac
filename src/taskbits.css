@@ -34,3 +34,8 @@
 .fields-head { padding-bottom: 6px; font-size: 12px; font-weight: 600; color: var(--muted); }
 .fields-row { padding: 8px 0; border-top: 1px solid var(--line); }
 .fields-col { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+
+/* Статус «Жду» */
+.meta.waiting { display: inline-flex; align-items: center; gap: 3px; flex: none; color: var(--move); font-weight: 600; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meta.waiting.ping { color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); padding: 1px 6px; border-radius: 6px; font-weight: 700; }
+.wait-ping { color: var(--amber); }

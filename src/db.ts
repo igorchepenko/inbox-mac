@@ -38,6 +38,8 @@ export interface Task {
   kind: TaskKind;
   cancelled: number; // 1 — закрыта отменой, а не сделана (миграция 012). Статус при этом done или archived
   summary: string; // итоги: почему отменил или что получилось, в свободной форме (миграция 012)
+  waiting_for: string | null; // статус «Жду»: от кого ждём ответа или результата, NULL — никого (миграция 013)
+  waiting_until: string | null; // день, когда пора напомнить; в этот день задача возвращается в «Сегодня»
   // Не колонки tasks: подтягиваются из своих таблиц в loadTasks
   subtasks: Subtask[];
   links: Link[];
@@ -166,7 +168,7 @@ export async function addTask(title: string, note: string, draft: Draft = {}): P
   return id;
 }
 
-type Editable = Pick<Task, "title" | "note" | "priority" | "project_id" | "due_date" | "remind_at" | "status" | "reminded" | "triaged_at" | "done_at" | "start_time" | "end_time" | "quadrant" | "recurrence" | "series_id" | "next_id" | "started_at" | "assigned_by" | "remind_before" | "kind" | "cancelled" | "summary">;
+type Editable = Pick<Task, "title" | "note" | "priority" | "project_id" | "due_date" | "remind_at" | "status" | "reminded" | "triaged_at" | "done_at" | "start_time" | "end_time" | "quadrant" | "recurrence" | "series_id" | "next_id" | "started_at" | "assigned_by" | "remind_before" | "kind" | "cancelled" | "summary" | "waiting_for" | "waiting_until">;
 
 export async function updateTask(id: number, patch: Partial<Editable>): Promise<void> {
   const keys = Object.keys(patch) as (keyof Editable)[];
@@ -242,7 +244,8 @@ async function close(x: Task, cancelled = 0): Promise<void> {
       if (x.participants.length) await setTaskPeople(nextId, x.participants);
     }
   }
-  await updateTask(x.id, { status: "done", done_at: stamp, next_id: nextId, cancelled });
+  // Закрытая задача больше никого не ждёт
+  await updateTask(x.id, { status: "done", done_at: stamp, next_id: nextId, cancelled, waiting_for: null, waiting_until: null });
 }
 
 /** Вернуть сделанную в работу. Если она успела создать следующий повтор и тот ещё не сделан, он убирается */
@@ -263,7 +266,8 @@ export async function loadTags(): Promise<Tag[]> {
 
 /** Все имена из задач: кто назначал и кто был участником встречи. Один список на оба поля */
 const PEOPLE_SQL = `SELECT assigned_by AS name, id AS task_id FROM tasks WHERE assigned_by IS NOT NULL AND assigned_by <> ''
-  UNION SELECT name, task_id FROM task_people`;
+  UNION SELECT name, task_id FROM task_people
+  UNION SELECT waiting_for AS name, id AS task_id FROM tasks WHERE waiting_for IS NOT NULL AND waiting_for <> ''`;
 
 /** Все, кто когда-либо назначал задачи или был на встрече: подсказки в полях «Кто назначил» и «Участники» */
 export async function loadPeople(): Promise<string[]> {
@@ -300,6 +304,7 @@ export async function renamePerson(from: string, to: string | null): Promise<voi
   const target = clean && !sameName(clean, from) ? names.find((n) => sameName(n, clean)) ?? clean : clean;
   for (const n of names.filter((n) => sameName(n, from))) {
     await d.execute("UPDATE tasks SET assigned_by = $1 WHERE assigned_by = $2", [target, n]);
+    await d.execute("UPDATE tasks SET waiting_for = $1 WHERE waiting_for = $2", [target, n]);
     // В участниках: если человек уже есть на встрече под новым именем, вторая строка не нужна
     if (target) await d.execute("UPDATE OR IGNORE task_people SET name = $1 WHERE name = $2", [target, n]);
     if (n !== target) await d.execute("DELETE FROM task_people WHERE name = $1", [n]);
