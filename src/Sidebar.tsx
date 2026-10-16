@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronsUpDown, Keyboard, LayoutGrid, Plus, Search, Settings as Gear, X } from "lucide-react";
+import { Check, ChevronDown, ChevronsUpDown, Keyboard, LayoutGrid, Plus, Search, Settings as Gear, Users, X } from "lucide-react";
 import type { Project, Tag, TagPatch, Task } from "./db";
 import { TagEditor } from "./TagsUI";
 import { ALWAYS, countFor, isSmart, VIEWS, type ViewId } from "./views";
@@ -61,6 +61,7 @@ export function Sidebar(props: {
   tasks: Task[];
   projects: Project[];
   tags: Tag[];
+  peopleCount: number;
   settings: Record<string, string>;
   onOpen: (v: ViewId) => void;
   onTagSave: (id: number, patch: TagPatch) => Promise<string | null>;
@@ -134,6 +135,13 @@ export function Sidebar(props: {
       {/* Умные списки стоят под «Задачами» с отступом: это тот же раздел с готовым фильтром */}
       {visibleViews.map(({ v, key }) =>
         item(v.id, v.name, v.accent, viewIcon(v.id, props.settings), (el) => setPicker({ id: v.id, el }), key, isSmart(v.id) ? "smart" : ""))}
+
+      <div className={`nav ${cur === "people" ? "on" : ""}`} onClick={() => props.onOpen("people")} role="button"
+        data-tip="Люди: контакты, теги и дни рождения" data-key="⌘8">
+        <span className="nav-icon" style={{ color: "var(--stand)" }}><Users size={15} /></span>
+        <span className="nav-name">Люди</span>
+        <span className="n">{props.peopleCount || ""}</span>
+      </div>
 
       <div className="side-div" role="separator" />
 

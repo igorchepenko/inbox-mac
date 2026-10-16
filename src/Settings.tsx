@@ -1,14 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BellRing, Check, FolderOpen, Info, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, Rows3, SlidersHorizontal, Type, UserRound, Users, X, type LucideIcon } from "lucide-react";
+import { BellRing, Check, FolderOpen, Info, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, Rows3, SlidersHorizontal, Type, UserRound, X, type LucideIcon } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as autostartEnabled } from "@tauri-apps/plugin-autostart";
 import { Icon } from "./icons";
-import { ALWAYS, isSmart, plural, VIEWS, type ViewId } from "./views";
+import { ALWAYS, isSmart, VIEWS, type ViewId } from "./views";
 import { beforeName, defaultBefore, REMIND_BEFORE } from "./remind";
-import { loadPeopleStats, renamePerson } from "./db";
-import { sameName } from "./tags";
-import { searchNames } from "./search";
-import { SearchField } from "./TagsUI";
 import { CloseX, IconGrid, Popover, ThemeSwitch, TimeInput, Toggle } from "./widgets";
 import { savedLook, savedTheme, setLook, setTheme, type Look } from "./theme";
 import { HomeSettings } from "./HomeSettings";
@@ -41,7 +37,6 @@ const SECTIONS: { id: string; name: string; icon: LucideIcon; render: (p: Settin
   { id: "look", name: "Внешний вид", icon: Type, render: () => <Look /> },
   { id: "quick", name: "Быстрый ввод", icon: Keyboard, render: (p) => <Quick {...p} /> },
   { id: "notify", name: "Уведомления", icon: BellRing, render: (p) => <Notifications {...p} /> },
-  { id: "people", name: "Кто назначил", icon: Users, render: (p) => <People {...p} /> },
   { id: "fields", name: "Поля задач", icon: Rows3, render: (p) => <FieldsSettings settings={p.settings} onSet={p.onSet} /> },
   { id: "menu", name: "Меню", icon: PanelLeft, render: (p) => <MenuItems {...p} /> },
   { id: "home", name: "Дашборд", icon: LayoutDashboard, render: (p) => <HomeSettings settings={p.settings} onSet={p.onSet} /> },
@@ -378,89 +373,6 @@ function Notifications(p: SettingsProps) {
         </Row>
       </fieldset>
       <ResetSection name="Уведомления" changed={notifChanged} onReset={resetNotif} />
-    </div>
-  );
-}
-
-/** Кто назначал задачи: переименовать, объединить два написания одного человека, убрать */
-function People(p: SettingsProps) {
-  const [rows, setRows] = useState<{ name: string; count: number }[] | null>(null);
-  const [edit, setEdit] = useState<{ name: string; value: string } | null>(null);
-  const [armed, setArmed] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const load = () => loadPeopleStats().then(setRows).catch((e) => setError(String(e)));
-  useEffect(() => void load(), []);
-  const apply = async (from: string, to: string | null) => {
-    try {
-      await renamePerson(from, to);
-      setEdit(null);
-      setArmed(null);
-      setError(null);
-      await load();
-      p.onData?.();
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-  const saveEdit = () => {
-    if (!edit) return;
-    const v = edit.value.replace(/\s+/g, " ").trim();
-    if (!v || v === edit.name) return setEdit(null);
-    apply(edit.name, v);
-  };
-  // Новое имя совпало с другим человеком: сохранение объединит их
-  const mergeInto = edit && rows?.find((r) => r.name !== edit.name && sameName(r.name, edit.value.trim()));
-  if (!rows) return <div className="hint">Загружаю…</div>;
-  return (
-    <div className="set-group">
-      <div className="hint">Имена из поля «Кто назначил». Переименование меняет имя во всех задачах. Если вписать имя другого человека, задачи объединятся под ним.</div>
-      {!rows.length && <div className="hint">Пока никто не назначал задач. Имя появится здесь, когда впишешь его в задачу или наберёшь @Имя при записи.</div>}
-      {rows.length > 1 && <SearchField value={query} onChange={setQuery} placeholder="Найти человека" />}
-      {query.trim() && !searchNames(query, rows).length && <div className="hint">Никого не нашлось.</div>}
-      {searchNames(query, rows).map((r) => (
-        <div key={r.name} className="set-row person-row">
-          <div className="set-text">
-            {edit?.name === r.name ? (
-              <input className="field" autoFocus value={edit.value} aria-label="Имя"
-                onChange={(e) => setEdit({ ...edit, value: e.target.value })}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") saveEdit();
-                  if (e.key === "Escape") (e.stopPropagation(), setEdit(null));
-                }} />
-            ) : (
-              <div className="set-name">{r.name}</div>
-            )}
-            <div className="hint">
-              {edit?.name === r.name && mergeInto ? `Задачи перейдут к «${mergeInto.name}»` : plural(r.count, "задача", "задачи", "задач")}
-            </div>
-          </div>
-          <div className="set-ctl seg">
-            {edit?.name === r.name ? (
-              <>
-                <button type="button" className="btn small" onClick={saveEdit}>{mergeInto ? "Объединить" : "Сохранить"}</button>
-                <button type="button" className="link" onClick={() => setEdit(null)}>Отмена</button>
-              </>
-            ) : (
-              <>
-                <button type="button" className="btn small" onClick={() => setEdit({ name: r.name, value: r.name })}>Переименовать</button>
-                {rows.length > 1 && (
-                  <select className="field set-select" value="" aria-label={`Объединить ${r.name} с`}
-                    onChange={(e) => e.target.value && apply(r.name, e.target.value)}>
-                    <option value="">Объединить с…</option>
-                    {rows.filter((o) => o.name !== r.name).map((o) => <option key={o.name} value={o.name}>{o.name}</option>)}
-                  </select>
-                )}
-                <button type="button" className={`link danger ${armed === r.name ? "armed" : ""}`}
-                  onClick={() => (armed === r.name ? apply(r.name, null) : setArmed(r.name))} onBlur={() => setArmed(null)}>
-                  {armed === r.name ? "Точно? Задачи станут «Сам себе»" : "Удалить"}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      ))}
-      {error && <div className="error">{error}</div>}
     </div>
   );
 }

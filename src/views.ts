@@ -4,7 +4,7 @@ import { quickKeyLabel } from "./prefs";
 import { PRIORITY } from "./priority";
 import { compareNames, firstTag } from "./tags";
 
-export type ViewId = "home" | "projects" | "tasks" | "inbox" | "today" | "soon" | "archive" | "calendar" | `p:${number}` | `t:${number}`;
+export type ViewId = "home" | "projects" | "people" | "tasks" | "inbox" | "today" | "soon" | "archive" | "calendar" | `p:${number}` | `t:${number}`;
 
 /** Пункты меню по порядку: ⌘1 … ⌘6. «Новые», «Сегодня» и «Скоро» стоят в меню под «Задачами» */
 export const VIEWS: { id: ViewId; name: string; accent: string; icon: string }[] = [

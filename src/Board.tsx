@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { spaceVars } from "./palette";
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, Bell, CalendarDays, CalendarPlus, Check, Clock, X, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound, Users } from "lucide-react";
-import { Assignee, TagChip } from "./TagsUI";
+import { TagChip } from "./TagsUI";
+import { Assignee } from "./PersonCard";
 import { CreatedMeta, DueFlag, MeetingMark } from "./TaskBits";
 import { isCancelled, type Project, type Task } from "./db";
 import { addDays, fmtDay, fmtRange, nextMonday, stampTime, today } from "./dates";

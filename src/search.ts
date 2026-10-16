@@ -24,7 +24,7 @@ export function searchProjects(query: string, projects: Project[]): Project[] {
   return projects.filter((p) => has(p.name, n) || has(p.description, n));
 }
 
-/** Поиск людей в настройках «Кто назначил»: по имени */
+/** Поиск по именам: запрос целиком, без регистра. Для раздела «Люди» см. searchPeople в people.ts */
 export function searchNames<T extends { name: string }>(query: string, rows: T[]): T[] {
   const n = needle(query);
   if (!n) return rows;

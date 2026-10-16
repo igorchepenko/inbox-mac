@@ -10,6 +10,7 @@ import "./space.css";
 import "./profile.css";
 import "./tags.css";
 import "./status.css";
+import "./people.css";
 import "./glass.css";
 import { installPalette } from "./palette";
 import { applyLook, applyTheme, followLookChanges, followThemeChanges, savedLook, savedTheme } from "./theme";
