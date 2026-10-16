@@ -235,10 +235,14 @@ export default function PeoplePage(props: {
   };
   useEffect(() => {
     if (!ids.length) return;
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && !dlg && setPicked([]);
-    window.addEventListener("keydown", esc);
-    return () => window.removeEventListener("keydown", esc);
-  }, [ids.length, dlg]);
+    const key = (e: KeyboardEvent) => {
+      if (dlg) return;
+      if (e.key === "Escape") setPicked([]);
+      else if (e.metaKey && e.code === "KeyA" && !(e.target as HTMLElement).closest("input, textarea, select")) (e.preventDefault(), setPicked(shown.map((p) => p.id)));
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [ids.length, dlg, shown]);
   const setSortSaved = (s: PeopleSort) => (setSort(s), savePref(KEY_SORT, s));
   const toggleRev = () => (setRev(!rev), savePref(KEY_REV, rev ? "0" : "1"));
   const withBirthday = props.people.filter((p) => p.birthday).length;
@@ -277,7 +281,7 @@ export default function PeoplePage(props: {
           <b>Выбрано: {ids.length}</b>
           <button className="btn small" onClick={() => setDlg({ kind: "bulk" })}>Изменить</button>
           <button className="btn small danger" onClick={() => setDlg({ kind: "delete", ids })}>Удалить</button>
-          {!allOn && <button className="link" onClick={() => setPicked(shown.map((p) => p.id))}>Выбрать всех{query.trim() ? " найденных" : ""}</button>}
+          {!allOn && <button className="link" onClick={() => setPicked(shown.map((p) => p.id))}>Выбрать всех{query.trim() ? " найденных" : ""} <kbd>⌘A</kbd></button>}
           <button className="link" onClick={() => setPicked([])}>Снять выбор <kbd>Esc</kbd></button>
         </div>
       )}
@@ -295,7 +299,7 @@ export default function PeoplePage(props: {
                   <Briefcase size={11} />
                   {p.job_title && <span className="ppl-job" data-tip={p.job_title}>{p.job_title}</span>}
                   {p.job_title && p.company && <span className="ppl-sep">·</span>}
-                  {p.company && <span className="ppl-co" data-tip={p.company}><Building2 size={11} /><span>{p.company}</span></span>}
+                  {p.company && <span className="ppl-co"><Building2 size={11} /><span data-tip={p.company}>{p.company}</span></span>}
                 </span>
               )}
             </div>
@@ -508,21 +512,20 @@ function BulkDialog(props: { count: number; tags: Tag[]; onClose: () => void; on
   };
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
-      <form className="dialog person-dlg" onSubmit={(e) => (e.preventDefault(), apply())} onKeyDown={(e) => e.key === "Escape" && props.onClose()}>
+      <form className="qi person-qi" onSubmit={(e) => (e.preventDefault(), apply())} onKeyDown={(e) => e.key === "Escape" && props.onClose()}>
         <CloseX onClick={props.onClose} />
-        <h3>Изменить: {plural(props.count, "человек", "человека", "человек")}</h3>
+        <h3 className="bulk-h">Изменить: {plural(props.count, "человек", "человека", "человек")}</h3>
         <p className="hint">Заполни только то, что нужно поменять у всех. Пустые поля остаются как есть, теги добавляются к тем, что уже стоят.</p>
-        <div className="pd-grid">
-          <label>Компания<input className="field" autoFocus value={company} onChange={(e) => setCompany(e.target.value)} /></label>
-          <label>Должность<input className="field" value={job} onChange={(e) => setJob(e.target.value)} /></label>
+        <div className="qi-more lines">
+          <Line label="Компания"><input className="field pd-in" autoFocus value={company} onChange={(e) => setCompany(e.target.value)} /></Line>
+          <Line label="Должность"><input className="field pd-in" value={job} onChange={(e) => setJob(e.target.value)} /></Line>
+          <Line label="Теги"><TagInput value={tags} tags={props.tags} onChange={setTags} /></Line>
         </div>
-        <div className="lbl">Добавить теги</div>
-        <TagInput value={tags} tags={props.tags} onChange={setTags} />
         {error && <div className="error">{error}</div>}
-        <div className="dlg-foot">
+        <div className="qi-foot">
           <span className="grow" />
           <button type="button" className="btn" onClick={props.onClose}>Отмена</button>
-          <button type="submit" className="cta stand narrow" disabled={!ready}>Применить</button>
+          <button type="submit" className="cta" disabled={!ready}>Применить</button>
         </div>
       </form>
     </div>
