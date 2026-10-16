@@ -89,18 +89,21 @@ export interface TaskFilter {
   spaces: number[];
   tags: number[];
   person: string | null;
+  /** «Жду от»: открытые задачи, где ждём ответа от этого человека (поле waiting_for); null — не фильтруем */
+  waiting?: string | null;
   text: string;
 }
 export const NO_PERSON = "";
 export const NO_SPACE = 0;
 export const EMPTY_FILTER: TaskFilter = { spaces: [], tags: [], person: null, text: "" };
-export const filterOn = (f: TaskFilter) => f.spaces.length > 0 || f.tags.length > 0 || f.person !== null || !!f.text.trim();
+export const filterOn = (f: TaskFilter) => f.spaces.length > 0 || f.tags.length > 0 || f.person !== null || f.waiting != null || !!f.text.trim();
 
 export function applyFilter(tasks: Task[], f: TaskFilter): Task[] {
   if (!filterOn(f)) return tasks;
   return searchTasks(f.text, tasks).filter((x) => {
     if (f.spaces.length && !f.spaces.includes(x.project_id ?? NO_SPACE)) return false;
     if (f.tags.length && !x.tags.some((t) => f.tags.includes(t.id))) return false;
+    if (f.waiting != null && !(x.status !== "done" && x.status !== "archived" && x.waiting_for && sameName(x.waiting_for, f.waiting))) return false;
     if (f.person === NO_PERSON) return !x.assigned_by;
     if (f.person !== null) return !!x.assigned_by && sameName(x.assigned_by, f.person);
     return true;

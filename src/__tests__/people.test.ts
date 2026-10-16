@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Person } from "../db";
 import {
-  ageOn, birthdayOn, birthdaysOn, birthdayTitle, fmtBirthday, formatBirthday, normalizeTelegram, parseBirthday, searchPeople, sortPeople, taskCount,
+  ageOn, assignedCount, birthdayInYear, birthdayOn, birthdaysOn, birthdayTitle, fmtBirthday, formatBirthday, normalizeTelegram, parseBirthday, searchPeople, sortPeople, taskCount, waitingCount,
 } from "../people";
 import { task } from "./helpers";
 
@@ -139,5 +139,26 @@ describe("прочее", () => {
     expect(normalizeTelegram("https://t.me/elkin?start=1")).toBe("elkin");
     expect(normalizeTelegram("t.me/elkin")).toBe("elkin");
     expect(normalizeTelegram("")).toBe("");
+  });
+});
+
+describe("переходы из списка людей", () => {
+  it("день рождения в нужном году, 29 февраля в невисокосный — 28-е", () => {
+    expect(birthdayInYear("03-09", 2026)).toBe("2026-03-09");
+    expect(birthdayInYear("1990-03-09", 2026)).toBe("2026-03-09");
+    expect(birthdayInYear("02-29", 2026)).toBe("2026-02-28");
+    expect(birthdayInYear("02-29", 2028)).toBe("2028-02-29");
+    expect(birthdayInYear(null, 2026)).toBeNull();
+  });
+
+  it("счётчики: назначил и жду считают только открытые задачи", () => {
+    const xs = [
+      task({ id: 1, assigned_by: "Андрей" }),
+      task({ id: 2, assigned_by: "андрей", status: "done" }),
+      task({ id: 3, waiting_for: "Андрей" }),
+      task({ id: 4, waiting_for: "Андрей", status: "archived" }),
+    ];
+    expect(assignedCount("Андрей", xs)).toBe(1);
+    expect(waitingCount("Андрей", xs)).toBe(1);
   });
 });

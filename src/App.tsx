@@ -46,6 +46,8 @@ export default function App() {
   // Раздел «Люди»; personFocus — чью карточку открыть при переходе (с дня рождения в календаре)
   const [roster, setRoster] = useState<db.Person[]>([]);
   const [personFocus, setPersonFocus] = useState<string | null>(null);
+  // День (ГГГГ-ММ-ДД), на который календарь переходит при открытии: клик по дню рождения в «Людях»
+  const [calJump, setCalJump] = useState<string | null>(null);
   // Фильтры. Поиск, теги и «кто назначил» живут, пока открыт список, при переходе в другой сбрасываются.
   // Пространства остаются выбранными во всех списках и в календаре, пока их не сбросят
   const [filter, setFilter] = useState<TaskFilter>(EMPTY_FILTER);
@@ -519,11 +521,14 @@ export default function App() {
             run(() => db.updateTask(id, p));
           }}
           onCreate={createAt} show={shownFields(settings, "calendar")}
-          birthdays={roster} onOpenPerson={(name) => (setPersonFocus(name), openView("people"))} />
+          birthdays={roster} onOpenPerson={(name) => (setPersonFocus(name), openView("people"))}
+          jump={calJump} onJumped={() => setCalJump(null)} />
       ) : (
       <main className={`main ${project ? "in-space" : ""}`} style={spaceVars(project?.color)}>
         {view === "people" ? (
-          <PeoplePage people={roster} tasks={tasks} tags={tags} reload={reload} focus={personFocus} onFocused={() => setPersonFocus(null)} />
+          <PeoplePage people={roster} tasks={tasks} tags={tags} reload={reload} focus={personFocus} onFocused={() => setPersonFocus(null)}
+            onOpenBirthday={(day) => (openView("calendar"), setCalJump(day))}
+            onOpenTasks={(name, kind) => (openView("tasks"), setFilter((f) => ({ ...f, ...(kind === "by" ? { person: name } : { waiting: name }) })))} />
         ) : view === "projects" ? (
           <ProjectsPage projects={projects} tasks={tasks} onOpen={openView}
             onEdit={(p) => setProjectDlg(p)} onNew={() => setProjectDlg("new")} />

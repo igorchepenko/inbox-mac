@@ -64,6 +64,9 @@ export default function CalendarView(props: {
   show?: Shown; // какие поля видны на плашке, Настройки → «Поля задач» → Календарь
   birthdays?: Person[]; // дни рождения людей из раздела «Люди»: повторяются каждый год
   onOpenPerson?: (name: string) => void;
+  /** Открыть календарь на этом дне (ГГГГ-ММ-ДД) в режиме «Месяц»: переход с дня рождения в «Людях» */
+  jump?: string | null;
+  onJumped?: () => void;
 }) {
   const show = props.show ?? ALL_SHOWN;
   const [mode, setModeState] = useState<CalMode>(() => loadPref("cal:mode", ["day", "week", "month"] as const, "week"));
@@ -85,6 +88,12 @@ export default function CalendarView(props: {
   };
 
   useEffect(() => setPending({}), [props.tasks]);
+  useEffect(() => {
+    if (!props.jump) return;
+    setMode("month");
+    setAnchor(props.jump);
+    props.onJumped?.();
+  }, [props.jump]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(id);

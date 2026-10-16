@@ -1,7 +1,7 @@
 // Теги и «Кто назначил» в интерфейсе: чипсы, поля ввода с подсказками, правка тега, фильтр списка.
 // Поля работают и в правой панели, и в форме записи задачи (⌥Space и N)
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { ListFilter, Search, Sparkles, UserRound, X } from "lucide-react";
+import { Hourglass, ListFilter, Search, Sparkles, UserRound, X } from "lucide-react";
 import type { Project, Tag, TagPatch } from "./db";
 import { Icon } from "./icons";
 import { PALETTE } from "./palette";
@@ -320,14 +320,15 @@ export function FilterButton(props: {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const { filter: f } = props;
   // Запрос поиска виден в своём поле, в счётчик кнопки не входит
-  const n = f.spaces.length + f.tags.length + (f.person !== null ? 1 : 0) + (props.smart?.value.length ?? 0);
+  const n = f.spaces.length + f.tags.length + (f.person !== null ? 1 : 0) + (f.waiting != null ? 1 : 0) + (props.smart?.value.length ?? 0);
   const tags = props.tags.filter((t) => t.id !== props.lockTag);
   const toggleTag = (id: number) => props.onChange({ ...f, tags: toggle(f.tags, id) });
   const toggleSpace = (id: number) => props.onChange({ ...f, spaces: toggle(f.spaces, id) });
   const setPerson = (p: string | null) => props.onChange({ ...f, person: f.person === p ? null : p });
+  const setWaiting = (p: string) => props.onChange({ ...f, waiting: f.waiting != null && sameName(f.waiting, p) ? null : p });
   return (
     <>
-      <button className={`icon-btn ${n ? "on" : ""}`} data-tip={props.noSpaces ? "Фильтры по тегам и тому, кто назначил" : "Фильтры по пространствам, тегам и тому, кто назначил"}
+      <button className={`icon-btn ${n ? "on" : ""}`} data-tip={props.noSpaces ? "Фильтры по тегам и тому, кто назначил, и тому, кого ждёшь" : "Фильтры по пространствам, тегам, тому, кто назначил, и тому, кого ждёшь"}
         onClick={(e) => setAnchor(anchor ? null : e.currentTarget)}>
         <ListFilter size={13} /> Фильтры{n > 0 && <span className="fcount">{n}</span>}
       </button>
@@ -373,6 +374,14 @@ export function FilterButton(props: {
             ))}
             <button type="button" className={`fchip person ${f.person === NO_PERSON ? "on" : ""}`} onClick={() => setPerson(NO_PERSON)}>Сам себе</button>
           </div>
+          <div className="lbl sub-lbl">Жду от</div>
+          <div className="seg">
+            {props.people.map((p) => (
+              <button type="button" key={p} className={`fchip person ${f.waiting != null && sameName(f.waiting, p) ? "on" : ""}`} onClick={() => setWaiting(p)}>
+                <UserRound size={11} /> {p}
+              </button>
+            ))}
+          </div>
           {n > 0 && <button type="button" className="link tag-del" onClick={() => (props.onChange({ ...EMPTY_FILTER, text: f.text }), props.smart?.onClear())}>Сбросить фильтры</button>}
         </Popover>
       )}
@@ -412,6 +421,12 @@ export function FilterBar(props: { filter: TaskFilter; projects: Project[]; tags
         <span className="fchip person on static">
           <UserRound size={11} /> {f.person === NO_PERSON ? "Сам себе" : f.person}
           <button type="button" className="tchip-x" aria-label="Убрать" onClick={() => props.onChange({ ...f, person: null })}><X size={10} strokeWidth={2.6} /></button>
+        </span>
+      )}
+      {f.waiting != null && (
+        <span className="fchip person on static" data-tip="Задачи, где ждёшь ответа от этого человека">
+          <Hourglass size={11} /> Жду от: {f.waiting}
+          <button type="button" className="tchip-x" aria-label="Убрать" onClick={() => props.onChange({ ...f, waiting: null })}><X size={10} strokeWidth={2.6} /></button>
         </span>
       )}
       {props.shown != null && <span className="meta">{props.shown ? `показано ${plural(props.shown, "задача", "задачи", "задач")}` : "ничего не подходит"}</span>}

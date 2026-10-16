@@ -134,3 +134,19 @@ export function taskCount(name: string, tasks: Task[]): number {
 export function normalizeTelegram(raw: string): string {
   return raw.trim().replace(/^(?:https?:\/\/)?(?:t\.me|telegram\.me)\//i, "").replace(/^@+/, "").replace(/\s+/g, "").replace(/[/?#].*$/, "");
 }
+
+/** День рождения в нужном году (ГГГГ-ММ-ДД) для перехода в календарь; 29 февраля в невисокосный год — 28-е */
+export function birthdayInYear(birthday: string | null, year: number): string | null {
+  const b = parseBirthday(birthday);
+  if (!b) return null;
+  const day = b.month === 2 && b.day === 29 && !isLeap(year) ? 28 : b.day;
+  return `${pad(year, 4)}-${pad(b.month)}-${pad(day)}`;
+}
+
+/** Открытые задачи, которые поставил этот человек */
+export const assignedCount = (name: string, tasks: Task[]): number =>
+  tasks.filter((x) => x.status !== "done" && x.status !== "archived" && x.assigned_by && sameName(x.assigned_by, name)).length;
+
+/** Открытые задачи, где ждём ответа от этого человека */
+export const waitingCount = (name: string, tasks: Task[]): number =>
+  tasks.filter((x) => x.status !== "done" && x.status !== "archived" && x.waiting_for && sameName(x.waiting_for, name)).length;

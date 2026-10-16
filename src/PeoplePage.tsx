@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Building2, Gift, MessageCircle, Phone, Plus, UserRound } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Briefcase, Building2, Check, Gift, Phone, Plus, Send, UserRound } from "lucide-react";
 import * as db from "./db";
 import type { Person, PersonFields, Tag, Task } from "./db";
-import { fmtBirthday, formatBirthday, normalizeTelegram, PEOPLE_SORTS, parseBirthday, searchPeople, sortPeople, taskCount, type PeopleSort } from "./people";
-import { MONTHS_GEN } from "./dates";
+import { assignedCount, birthdayInYear, fmtBirthday, formatBirthday, normalizeTelegram, PEOPLE_SORTS, parseBirthday, searchPeople, sortPeople, taskCount, waitingCount, type PeopleSort } from "./people";
+import { MONTHS_GEN, today } from "./dates";
 import { plural } from "./views";
 import { sameName } from "./tags";
 import { profileKey } from "./profile";
@@ -42,12 +42,26 @@ export default function PeoplePage(props: {
   /** Человек, карточку которого открыть сразу (например, с дня рождения в календаре) */
   focus?: string | null;
   onFocused?: () => void;
+  /** Клик по дню рождения: календарь открывается на этом дне (ГГГГ-ММ-ДД) в режиме «Месяц» */
+  onOpenBirthday?: (day: string) => void;
+  /** Клик по числу задач: список «Задачи», отфильтрованный по человеку (назначил или жду от) */
+  onOpenTasks?: (name: string, kind: "by" | "wait") => void;
 }) {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<PeopleSort>(() => loadPref(KEY_SORT, PEOPLE_SORTS.map((s) => s.id), "name"));
   const [rev, setRev] = useState(() => loadPref(KEY_REV, ["0", "1"] as const, "0") === "1");
   const [picked, setPicked] = useState<number[]>([]);
   const [dlg, setDlg] = useState<Dlg | null>(null);
+  // Что только что скопировали по клику: на секунду вместо текста показываем «Скопировано»
+  const [copied, setCopied] = useState<string | null>(null);
+  const copyTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(copyTimer.current), []);
+  const copy = (key: string, text: string) => {
+    navigator.clipboard?.writeText(text).catch(() => {});
+    setCopied(key);
+    window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(() => setCopied(null), 1200);
+  };
 
   useEffect(() => {
     if (!props.focus) return;
@@ -117,17 +131,48 @@ export default function PeoplePage(props: {
             <div className="ppl-main">
               <b className="ppl-name" title={p.name}>{p.name}</b>
               {(p.job_title || p.company) && (
-                <span className="ppl-work"><Building2 size={11} /> {[p.job_title, p.company].filter(Boolean).join(", ")}</span>
+                <span className="ppl-work">
+                  <Briefcase size={11} />
+                  {p.job_title && <span className="ppl-job" data-tip={p.job_title}>{p.job_title}</span>}
+                  {p.job_title && p.company && <span className="ppl-sep">·</span>}
+                  {p.company && <span className="ppl-co" data-tip={p.company}><Building2 size={11} /><span>{p.company}</span></span>}
+                </span>
               )}
             </div>
             <div className="ppl-tags">{p.tags.map((t) => <TagChip key={t.id} name={t.name} color={t.color} />)}</div>
             <div className="ppl-contacts">
-              {p.phone && <span><Phone size={11} /> {p.phone}</span>}
-              {p.telegram && <span><MessageCircle size={11} /> @{p.telegram}</span>}
+              {p.phone && (
+                <button type="button" className="ppl-copy" data-tip="Скопировать номер" onClick={(e) => (e.stopPropagation(), copy(`ph${p.id}`, p.phone))}>
+                  {copied === `ph${p.id}` ? <><Check size={11} /> Скопировано</> : <><Phone size={11} /> {p.phone}</>}
+                </button>
+              )}
+              {p.telegram && (
+                <button type="button" className="ppl-copy" data-tip="Скопировать Telegram" onClick={(e) => (e.stopPropagation(), copy(`tg${p.id}`, `@${p.telegram}`))}>
+                  {copied === `tg${p.id}` ? <><Check size={11} /> Скопировано</> : <><Send size={11} /> @{p.telegram}</>}
+                </button>
+              )}
             </div>
-            <span className="ppl-bday">{p.birthday && <><Gift size={12} /> {fmtBirthday(p.birthday)}</>}</span>
-            <span className="ppl-n" data-tip={counts.get(p.id) ? "Задач, где он назначил или участвует" : undefined}>
-              {counts.get(p.id) ? plural(counts.get(p.id)!, "задача", "задачи", "задач") : ""}
+            <span className="ppl-bday">
+              {p.birthday && (
+                <button type="button" className="ppl-copy" data-tip="Показать в календаре"
+                  onClick={(e) => (e.stopPropagation(), props.onOpenBirthday?.(birthdayInYear(p.birthday, Number(today().slice(0, 4)))!))}>
+                  <Gift size={12} /> {fmtBirthday(p.birthday)}
+                </button>
+              )}
+            </span>
+            <span className="ppl-n">
+              {assignedCount(p.name, props.tasks) > 0 && (
+                <button type="button" className="ppl-copy" data-tip="Открыть задачи, которые он назначил"
+                  onClick={(e) => (e.stopPropagation(), props.onOpenTasks?.(p.name, "by"))}>
+                  назначил: {assignedCount(p.name, props.tasks)}
+                </button>
+              )}
+              {waitingCount(p.name, props.tasks) > 0 && (
+                <button type="button" className="ppl-copy" data-tip="Открыть задачи, где жду ответа от него"
+                  onClick={(e) => (e.stopPropagation(), props.onOpenTasks?.(p.name, "wait"))}>
+                  жду: {waitingCount(p.name, props.tasks)}
+                </button>
+              )}
             </span>
           </div>
         ))}
