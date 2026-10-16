@@ -6,7 +6,6 @@ import { Icon } from "./icons";
 import { ALWAYS, isSmart, VIEWS, type ViewId } from "./views";
 import { beforeName, defaultBefore, REMIND_BEFORE } from "./remind";
 import { CloseX, IconGrid, Popover, ThemeSwitch, TimeInput, Toggle } from "./widgets";
-import { DEFAULT_GLASS, GLASS_PRESETS, savedGlass, setGlass, type GlassBg } from "./glassbg";
 import { savedLook, savedTheme, setLook, setTheme, type Look } from "./theme";
 import { HomeSettings } from "./HomeSettings";
 import { FieldsSettings } from "./FieldsSettings";
@@ -228,8 +227,6 @@ function Look() {
   const [a, setA] = useState<Appearance>(savedAppearance());
   const [theme, setT] = useState(savedTheme());
   const [look, setL] = useState<Look>(savedLook());
-  const [gb, setGb] = useState<GlassBg>(savedGlass());
-  const setBg = (next: GlassBg) => (setGb(next), setGlass(next));
   const set = (next: Appearance) => (setA(next), setAppearance(next));
   const D = DEFAULT_APPEARANCE;
   const resetTheme = () => (setTheme("system"), setT("system"));
@@ -239,7 +236,7 @@ function Look() {
     window.addEventListener("inbox-theme", on);
     return () => window.removeEventListener("inbox-theme", on);
   }, []);
-  const changed = theme !== "system" || look !== "flat" || JSON.stringify(gb) !== JSON.stringify(DEFAULT_GLASS) || a.font !== D.font || a.size !== D.size;
+  const changed = theme !== "system" || look !== "flat" || a.font !== D.font || a.size !== D.size;
   return (
     <div className="set-group">
       <Row name="Тема" hint="Быстрый переключатель остаётся и внизу меню слева"
@@ -250,48 +247,6 @@ function Look() {
         def={{ text: "плоский", changed: look !== "flat", reset: () => (setLook("flat"), setL("flat")) }}>
         <Choice value={look} onPick={(v) => (setLook(v), setL(v))} options={[{ id: "flat", name: "Плоский" }, { id: "glass", name: "Стекло" }]} />
       </Row>
-      {look === "glass" && (
-        <>
-          <Row name="Фон стекла" hint="Разноцветный градиент или один цвет"
-            def={{ text: "разноцветный", changed: gb.mode !== "multi", reset: () => setBg({ ...gb, mode: "multi", tint: false }) }}>
-            <Choice value={gb.mode} onPick={(mode) => setBg({ ...gb, mode })} options={[{ id: "multi", name: "Разноцветный" }, { id: "solid", name: "Одноцветный" }]} />
-          </Row>
-          {gb.mode === "solid" && (
-            <>
-              <Row name="Цвет" hint="Готовый цвет ставится сразу для светлой и тёмной темы">
-                <div className="seg">
-                  {GLASS_PRESETS.map((c) => (
-                    <button type="button" key={c.id} title={c.name} aria-label={c.name}
-                      className={`gl-swatch ${gb.light === c.light && gb.dark === c.dark ? "on" : ""}`}
-                      style={{ background: `linear-gradient(135deg, ${c.light} 50%, ${c.dark} 50%)` }}
-                      onClick={() => setBg({ ...gb, light: c.light, dark: c.dark })} />
-                  ))}
-                </div>
-              </Row>
-              <Row name="Свой цвет" hint="Для каждой темы отдельно">
-                <div className="seg">
-                  <label className="gl-pick">Светлая <input type="color" value={gb.light} onChange={(e) => setBg({ ...gb, light: e.target.value.toUpperCase() })} /></label>
-                  <label className="gl-pick">Тёмная <input type="color" value={gb.dark} onChange={(e) => setBg({ ...gb, dark: e.target.value.toUpperCase() })} /></label>
-                </div>
-              </Row>
-              <Row name="Акцент в тон фону" hint="Кнопки и выделение берут оттенок выбранного цвета">
-                <Toggle on={gb.tint} onChange={(tint) => setBg({ ...gb, tint })} label="Акцент в тон фону" />
-              </Row>
-            </>
-          )}
-          <Row name="Размытие" def={{ text: "среднее", changed: gb.blur !== 50, reset: () => setBg({ ...gb, blur: 50 }) }}>
-            <input type="range" className="gl-range" min={0} max={100} value={gb.blur} aria-label="Размытие" onChange={(e) => setBg({ ...gb, blur: +e.target.value })} />
-          </Row>
-          <Row name="Прозрачность" hint="Правее — стекло плотнее" def={{ text: "средняя", changed: gb.opacity !== 50, reset: () => setBg({ ...gb, opacity: 50 }) }}>
-            <input type="range" className="gl-range" min={0} max={100} value={gb.opacity} aria-label="Прозрачность" onChange={(e) => setBg({ ...gb, opacity: +e.target.value })} />
-          </Row>
-          <Row name="Превью">
-            <div className="gl-prev" aria-hidden>
-              <div className="gl-prev-card"><b>Задача</b><span>Так выглядит стекло</span><i /></div>
-            </div>
-          </Row>
-        </>
-      )}
       <Row name="Шрифт" def={{ text: FONTS.find((f) => f.id === D.font)!.name, changed: a.font !== D.font, reset: () => set({ ...a, font: D.font }) }}>
         <div className="seg">
           {FONTS.map((f) => (
@@ -306,7 +261,7 @@ function Look() {
         def={{ text: SIZES.find((s) => s.id === D.size)!.name, changed: a.size !== D.size, reset: () => set({ ...a, size: D.size }) }}>
         <Choice value={a.size} onPick={(size) => set({ ...a, size })} options={SIZES.map((s) => ({ id: s.id, name: s.name }))} />
       </Row>
-      <ResetSection name="Внешний вид" changed={changed} onReset={() => (resetTheme(), setLook("flat"), setL("flat"), setBg(DEFAULT_GLASS), set(D))} />
+      <ResetSection name="Внешний вид" changed={changed} onReset={() => (resetTheme(), setLook("flat"), setL("flat"), set(D))} />
     </div>
   );
 }
