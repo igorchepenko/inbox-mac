@@ -21,7 +21,6 @@
 /* Выделенные для массовых действий: заметная бирюзовая рамка и галочка в углу */
 .row.picked, .kcard.picked { border-color: var(--stand); box-shadow: inset 0 0 0 1px var(--stand); }
 .row.picked { background: color-mix(in srgb, var(--stand) 14%, var(--surface)); }
-.selecting .row, .selecting .kcard { cursor: pointer; }
 
 /* Канбан */
 .board { flex: 1; min-height: 0; display: flex; gap: 10px; overflow-x: auto; margin: 0 -6px; padding: 0 6px 6px; scroll-behavior: smooth; }
@@ -77,3 +76,8 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
 .card-meta .meta.when { font-family: var(--font); font-size: 12px; font-weight: 500; }
 .card-meta .meta.when:not(.overdue) { color: var(--fg); }
 .card-meta .meta.created { font-size: 10px; opacity: .6; }
+
+/* Чекбокс выбора: один для «Задач» и «Людей». Виден при наведении на строку, после первой отметки у всех */
+.pickbox { flex: none; width: 15px; height: 15px; margin: 0; accent-color: var(--stand); cursor: pointer; opacity: 0; transition: opacity .1s; }
+.row:hover .pickbox, .kcard:hover .pickbox, .ppl-row:hover .pickbox, .has-pick .pickbox, .pickbox:checked, .pickbox:focus-visible { opacity: 1; }
+.kcard-top .pickbox { margin-top: 2px; }

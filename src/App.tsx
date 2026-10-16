@@ -10,12 +10,13 @@ import { isWaiting, pingDue } from "./waiting";
 import { ALWAYS, HOTKEY_VIEWS, inTasks, isSmart, listFor, plural, progressFor, revKey, revOf, scopeOf, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
 import { marks } from "./search";
 import "./search.css";
-import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
+import { Details, Help, PickBox, QuickForm, Ring, type TaskPatch } from "./components";
 import { Icon } from "./icons";
 import { ProjectDialog } from "./widgets";
 import PeoplePage from "./PeoplePage";
+import { NEW_PERSON_EVENT } from "./people";
 import { Assignee, PeopleCtx } from "./PersonCard";
-import { Check, CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Rows3, Tag as TagIcon, Users } from "lucide-react";
+import { Check, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Rows3, Tag as TagIcon, Users } from "lucide-react";
 import { applyFilter, EMPTY_FILTER, filterOn, NO_SPACE, peopleOf, type TaskFilter } from "./tags";
 import { FilterBar, FilterButton, FIND_EVENT, SearchField, TagChips, TagEditor, type SmartFilter } from "./TagsUI";
 import { QuadrantGlyph } from "./extras";
@@ -46,6 +47,8 @@ export default function App() {
   // Раздел «Люди»; personFocus — чью карточку открыть при переходе (с дня рождения в календаре)
   const [roster, setRoster] = useState<db.Person[]>([]);
   const [personFocus, setPersonFocus] = useState<string | null>(null);
+  // День (ГГГГ-ММ-ДД), на который календарь переходит при открытии: клик по дню рождения в «Людях»
+  const [calJump, setCalJump] = useState<string | null>(null);
   // Фильтры. Поиск, теги и «кто назначил» живут, пока открыт список, при переходе в другой сбрасываются.
   // Пространства остаются выбранными во всех списках и в календаре, пока их не сбросят
   const [filter, setFilter] = useState<TaskFilter>(EMPTY_FILTER);
@@ -58,9 +61,8 @@ export default function App() {
   const [multi, setMulti] = useState<ViewId[]>([]);
   const { panes, setWidth: setPaneWidth, toggle: togglePane, reset: resetPane } = usePanes();
   const [sel, setSel] = useState<number | null>(null);
-  // Выделение для массовых действий и режим «Выбрать», в котором клик добавляет задачу к выделению
+  // Выделение для массовых действий: чекбокс слева от строки или ⌘/⇧-клик
   const [picked, setPicked] = useState<number[]>([]);
-  const [selecting, setSelecting] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
   // Окно итогов после перевода в «Готово» или «Отменено»
   const [closing, setClosing] = useState<Closing | null>(null);
@@ -153,7 +155,7 @@ export default function App() {
   const columns = useMemo(() => (layout === "board" ? boardFor(view, inSmarts, sort, rev) : null), [layout, view, inSmarts, sort, rev]);
   const ids = columns ? columns.flatMap((c) => c.items.map((i) => i.task.id)) : list.map((i) => i.task.id);
   const pickedTasks = tasks.filter((x) => picked.includes(x.id) && ids.includes(x.id));
-  const bulk = selecting || pickedTasks.length > 1;
+  const bulk = pickedTasks.length > 0;
   const task = tasks.find((x) => x.id === sel && (view === "calendar" || ids.includes(x.id))) ?? null;
 
   // Когда выбранная задача ушла из списка (разобрана, сделана), выбираем ту, что встала на её место
@@ -171,7 +173,7 @@ export default function App() {
     setSel(id);
     if (id != null) togglePane("det", false);
   };
-  const clearPick = () => (setPicked([]), setSelecting(false));
+  const clearPick = () => setPicked([]);
   const openView = (v: ViewId) => {
     setView(v);
     setMulti([]);
@@ -200,6 +202,10 @@ export default function App() {
   const smart: SmartFilter | undefined = inTasks(view)
     ? { value: smartOn, onToggle: (v) => setSmarts(smartOn.includes(v) ? smartOn.filter((x) => x !== v) : [...smartOn, v]), onClear: () => setSmarts([]) }
     : undefined;
+  const setSettingValue = (key: string, value: string) => {
+    setSettings((st) => ({ ...st, [key]: value }));
+    run(() => db.setSetting(key, value));
+  };
   const fieldsButton = (
     <button className="icon-btn" data-tip="Какие поля задачи видны: отдельно для списка, канбана и календаря"
       onClick={() => (setSettingsTab("fields"), setSettingsOpen(true))}>
@@ -284,14 +290,18 @@ export default function App() {
     if (next != null) select(next);
   };
   const setText = (text: string) => setFilter((f) => ({ ...f, text }));
-  // Клик выбирает задачу, ⌘-клик или режим «Выбрать» добавляют к выделению, ⇧-клик берёт всё подряд от выбранной
+  // Клик выбирает задачу, ⌘-клик добавляет к выделению, ⇧-клик берёт всё подряд от выбранной, чекбокс только отмечает строку
   const pick: Pick = (id, m) => {
+    if (m.box) {
+      setPicked(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id]);
+      return;
+    }
     if (m.shift && sel != null && ids.includes(sel)) {
       const [a, b] = [ids.indexOf(sel), ids.indexOf(id)].sort((x, y) => x - y);
       setPicked(ids.slice(a, b + 1));
       return;
     }
-    if (m.meta || selecting) {
+    if (m.meta) {
       const base = picked.length ? picked : sel != null && sel !== id ? [sel] : [];
       setPicked(base.includes(id) ? base.filter((x) => x !== id) : [...base, id]);
     } else setPicked([]);
@@ -439,7 +449,9 @@ export default function App() {
       switch (e.code) {
         case "KeyN":
           e.preventDefault();
-          setNewOpen(true);
+          // В «Людях» N записывает человека, а не задачу
+          if (view === "people") window.dispatchEvent(new Event(NEW_PERSON_EVENT));
+          else setNewOpen(true);
           break;
         case "ArrowDown":
         case "KeyJ":
@@ -519,11 +531,15 @@ export default function App() {
             run(() => db.updateTask(id, p));
           }}
           onCreate={createAt} show={shownFields(settings, "calendar")}
-          birthdays={roster} onOpenPerson={(name) => (setPersonFocus(name), openView("people"))} />
+          birthdays={roster} onOpenPerson={(name) => (setPersonFocus(name), openView("people"))}
+          jump={calJump} onJumped={() => setCalJump(null)} />
       ) : (
       <main className={`main ${project ? "in-space" : ""}`} style={spaceVars(project?.color)}>
         {view === "people" ? (
-          <PeoplePage people={roster} tasks={tasks} tags={tags} reload={reload} focus={personFocus} onFocused={() => setPersonFocus(null)} />
+          <PeoplePage people={roster} tasks={tasks} tags={tags} settings={settings} onSetting={setSettingValue} onShortcuts={() => setHelpOpen(true)}
+            reload={reload} focus={personFocus} onFocused={() => setPersonFocus(null)}
+            onOpenBirthday={(day) => (openView("calendar"), setCalJump(day))}
+            onOpenTasks={(name, kind) => (openView("tasks"), setFilter((f) => ({ ...f, ...(kind === "by" ? { person: name } : { waiting: name }) })))} />
         ) : view === "projects" ? (
           <ProjectsPage projects={projects} tasks={tasks} onOpen={openView}
             onEdit={(p) => setProjectDlg(p)} onNew={() => setProjectDlg("new")} />
@@ -569,10 +585,6 @@ export default function App() {
             <FilterButton filter={filt} projects={projects} tags={tags} people={people} lockTag={tag?.id} noSpaces={!!project} onChange={setFilter} smart={smart} />
             {fieldsButton}
             <LayoutSwitch value={layout} onChange={setLayout} />
-            <button className={`icon-btn ${selecting ? "on" : ""}`} data-tip="Выбрать несколько задач, ⌘-клик по строке" data-key="⌘A"
-              onClick={() => (selecting ? clearPick() : (setSelecting(true), setPicked(sel != null ? [sel] : [])))}>
-              <CheckCheck size={13} /> Выбрать
-            </button>
             <button className="icon-btn" data-tip="Сочетания клавиш" data-key="⌘/" aria-label="Сочетания клавиш" onClick={() => setHelpOpen(true)}><Keyboard size={14} /></button>
           </div>
         </header>
@@ -587,7 +599,7 @@ export default function App() {
 
         {error && <div className="error">Ошибка базы: {error}</div>}
 
-        <div className={`views ${selecting ? "selecting" : ""}`}>
+        <div className={`views ${pickedTasks.length ? "has-pick" : ""}`}>
           {columns ? (
             <BoardView columns={columns} projects={projects} sel={sel} picked={picked}
               fileDrop={dropOnDetails ? null : dropTarget} query={filt.text}
@@ -598,7 +610,7 @@ export default function App() {
                 <div key={x.id}>
                   {group && <div className="group">{group}</div>}
                   <TaskRow task={x} project={projects.find((p) => p.id === x.project_id)} selected={x.id === sel} query={filt.text}
-                    picked={picked.includes(x.id)} dropping={dropTarget === x.id && !dropOnDetails} onSelect={(m) => pick(x.id, m)} onToggle={() => toggleDone(x)}
+                    picked={picked.includes(x.id)} dropping={dropTarget === x.id && !dropOnDetails} onSelect={(m) => pick(x.id, m)} onBox={() => pick(x.id, { meta: false, shift: false, box: true })} onToggle={() => toggleDone(x)}
                     show={listFields} />
                 </div>
               ))}
@@ -611,7 +623,7 @@ export default function App() {
       )}
 
       {wide ? null : bulk ? (
-        <BulkPanel tasks={pickedTasks} total={ids.length} projects={projects} selecting={selecting} run={run}
+        <BulkPanel tasks={pickedTasks} total={ids.length} projects={projects} run={run}
           onSelectAll={() => setPicked(ids)} onClear={clearPick} />
       ) : task ? (
         <Details key={task.id} task={task} projects={projects} tags={tags} people={people} remindBefore={defaultBefore(settings)}
@@ -705,6 +717,7 @@ function TaskRow(props: {
   picked: boolean;
   dropping?: boolean;
   onSelect: (mods: { meta: boolean; shift: boolean }) => void;
+  onBox: () => void;
   onToggle: () => void;
   query?: string; // подсветить найденное поиском в названии
   show?: Shown; // какие поля видны, Настройки → «Поля задач»
@@ -723,6 +736,7 @@ function TaskRow(props: {
       className={`row ${x.kind === "meeting" ? "meeting" : ""} ${props.selected ? "sel" : ""} ${props.picked ? "picked" : ""} ${done ? "done" : ""} ${cancelled ? "cancelled" : ""} ${props.dropping ? "drop" : ""} ${project ? "pc" : ""}`}
       style={spaceVars(project?.color)}
       onMouseDown={(e) => props.onSelect({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey })}>
+      <PickBox checked={props.picked} label={`Выбрать «${x.title}»`} onToggle={props.onBox} />
       <button className="chk" title={done ? "Вернуть в работу" : "Сделано"} disabled={x.status === "archived"}
         onMouseDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), props.onToggle())}>
         {done && !cancelled && <Check size={11} strokeWidth={3.2} />}
