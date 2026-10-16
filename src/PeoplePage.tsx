@@ -185,8 +185,13 @@ function PersonTags({ tags, onPick }: { tags: Tag[]; onPick: (id: number) => voi
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setRect(null), 100);
   };
+  // Клик по тегу окошко не закрывает: можно отметить несколько. Список после клика сдвигается (появляется строка фильтра), поэтому меряем заново
+  const remeasure = () => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => box.current && setRect(box.current.getBoundingClientRect()), 60);
+  };
   const chip = (t: Tag) => (
-    <button type="button" key={t.id} className="ppl-tag" data-tip={`Показать людей с тегом «${t.name}»`} onClick={(e) => (e.stopPropagation(), setRect(null), onPick(t.id))}>
+    <button type="button" key={t.id} className="ppl-tag" data-tip={`Показать людей с тегом «${t.name}»`} onClick={(e) => (e.stopPropagation(), onPick(t.id), remeasure())}>
       <TagChip name={t.name} color={t.color} />
     </button>
   );
@@ -436,7 +441,6 @@ function PersonDialog(props: {
   const [day, setDay] = useState(b ? String(b.day) : "");
   const [month, setMonth] = useState(b ? String(b.month) : "");
   const [year, setYear] = useState(b?.year ? String(b.year) : "");
-  const [more, setMore] = useState(!!p);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -449,12 +453,11 @@ function PersonDialog(props: {
   const partial = !!(day || month || year);
   const bdayBad = partial && !bday;
   const set = (patch: Partial<PersonFields>) => (setF({ ...f, ...patch }), setError(null));
-  const filled = [f.company, f.job_title, f.phone, f.telegram].filter((v) => v.trim()).length + (f.tags.length ? 1 : 0) + (partial ? 1 : 0);
 
   const save = async () => {
     if (busy) return;
     if (!f.name.trim()) return nameRef.current?.focus();
-    if (bdayBad) return setMore(true);
+    if (bdayBad) return;
     setBusy(true);
     try {
       const fields = { ...f, telegram: normalizeTelegram(f.telegram), birthday: bday };
@@ -472,10 +475,6 @@ function PersonDialog(props: {
     if (e.key === "Escape") {
       e.preventDefault();
       props.onClose();
-    }
-    if (e.metaKey && e.code === "KeyE") {
-      e.preventDefault();
-      setMore((m) => !m);
     }
     // Enter в имени сохраняет, в комментарии нужен ⌘Enter, в остальных полях Enter только подтверждает поле
     if (e.key === "Enter") {
@@ -495,35 +494,30 @@ function PersonDialog(props: {
           onChange={(e) => set({ name: e.target.value })} />
         <textarea ref={note} rows={2} className="field qi-note" placeholder="Комментарий, если нужен: что важно помнить об этом человеке" value={f.comment}
           onChange={(e) => set({ comment: e.target.value })} />
-        {more && (
-          <div className="qi-more lines">
-            <Line label="Компания"><input className="field pd-in" value={f.company} onChange={(e) => set({ company: e.target.value })} /></Line>
-            <Line label="Должность"><input className="field pd-in" value={f.job_title} onChange={(e) => set({ job_title: e.target.value })} /></Line>
-            <Line label="Телефон"><input className="field pd-in" type="tel" value={f.phone} placeholder="+7 900 000-00-00" onChange={(e) => set({ phone: e.target.value })} /></Line>
-            <Line label="Telegram"><input className="field pd-in" value={f.telegram} placeholder="@ник" spellCheck={false} onChange={(e) => set({ telegram: e.target.value })} /></Line>
-            <Line label="Теги"><TagInput value={f.tags} tags={props.tags} onChange={(tags) => set({ tags })} /></Line>
-            <Line label="День рождения">
-              <div className={`pd-bday ${bdayBad ? "bad" : ""}`}>
-                <input inputMode="numeric" placeholder="День" aria-label="День" maxLength={2} value={day} className="pd-d"
-                  onChange={(e) => (setDay(e.target.value.replace(/\D/g, "")), setError(null))} />
-                <select aria-label="Месяц" value={month} className="pd-m" onChange={(e) => (setMonth(e.target.value), setError(null))}>
-                  <option value="">Месяц</option>
-                  {MONTHS_SHORT.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-                </select>
-                <input inputMode="numeric" placeholder="Год" aria-label="Год" maxLength={4} value={year} className="pd-y"
-                  onChange={(e) => (setYear(e.target.value.replace(/\D/g, "")), setError(null))} />
-                {partial && <button type="button" className="pd-x" aria-label="Очистить день рождения" data-tip="Очистить" onClick={clearBday}><X size={12} /></button>}
-              </div>
-              <span className="hint">{bday ? fmtBirthday(bday) : "год можно не указывать"}</span>
-            </Line>
-            {bdayBad && <div className="error">Проверь дату: нужны день и месяц, и такой даты в календаре нет{Number(year) > MAX_YEAR ? " (год из будущего)" : ""}.</div>}
-          </div>
-        )}
+        <div className="qi-more lines">
+          <Line label="Компания"><input className="field pd-in" value={f.company} onChange={(e) => set({ company: e.target.value })} /></Line>
+          <Line label="Должность"><input className="field pd-in" value={f.job_title} onChange={(e) => set({ job_title: e.target.value })} /></Line>
+          <Line label="Телефон"><input className="field pd-in" type="tel" value={f.phone} placeholder="+7 900 000-00-00" onChange={(e) => set({ phone: e.target.value })} /></Line>
+          <Line label="Telegram"><input className="field pd-in" value={f.telegram} placeholder="@ник" spellCheck={false} onChange={(e) => set({ telegram: e.target.value })} /></Line>
+          <Line label="Теги"><TagInput value={f.tags} tags={props.tags} onChange={(tags) => set({ tags })} /></Line>
+          <Line label="День рождения">
+            <div className={`pd-bday ${bdayBad ? "bad" : ""}`}>
+              <input inputMode="numeric" placeholder="День" aria-label="День" maxLength={2} value={day} className="pd-d"
+                onChange={(e) => (setDay(e.target.value.replace(/\D/g, "")), setError(null))} />
+              <select aria-label="Месяц" value={month} className="pd-m" onChange={(e) => (setMonth(e.target.value), setError(null))}>
+                <option value="">Месяц</option>
+                {MONTHS_SHORT.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+              </select>
+              <input inputMode="numeric" placeholder="Год" aria-label="Год" maxLength={4} value={year} className="pd-y"
+                onChange={(e) => (setYear(e.target.value.replace(/\D/g, "")), setError(null))} />
+              {partial && <button type="button" className="pd-x" aria-label="Очистить день рождения" data-tip="Очистить" onClick={clearBday}><X size={12} /></button>}
+            </div>
+            <span className="hint">{bday ? fmtBirthday(bday) : "год можно не указывать"}</span>
+          </Line>
+          {bdayBad && <div className="error">Проверь дату: нужны день и месяц, и такой даты в календаре нет{Number(year) > MAX_YEAR ? " (год из будущего)" : ""}.</div>}
+        </div>
         {error && <div className="error">{error}</div>}
         <div className="qi-foot">
-          <button type="button" className={`more-btn ${more ? "on" : ""}`} onClick={() => setMore((m) => !m)} data-tip="Компания, должность, телефон, Telegram, теги, день рождения" data-key="⌘E">
-            {more ? "Скрыть параметры" : filled ? `Параметры · ${filled}` : "+ Компания, телефон, день рождения…"}
-          </button>
           {props.onDelete && <button type="button" className="link danger" onClick={props.onDelete}>Удалить</button>}
           <span className="grow" />
           {p && props.taskN > 0 && <span>{plural(props.taskN, "задача", "задачи", "задач")}</span>}
