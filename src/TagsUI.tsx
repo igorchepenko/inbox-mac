@@ -46,11 +46,6 @@ export function TagChips({ tags, max = 3 }: { tags: Tag[]; max?: number }) {
   );
 }
 
-/** Кто назначил: маленькая подпись с иконкой человека */
-export function Assignee({ name }: { name: string }) {
-  return <span className="meta who" title={`Назначил: ${name}`}><UserRound size={11} /><span className="who-n">{name}</span></span>;
-}
-
 /** Подсказки под полем. Не всплывают поверх, а занимают место: окно ⌥Space подстраивает высоту под содержимое */
 function Suggestions(props: { items: string[]; hi: number; colors?: (name: string) => string | undefined; onPick: (v: string) => void; person?: boolean }) {
   if (!props.items.length) return null;

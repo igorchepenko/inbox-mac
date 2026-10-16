@@ -61,6 +61,21 @@ export interface Tag {
   color: string; // id цвета из TAG_COLORS (src/tags.ts), в CSS var(--<id>)
 }
 
+/** Человек из раздела «Люди» (миграция 014). Задачи привязаны к нему по имени */
+export interface Person {
+  id: number;
+  name: string;
+  phone: string;
+  telegram: string; // ник без @
+  comment: string;
+  birthday: string | null; // «ММ-ДД» или «ГГГГ-ММ-ДД», см. people.ts
+  company: string;
+  job_title: string;
+  tags: Tag[]; // те же теги, что у задач
+}
+
+export type PersonFields = Omit<Person, "id" | "tags"> & { tags: string[] };
+
 export interface Subtask {
   id: number;
   task_id: number;
@@ -267,7 +282,8 @@ export async function loadTags(): Promise<Tag[]> {
 /** Все имена из задач: кто назначал и кто был участником встречи. Один список на оба поля */
 const PEOPLE_SQL = `SELECT assigned_by AS name, id AS task_id FROM tasks WHERE assigned_by IS NOT NULL AND assigned_by <> ''
   UNION SELECT name, task_id FROM task_people
-  UNION SELECT waiting_for AS name, id AS task_id FROM tasks WHERE waiting_for IS NOT NULL AND waiting_for <> ''`;
+  UNION SELECT waiting_for AS name, id AS task_id FROM tasks WHERE waiting_for IS NOT NULL AND waiting_for <> ''
+  UNION SELECT name, -id FROM people`;
 
 /** Все, кто когда-либо назначал задачи или был на встрече: подсказки в полях «Кто назначил» и «Участники» */
 export async function loadPeople(): Promise<string[]> {
@@ -277,19 +293,117 @@ export async function loadPeople(): Promise<string[]> {
   return out.sort(byName);
 }
 
-/** Все, кто назначал задачи, и сколько задач у каждого: раздел «Кто назначил» в настройках.
- * Одно имя в разном регистре считается одним человеком, показываем самое частое написание */
-export async function loadPeopleStats(): Promise<{ name: string; count: number }[]> {
-  const rows = await (await db()).select<{ name: string; n: number }[]>(
-    `SELECT name, COUNT(DISTINCT task_id) AS n FROM (${PEOPLE_SQL}) GROUP BY name ORDER BY n DESC`,
+/** Раздел «Люди»: все люди из таблицы. Имена из задач, которых там ещё нет, добавляются сами (пустой карточкой) */
+export async function loadPeopleList(): Promise<Person[]> {
+  const d = await db();
+  const names = (await d.select<{ name: string }[]>(`SELECT DISTINCT name FROM (${PEOPLE_SQL})`)).map((r) => r.name.replace(/\s+/g, " ").trim()).filter(Boolean);
+  let rows = await d.select<Omit<Person, "tags">[]>("SELECT id, name, phone, telegram, comment, birthday, company, job_title FROM people ORDER BY id");
+  let added = false;
+  for (const n of names) {
+    if (rows.some((r) => sameName(r.name, n))) continue;
+    await d.execute("INSERT INTO people (name, created_at) SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM people WHERE name = $3)", [n, nowStamp(), n]);
+    rows = [...rows, { id: -1, name: n, phone: "", telegram: "", comment: "", birthday: null, company: "", job_title: "" }];
+    added = true;
+  }
+  if (added) rows = await d.select<Omit<Person, "tags">[]>("SELECT id, name, phone, telegram, comment, birthday, company, job_title FROM people ORDER BY id");
+  const tagRows = await d.select<(Tag & { person_id: number })[]>(
+    "SELECT pt.person_id, t.id, t.name, t.color FROM person_tags pt JOIN tags t ON t.id = pt.tag_id ORDER BY pt.position, t.id",
   );
-  const out: { name: string; count: number }[] = [];
+  const out: Person[] = [];
   for (const r of rows) {
-    const same = out.find((p) => sameName(p.name, r.name));
-    if (same) same.count += r.n;
-    else out.push({ name: r.name, count: r.n });
+    if (out.some((p) => sameName(p.name, r.name))) {
+      // Дубль от двух одновременных загрузок: оставляем первую строку, лишнюю убираем
+      await d.execute("DELETE FROM people WHERE id = $1", [r.id]);
+      continue;
+    }
+    out.push({ ...r, tags: tagRows.filter((t) => t.person_id === r.id).map(({ id, name, color }) => ({ id, name, color })) });
   }
   return out.sort((a, b) => byName(a.name, b.name));
+}
+
+const cleanName = (raw: string) => raw.replace(/\s+/g, " ").trim();
+
+/** Заменить теги человека: те же правила, что у тегов задачи (новые создаются сами, не больше шести) */
+async function setPersonTags(personId: number, names: string[]): Promise<void> {
+  const d = await db();
+  const all = await loadTags();
+  const ids: number[] = [];
+  for (const raw of names) {
+    const name = normalizeTag(raw);
+    if (!name || ids.length >= TAG_MAX) continue;
+    let tag = all.find((t) => sameName(t.name, name));
+    if (!tag) {
+      const color = pickColor(all.map((t) => t.color));
+      const r = await d.execute("INSERT INTO tags (name, color, created_at) VALUES ($1, $2, $3)", [name, color, nowStamp()]);
+      tag = { id: r.lastInsertId ?? 0, name, color };
+      all.push(tag);
+    }
+    if (!ids.includes(tag.id)) ids.push(tag.id);
+  }
+  await d.execute("DELETE FROM person_tags WHERE person_id = $1", [personId]);
+  for (const [i, id] of ids.entries()) await d.execute("INSERT INTO person_tags (person_id, tag_id, position) VALUES ($1, $2, $3)", [personId, id, i]);
+}
+
+const personCols = (f: PersonFields) => [cleanName(f.name), f.phone.trim(), f.telegram.trim(), f.comment.trim(), f.birthday, f.company.trim(), f.job_title.trim()];
+
+/** Новый человек. Имя, которое уже есть (без учёта регистра), не принимается */
+export async function addPerson(f: PersonFields): Promise<number> {
+  const d = await db();
+  const name = cleanName(f.name);
+  if (!name) throw new Error("У человека должно быть имя");
+  if ((await loadPeopleList()).some((p) => sameName(p.name, name))) throw new Error(`«${name}» уже есть в списке`);
+  const r = await d.execute(
+    "INSERT INTO people (name, phone, telegram, comment, birthday, company, job_title, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+    [...personCols(f), nowStamp()],
+  );
+  const id = r.lastInsertId ?? 0;
+  await setPersonTags(id, f.tags);
+  return id;
+}
+
+/** Сохранить человека. Если имя изменилось, оно меняется и во всех его задачах */
+export async function updatePerson(id: number, f: PersonFields): Promise<void> {
+  const d = await db();
+  const name = cleanName(f.name);
+  if (!name) throw new Error("У человека должно быть имя");
+  const all = await loadPeopleList();
+  const old = all.find((p) => p.id === id);
+  if (!old) throw new Error("Человека уже нет в списке");
+  if (all.some((p) => p.id !== id && sameName(p.name, name))) {
+    throw new Error(`«${name}» уже есть в списке. Чтобы объединить, удали одного и переназначь его задачи на другого`);
+  }
+  if (old.name !== name) await renamePerson(old.name, name);
+  await d.execute(
+    "UPDATE people SET name = $1, phone = $2, telegram = $3, comment = $4, birthday = $5, company = $6, job_title = $7 WHERE id = $8",
+    [...personCols(f), id],
+  );
+  await setPersonTags(id, f.tags);
+}
+
+/** Массовая правка: заполненные поля ставятся всем, теги добавляются к тем, что уже есть */
+export async function bulkUpdatePeople(ids: number[], patch: { company?: string; job_title?: string; addTags?: string[] }): Promise<void> {
+  const d = await db();
+  const all = await loadPeopleList();
+  for (const id of ids) {
+    const p = all.find((x) => x.id === id);
+    if (!p) continue;
+    if (patch.company != null) await d.execute("UPDATE people SET company = $1 WHERE id = $2", [patch.company.trim(), id]);
+    if (patch.job_title != null) await d.execute("UPDATE people SET job_title = $1 WHERE id = $2", [patch.job_title.trim(), id]);
+    if (patch.addTags?.length) await setPersonTags(id, [...p.tags.map((t) => t.name), ...patch.addTags]);
+  }
+}
+
+/** Удалить людей. Их задачи переходят к другому человеку (reassignTo) или становятся «Сам себе» (null) */
+export async function deletePeople(ids: number[], reassignTo: string | null): Promise<void> {
+  const d = await db();
+  const all = await loadPeopleList();
+  for (const id of ids) {
+    const p = all.find((x) => x.id === id);
+    if (!p) continue;
+    await renamePerson(p.name, reassignTo);
+    await d.execute("DELETE FROM person_tags WHERE person_id = $1", [id]);
+    await d.execute("DELETE FROM people WHERE id = $1", [id]);
+  }
 }
 
 /**
@@ -362,6 +476,7 @@ export async function updateTag(id: number, patch: TagPatch): Promise<void> {
 export async function deleteTag(id: number): Promise<void> {
   const d = await db();
   await d.execute("DELETE FROM task_tags WHERE tag_id = $1", [id]);
+  await d.execute("DELETE FROM person_tags WHERE tag_id = $1", [id]);
   await d.execute("DELETE FROM tags WHERE id = $1", [id]);
 }
 

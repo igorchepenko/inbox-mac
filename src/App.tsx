@@ -13,9 +13,11 @@ import "./search.css";
 import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
 import { Icon } from "./icons";
 import { ProjectDialog } from "./widgets";
+import PeoplePage from "./PeoplePage";
+import { Assignee, PeopleCtx } from "./PersonCard";
 import { Check, CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Rows3, Tag as TagIcon, Users } from "lucide-react";
 import { applyFilter, EMPTY_FILTER, filterOn, NO_SPACE, peopleOf, type TaskFilter } from "./tags";
-import { Assignee, FilterBar, FilterButton, FIND_EVENT, SearchField, TagChips, TagEditor, type SmartFilter } from "./TagsUI";
+import { FilterBar, FilterButton, FIND_EVENT, SearchField, TagChips, TagEditor, type SmartFilter } from "./TagsUI";
 import { QuadrantGlyph } from "./extras";
 import { CreatedMeta, DueFlag, MeetingMark, WaitingBadge } from "./TaskBits";
 import { defaultBefore, remindPatch } from "./remind";
@@ -41,6 +43,9 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
+  // Раздел «Люди»; personFocus — чью карточку открыть при переходе (с дня рождения в календаре)
+  const [roster, setRoster] = useState<db.Person[]>([]);
+  const [personFocus, setPersonFocus] = useState<string | null>(null);
   // Фильтры. Поиск, теги и «кто назначил» живут, пока открыт список, при переходе в другой сбрасываются.
   // Пространства остаются выбранными во всех списках и в календаре, пока их не сбросят
   const [filter, setFilter] = useState<TaskFilter>(EMPTY_FILTER);
@@ -72,8 +77,9 @@ export default function App() {
   const reload = useCallback(async () => {
     try {
       await db.archiveOldDone();
-      const [t, p, st, g] = await Promise.all([db.loadTasks(), db.loadProjects(), db.loadSettings(), db.loadTags()]);
+      const [t, p, st, g, r] = await Promise.all([db.loadTasks(), db.loadProjects(), db.loadSettings(), db.loadTags(), db.loadPeopleList()]);
       setTasks(t);
+      setRoster(r);
       setProjects(p);
       setTags(g);
       setSettings(st);
@@ -126,7 +132,7 @@ export default function App() {
   const listFields = useMemo(() => shownFields(settings, "list"), [settings]);
   const sort = sortOf(view, settings);
   const rev = revOf(view, sort, settings);
-  const people = useMemo(() => peopleOf(tasks), [tasks]);
+  const people = useMemo(() => peopleOf(tasks, roster.map((r) => r.name)), [tasks, roster]);
   // Удалённый тег или пространство из фильтра выпадает само. Внутри пространства фильтр по пространствам не действует
   const inSpace = view.startsWith("p:");
   const filt = useMemo(() => ({
@@ -411,6 +417,7 @@ export default function App() {
       if (e.metaKey && e.altKey && e.code === "KeyI") return e.preventDefault(), togglePane("det");
       if (e.metaKey && e.code === "Digit0") return e.preventDefault(), openView("home");
       if (e.metaKey && e.code === "Digit7") return e.preventDefault(), openView("projects");
+      if (e.metaKey && e.code === "Digit8") return e.preventDefault(), openView("people");
       if (e.metaKey && e.code === "KeyP") return e.preventDefault(), window.dispatchEvent(new Event(FIND_PROJECT_EVENT));
       if (e.metaKey && e.code === "KeyF") return e.preventDefault(), window.dispatchEvent(new Event(FIND_EVENT));
       if (e.metaKey && /^Digit[1-6]$/.test(e.code)) {
@@ -473,7 +480,7 @@ export default function App() {
   });
 
   // Главная и страница проектов занимают всё место справа от меню, без панели деталей
-  const wide = view === "home" || view === "projects";
+  const wide = view === "home" || view === "projects" || view === "people";
   const current = VIEWS.find((v) => v.id === view);
   const project = view.startsWith("p:") ? projects.find((p) => `p:${p.id}` === view) : undefined;
   const tag = view.startsWith("t:") ? tags.find((g) => `t:${g.id}` === view) : undefined;
@@ -483,11 +490,12 @@ export default function App() {
   const progress = progressFor(view, tasks);
 
   return (
-    <div className={`app ${view === "home" ? "app-home" : view === "projects" ? "app-wide" : ""} ${panes.side.collapsed ? "side-off" : ""} ${panes.det.collapsed && !wide ? "det-off" : ""}`}
+    <PeopleCtx.Provider value={roster}>
+    <div className={`app ${view === "home" ? "app-home" : view === "projects" || view === "people" ? "app-wide" : ""} ${panes.side.collapsed ? "side-off" : ""} ${panes.det.collapsed && !wide ? "det-off" : ""}`}
       style={{ "--side-w": `${panes.side.collapsed ? 0 : panes.side.width}px`, "--det-w": `${panes.det.collapsed ? 0 : panes.det.width}px` } as CSSProperties}>
       <div className="titlebar" data-tauri-drag-region />
       <Frame panes={panes} hasDetails={!wide} onWidth={setPaneWidth} onToggle={togglePane} onReset={resetPane} />
-      <Sidebar view={view} tasks={tasks} projects={projects} tags={tags} settings={settings} onOpen={openView}
+      <Sidebar view={view} tasks={tasks} projects={projects} tags={tags} peopleCount={roster.length} settings={settings} onOpen={openView}
         onTagSave={saveTag} onTagDelete={(id) => run(() => db.deleteTag(id))}
         onNewProject={() => setProjectDlg("new")} onEditProject={(p) => setProjectDlg(p)}
         onSettings={() => setSettingsOpen(true)} onShortcuts={() => setHelpOpen(true)}
@@ -510,10 +518,13 @@ export default function App() {
             if (p.remind_at) ensurePermission();
             run(() => db.updateTask(id, p));
           }}
-          onCreate={createAt} show={shownFields(settings, "calendar")} />
+          onCreate={createAt} show={shownFields(settings, "calendar")}
+          birthdays={roster} onOpenPerson={(name) => (setPersonFocus(name), openView("people"))} />
       ) : (
       <main className={`main ${project ? "in-space" : ""}`} style={spaceVars(project?.color)}>
-        {view === "projects" ? (
+        {view === "people" ? (
+          <PeoplePage people={roster} tasks={tasks} tags={tags} reload={reload} focus={personFocus} onFocused={() => setPersonFocus(null)} />
+        ) : view === "projects" ? (
           <ProjectsPage projects={projects} tasks={tasks} onOpen={openView}
             onEdit={(p) => setProjectDlg(p)} onNew={() => setProjectDlg("new")} />
         ) : view === "home" ? (
@@ -666,6 +677,7 @@ export default function App() {
         />
       )}
     </div>
+    </PeopleCtx.Provider>
   );
 }
 
