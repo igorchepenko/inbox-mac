@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { PickBox } from "./components";
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, Briefcase, Building2, Check, Gift, Phone, Plus, Send, UserRound } from "lucide-react";
 import * as db from "./db";
 import type { Person, PersonFields, Tag, Task } from "./db";
@@ -74,7 +75,23 @@ export default function PeoplePage(props: {
   // Выбранные, которых уже нет (удалили или отфильтровали), из выделения выпадают
   const ids = picked.filter((id) => props.people.some((p) => p.id === id));
   const allOn = shown.length > 0 && shown.every((p) => ids.includes(p.id));
-  const toggle = (id: number) => setPicked(ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
+  const toggle = (id: number) => {
+    anchor.current = id;
+    setPicked(ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
+  };
+  // ⇧-клик выделяет подряд от последней отмеченной строки
+  const anchor = useRef<number | null>(null);
+  const span = (id: number) => {
+    const order = shown.map((p) => p.id);
+    const [a, b] = [order.indexOf(anchor.current ?? id), order.indexOf(id)].sort((x, y) => x - y);
+    setPicked(order.slice(a, b + 1));
+  };
+  useEffect(() => {
+    if (!ids.length) return;
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && !dlg && setPicked([]);
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [ids.length, dlg]);
   const counts = useMemo(() => new Map(props.people.map((p) => [p.id, taskCount(p.name, props.tasks)])), [props.people, props.tasks]);
   const setSortSaved = (s: PeopleSort) => (setSort(s), savePref(KEY_SORT, s));
   const toggleRev = () => (setRev(!rev), savePref(KEY_REV, rev ? "0" : "1"));
@@ -111,22 +128,16 @@ export default function PeoplePage(props: {
           <b>Выбрано: {ids.length}</b>
           <button className="btn small" onClick={() => setDlg({ kind: "bulk" })}>Изменить</button>
           <button className="btn small danger" onClick={() => setDlg({ kind: "delete", ids })}>Удалить</button>
-          <button className="link" onClick={() => setPicked([])}>Снять выбор</button>
+          {!allOn && <button className="link" onClick={() => setPicked(shown.map((p) => p.id))}>Выбрать всех{query.trim() ? " найденных" : ""}</button>}
+          <button className="link" onClick={() => setPicked([])}>Снять выбор <kbd>Esc</kbd></button>
         </div>
       )}
 
-      <div className="ppl-list">
-        {shown.length > 0 && (
-          <label className="ppl-all">
-            <input type="checkbox" checked={allOn} onChange={() => setPicked(allOn ? [] : shown.map((p) => p.id))} />
-            <span>{allOn ? "Снять выбор" : "Выбрать всех"}{query.trim() ? " найденных" : ""}</span>
-          </label>
-        )}
+      <div className={`ppl-list ${ids.length ? "has-pick" : ""}`}>
         {shown.map((p) => (
           <div key={p.id} className={`ppl-row ${ids.includes(p.id) ? "on" : ""}`} role="button" tabIndex={0}
-            onClick={() => setDlg({ kind: "edit", person: p })} onKeyDown={(e) => e.key === "Enter" && setDlg({ kind: "edit", person: p })}>
-            <input type="checkbox" checked={ids.includes(p.id)} aria-label={`Выбрать ${p.name}`}
-              onClick={(e) => e.stopPropagation()} onChange={() => toggle(p.id)} />
+            onClick={(e) => (e.shiftKey ? span(p.id) : e.metaKey || e.ctrlKey ? toggle(p.id) : setDlg({ kind: "edit", person: p }))} onKeyDown={(e) => e.key === "Enter" && setDlg({ kind: "edit", person: p })}>
+            <PickBox checked={ids.includes(p.id)} label={`Выбрать ${p.name}`} onToggle={() => toggle(p.id)} />
             <span className="ppl-ava"><UserRound size={15} /></span>
             <div className="ppl-main">
               <b className="ppl-name" title={p.name}>{p.name}</b>

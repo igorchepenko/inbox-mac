@@ -9,7 +9,7 @@ import { addDays, fmtDay, fmtRange, nextMonday, stampTime, today } from "./dates
 import { TARGETS, type BoardColumn, type Layout, type Stage } from "./boardOps";
 import * as board from "./boardOps";
 import { directionOf, plural, SORTS, type SortBy } from "./views";
-import { PRIORITY } from "./components";
+import { PickBox, PRIORITY } from "./components";
 import { Icon } from "./icons";
 import { Calendar, Popover } from "./widgets";
 import { QuadrantGlyph } from "./extras";
@@ -69,7 +69,7 @@ export function SortSwitch({ value, rev, onChange, onReverse }: { value: SortBy;
 }
 
 /** Как пользователь выбрал задачу: обычный клик, ⌘ добавляет к выделению, ⇧ выделяет диапазон */
-export type Pick = (id: number, mods: { meta: boolean; shift: boolean }) => void;
+export type Pick = (id: number, mods: { meta: boolean; shift: boolean; box?: boolean }) => void;
 const mods = (e: React.MouseEvent | MouseEvent) => ({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey });
 
 /** Подписи под названием: дата, время, напоминание, проект, чеклист, ссылки, файлы. Какие видны — Настройки → «Поля задач» */
@@ -236,6 +236,8 @@ export function BoardView(props: {
                       className={`kcard ${x.kind === "meeting" ? "meeting" : ""} ${props.sel === x.id ? "sel" : ""} ${props.fileDrop === x.id ? "filedrop" : ""} ${props.picked.includes(x.id) ? "picked" : ""} ${done ? "done" : ""} ${cancelled ? "cancelled" : ""} ${lifted ? "lifted" : ""} ${project ? "pc" : ""}`}
                       style={spaceVars(project?.color)}>
                       <div className="kcard-top">
+                        <PickBox checked={props.picked.includes(x.id)} label={`Выбрать «${x.title}»`}
+                          onToggle={() => props.onPick(x.id, { meta: false, shift: false, box: true })} />
                         <button className="chk kchk" aria-label={done ? "Вернуть" : "Сделано"} disabled={x.status === "archived"}
                           onClick={(e) => (e.stopPropagation(), props.onToggle(x))}>{cancelled ? <X size={11} strokeWidth={3.2} /> : <Check size={11} strokeWidth={3.2} />}</button>
                         {show("kind") && <MeetingMark task={x} />}
@@ -261,7 +263,6 @@ export function BulkPanel(props: {
   tasks: Task[];
   total: number;
   projects: Project[];
-  selecting: boolean;
   run: (fn: () => Promise<unknown>) => void;
   onSelectAll: () => void;
   onClear: () => void;
@@ -291,7 +292,7 @@ export function BulkPanel(props: {
         <div className="lbl">Выбрано</div>
         <div className="bulk-title">{xs.length ? plural(xs.length, "задача", "задачи", "задач") : "Ничего"}</div>
         <div className="hint">
-          {xs.length ? "⌘-клик добавляет или убирает задачу, ⇧-клик выделяет подряд." : "Кликай по задачам, чтобы выбрать их."}
+          {xs.length ? "Галочка слева, ⌘-клик или ⇧-клик добавляют и убирают задачи." : "Отмечай задачи галочкой слева от названия."}
         </div>
       </div>
 
@@ -353,7 +354,7 @@ export function BulkPanel(props: {
         {closed > 0 && <button className="cta stand" onClick={() => go(board.bulkReopen)}>Вернуть в работу{closed > 1 ? `: ${closed}` : ""}</button>}
         <div className="row-btns">
           {xs.length < props.total && <button className="btn" onClick={props.onSelectAll}>Выбрать все ({props.total})</button>}
-          <button className="btn" onClick={props.onClear}>{props.selecting ? "Готово" : "Снять"} <kbd>Esc</kbd></button>
+          <button className="btn" onClick={props.onClear}>Снять <kbd>Esc</kbd></button>
         </div>
         {xs.length > 0 && (
           <button className={`link danger ${confirm ? "armed" : ""}`} onBlur={() => setConfirm(false)}

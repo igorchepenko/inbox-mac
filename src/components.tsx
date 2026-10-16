@@ -430,7 +430,7 @@ export const SHORTCUTS: [string, string][] = [
   ["⌘P", "Найти пространство и перейти"],
   ["D W M  ← →", "Календарь: день, неделя, месяц, листать"],
   ["Клик в календаре", "Новая задача на это время, 30 минут"],
-  ["⌘-клик", "Выбрать несколько, ⇧-клик выделяет подряд"],
+  ["Галочка, ⌘-клик", "Выбрать несколько, ⇧-клик выделяет подряд"],
   ["⌘A", "Выбрать все в списке"],
   ["⌃⌘S", "Скрыть или показать левое меню"],
   ["⌥⌘I", "Скрыть или показать панель задачи"],
@@ -456,5 +456,14 @@ export function Help({ onClose }: { onClose: () => void }) {
         <p className="hint help-foot">Подсказка с сочетанием появляется и при наведении на кнопку.</p>
       </div>
     </div>
+  );
+}
+
+/** Чекбокс выбора нескольких записей: в «Задачах» и «Людях» один и тот же. Виден при наведении на строку, после первой отметки у всех строк */
+export function PickBox(props: { checked: boolean; label: string; onToggle: () => void }) {
+  return (
+    <input type="checkbox" className="pickbox" checked={props.checked} aria-label={props.label}
+      onMouseDown={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()} onChange={props.onToggle} />
   );
 }
