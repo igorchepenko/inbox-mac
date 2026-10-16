@@ -1,0 +1,61 @@
+/* Раздел «Люди» */
+.people { padding: 0; }
+.ppl-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ppl-tools .fsearch { height: 30px; box-sizing: border-box; width: 240px; }
+.ppl-tools .fsearch:focus-within, .ppl-tools .fsearch.has { width: 280px; }
+.ppl-sort { height: 30px; box-sizing: border-box; padding: 0 26px 0 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--field); color: var(--fg); font-size: 12px; }
+.ppl-dir { height: 30px; width: 30px; box-sizing: border-box; justify-content: center; padding: 0; }
+.ppl-bulk { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--stand);
+  background: color-mix(in srgb, var(--stand) 8%, var(--bg)); }
+.ppl-bulk .btn.danger { color: var(--move); }
+.ppl-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 0; flex: 1; padding: 2px 6px 12px; margin: 0 -6px; }
+.ppl-all { display: flex; align-items: center; gap: 8px; padding: 0 12px; color: var(--muted); font-size: 12px; cursor: pointer; }
+.ppl-row { display: grid; grid-template-columns: 18px 30px minmax(150px, 1.3fr) minmax(0, 1fr) minmax(0, 1.1fr) 120px 80px; align-items: center; gap: 12px;
+  padding: 9px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--border); cursor: pointer; text-align: left; }
+.ppl-row:hover { border-color: var(--muted); }
+.ppl-row:focus-visible { outline: 2px solid var(--stand); outline-offset: 2px; }
+.ppl-row.on { border-color: var(--stand); background: color-mix(in srgb, var(--stand) 7%, var(--surface)); }
+.ppl-ava { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: color-mix(in srgb, var(--fg) 7%, transparent); color: var(--muted); }
+.ppl-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ppl-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ppl-work, .ppl-contacts span { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ppl-work svg, .ppl-contacts svg { flex: none; }
+.ppl-tags { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.ppl-contacts { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ppl-bday { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--fg); }
+.ppl-bday svg { color: var(--orchid, var(--stand)); flex: none; }
+.ppl-n { color: var(--muted); font-size: 12px; text-align: right; }
+@media (max-width: 900px) {
+  .ppl-row { grid-template-columns: 18px 30px minmax(0, 1fr) 100px; }
+  .ppl-tags, .ppl-contacts, .ppl-n { display: none; }
+}
+
+/* Диалог человека */
+.dialog.person-dlg { width: min(520px, 100%); }
+.overlay:has(> .person-dlg) { padding-top: 6vh; }
+.pd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
+.pd-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); min-width: 0; }
+.pd-grid .field, .pd-bday .field { padding: 8px 10px; font-size: 13px; color: var(--fg); }
+.pd-bday { display: flex; align-items: center; gap: 8px; }
+.pd-bday input:first-child { width: 64px; }
+.pd-bday select { flex: 1; min-width: 0; }
+.pd-bday input:nth-child(3) { width: 84px; }
+.del-fate .hint { display: block; }
+.del-fate select.field { margin-top: 6px; padding: 6px 8px; width: 100%; }
+
+/* Карточка человека при наведении на имя в задаче: сплошной фон, чтобы не просвечивал текст под ней */
+.who-host { display: inline-flex; min-width: 0; max-width: 120px; }
+.person-card { position: fixed; z-index: 40; width: 270px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--fg) 4%, var(--bg)); color: var(--fg); box-shadow: 0 18px 40px -18px rgba(0, 0, 0, .5); }
+.pc-body { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+.pc-name { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+.pc-name svg { color: var(--muted); }
+.pc-row { display: flex; align-items: flex-start; gap: 6px; color: var(--fg); overflow-wrap: anywhere; }
+.pc-row svg { color: var(--muted); flex: none; margin-top: 2px; }
+.pc-note { color: var(--muted); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.pc-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* День рождения в календаре */
+.cal-chip.cal-bday { --c: var(--orchid, var(--stand)); width: 100%; text-align: left; background: color-mix(in srgb, var(--c) 16%, var(--surface)); border-color: color-mix(in srgb, var(--c) 45%, transparent); }
+.cal-chip.cal-bday { cursor: pointer; }
+.cal-bday-i { color: var(--c); flex: none; }

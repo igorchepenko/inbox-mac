@@ -1,15 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BellRing, Check, FolderOpen, Info, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, Rows3, SlidersHorizontal, Type, UserRound, Users, X, type LucideIcon } from "lucide-react";
+import { BellRing, Check, FolderOpen, Info, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, Rows3, SlidersHorizontal, Type, UserRound, type LucideIcon } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as autostartEnabled } from "@tauri-apps/plugin-autostart";
 import { Icon } from "./icons";
-import { ALWAYS, isSmart, plural, VIEWS, type ViewId } from "./views";
+import { ALWAYS, isSmart, VIEWS, type ViewId } from "./views";
 import { beforeName, defaultBefore, REMIND_BEFORE } from "./remind";
-import { loadPeopleStats, renamePerson } from "./db";
-import { sameName } from "./tags";
-import { searchNames } from "./search";
-import { SearchField } from "./TagsUI";
 import { CloseX, IconGrid, Popover, ThemeSwitch, TimeInput, Toggle } from "./widgets";
+import { DEFAULT_GLASS, GLASS_PRESETS, savedGlass, setGlass, type GlassBg } from "./glassbg";
 import { savedLook, savedTheme, setLook, setTheme, type Look } from "./theme";
 import { HomeSettings } from "./HomeSettings";
 import { FieldsSettings } from "./FieldsSettings";
@@ -41,7 +38,6 @@ const SECTIONS: { id: string; name: string; icon: LucideIcon; render: (p: Settin
   { id: "look", name: "Внешний вид", icon: Type, render: () => <Look /> },
   { id: "quick", name: "Быстрый ввод", icon: Keyboard, render: (p) => <Quick {...p} /> },
   { id: "notify", name: "Уведомления", icon: BellRing, render: (p) => <Notifications {...p} /> },
-  { id: "people", name: "Кто назначил", icon: Users, render: (p) => <People {...p} /> },
   { id: "fields", name: "Поля задач", icon: Rows3, render: (p) => <FieldsSettings settings={p.settings} onSet={p.onSet} /> },
   { id: "menu", name: "Меню", icon: PanelLeft, render: (p) => <MenuItems {...p} /> },
   { id: "home", name: "Дашборд", icon: LayoutDashboard, render: (p) => <HomeSettings settings={p.settings} onSet={p.onSet} /> },
@@ -77,7 +73,6 @@ export function Settings(props: SettingsProps) {
         <div className="set-body">
           <div className="set-head">
             <h2>{section.name}</h2>
-            <button className="cal-nav" onClick={props.onClose} title="Закрыть (Esc)"><X size={16} /></button>
           </div>
           {section.render(props)}
         </div>
@@ -233,6 +228,8 @@ function Look() {
   const [a, setA] = useState<Appearance>(savedAppearance());
   const [theme, setT] = useState(savedTheme());
   const [look, setL] = useState<Look>(savedLook());
+  const [gb, setGb] = useState<GlassBg>(savedGlass());
+  const setBg = (next: GlassBg) => (setGb(next), setGlass(next));
   const set = (next: Appearance) => (setA(next), setAppearance(next));
   const D = DEFAULT_APPEARANCE;
   const resetTheme = () => (setTheme("system"), setT("system"));
@@ -242,7 +239,7 @@ function Look() {
     window.addEventListener("inbox-theme", on);
     return () => window.removeEventListener("inbox-theme", on);
   }, []);
-  const changed = theme !== "system" || look !== "flat" || a.font !== D.font || a.size !== D.size;
+  const changed = theme !== "system" || look !== "flat" || JSON.stringify(gb) !== JSON.stringify(DEFAULT_GLASS) || a.font !== D.font || a.size !== D.size;
   return (
     <div className="set-group">
       <Row name="Тема" hint="Быстрый переключатель остаётся и внизу меню слева"
@@ -253,6 +250,48 @@ function Look() {
         def={{ text: "плоский", changed: look !== "flat", reset: () => (setLook("flat"), setL("flat")) }}>
         <Choice value={look} onPick={(v) => (setLook(v), setL(v))} options={[{ id: "flat", name: "Плоский" }, { id: "glass", name: "Стекло" }]} />
       </Row>
+      {look === "glass" && (
+        <>
+          <Row name="Фон стекла" hint="Разноцветный градиент или один цвет"
+            def={{ text: "разноцветный", changed: gb.mode !== "multi", reset: () => setBg({ ...gb, mode: "multi", tint: false }) }}>
+            <Choice value={gb.mode} onPick={(mode) => setBg({ ...gb, mode })} options={[{ id: "multi", name: "Разноцветный" }, { id: "solid", name: "Одноцветный" }]} />
+          </Row>
+          {gb.mode === "solid" && (
+            <>
+              <Row name="Цвет" hint="Готовый цвет ставится сразу для светлой и тёмной темы">
+                <div className="seg">
+                  {GLASS_PRESETS.map((c) => (
+                    <button type="button" key={c.id} title={c.name} aria-label={c.name}
+                      className={`gl-swatch ${gb.light === c.light && gb.dark === c.dark ? "on" : ""}`}
+                      style={{ background: `linear-gradient(135deg, ${c.light} 50%, ${c.dark} 50%)` }}
+                      onClick={() => setBg({ ...gb, light: c.light, dark: c.dark })} />
+                  ))}
+                </div>
+              </Row>
+              <Row name="Свой цвет" hint="Для каждой темы отдельно">
+                <div className="seg">
+                  <label className="gl-pick">Светлая <input type="color" value={gb.light} onChange={(e) => setBg({ ...gb, light: e.target.value.toUpperCase() })} /></label>
+                  <label className="gl-pick">Тёмная <input type="color" value={gb.dark} onChange={(e) => setBg({ ...gb, dark: e.target.value.toUpperCase() })} /></label>
+                </div>
+              </Row>
+              <Row name="Акцент в тон фону" hint="Кнопки и выделение берут оттенок выбранного цвета">
+                <Toggle on={gb.tint} onChange={(tint) => setBg({ ...gb, tint })} label="Акцент в тон фону" />
+              </Row>
+            </>
+          )}
+          <Row name="Размытие" def={{ text: "среднее", changed: gb.blur !== 50, reset: () => setBg({ ...gb, blur: 50 }) }}>
+            <input type="range" className="gl-range" min={0} max={100} value={gb.blur} aria-label="Размытие" onChange={(e) => setBg({ ...gb, blur: +e.target.value })} />
+          </Row>
+          <Row name="Прозрачность" hint="Правее — стекло плотнее" def={{ text: "средняя", changed: gb.opacity !== 50, reset: () => setBg({ ...gb, opacity: 50 }) }}>
+            <input type="range" className="gl-range" min={0} max={100} value={gb.opacity} aria-label="Прозрачность" onChange={(e) => setBg({ ...gb, opacity: +e.target.value })} />
+          </Row>
+          <Row name="Превью">
+            <div className="gl-prev" aria-hidden>
+              <div className="gl-prev-card"><b>Задача</b><span>Так выглядит стекло</span><i /></div>
+            </div>
+          </Row>
+        </>
+      )}
       <Row name="Шрифт" def={{ text: FONTS.find((f) => f.id === D.font)!.name, changed: a.font !== D.font, reset: () => set({ ...a, font: D.font }) }}>
         <div className="seg">
           {FONTS.map((f) => (
@@ -267,7 +306,7 @@ function Look() {
         def={{ text: SIZES.find((s) => s.id === D.size)!.name, changed: a.size !== D.size, reset: () => set({ ...a, size: D.size }) }}>
         <Choice value={a.size} onPick={(size) => set({ ...a, size })} options={SIZES.map((s) => ({ id: s.id, name: s.name }))} />
       </Row>
-      <ResetSection name="Внешний вид" changed={changed} onReset={() => (resetTheme(), setLook("flat"), setL("flat"), set(D))} />
+      <ResetSection name="Внешний вид" changed={changed} onReset={() => (resetTheme(), setLook("flat"), setL("flat"), setBg(DEFAULT_GLASS), set(D))} />
     </div>
   );
 }
@@ -378,89 +417,6 @@ function Notifications(p: SettingsProps) {
         </Row>
       </fieldset>
       <ResetSection name="Уведомления" changed={notifChanged} onReset={resetNotif} />
-    </div>
-  );
-}
-
-/** Кто назначал задачи: переименовать, объединить два написания одного человека, убрать */
-function People(p: SettingsProps) {
-  const [rows, setRows] = useState<{ name: string; count: number }[] | null>(null);
-  const [edit, setEdit] = useState<{ name: string; value: string } | null>(null);
-  const [armed, setArmed] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const load = () => loadPeopleStats().then(setRows).catch((e) => setError(String(e)));
-  useEffect(() => void load(), []);
-  const apply = async (from: string, to: string | null) => {
-    try {
-      await renamePerson(from, to);
-      setEdit(null);
-      setArmed(null);
-      setError(null);
-      await load();
-      p.onData?.();
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-  const saveEdit = () => {
-    if (!edit) return;
-    const v = edit.value.replace(/\s+/g, " ").trim();
-    if (!v || v === edit.name) return setEdit(null);
-    apply(edit.name, v);
-  };
-  // Новое имя совпало с другим человеком: сохранение объединит их
-  const mergeInto = edit && rows?.find((r) => r.name !== edit.name && sameName(r.name, edit.value.trim()));
-  if (!rows) return <div className="hint">Загружаю…</div>;
-  return (
-    <div className="set-group">
-      <div className="hint">Имена из поля «Кто назначил». Переименование меняет имя во всех задачах. Если вписать имя другого человека, задачи объединятся под ним.</div>
-      {!rows.length && <div className="hint">Пока никто не назначал задач. Имя появится здесь, когда впишешь его в задачу или наберёшь @Имя при записи.</div>}
-      {rows.length > 1 && <SearchField value={query} onChange={setQuery} placeholder="Найти человека" />}
-      {query.trim() && !searchNames(query, rows).length && <div className="hint">Никого не нашлось.</div>}
-      {searchNames(query, rows).map((r) => (
-        <div key={r.name} className="set-row person-row">
-          <div className="set-text">
-            {edit?.name === r.name ? (
-              <input className="field" autoFocus value={edit.value} aria-label="Имя"
-                onChange={(e) => setEdit({ ...edit, value: e.target.value })}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") saveEdit();
-                  if (e.key === "Escape") (e.stopPropagation(), setEdit(null));
-                }} />
-            ) : (
-              <div className="set-name">{r.name}</div>
-            )}
-            <div className="hint">
-              {edit?.name === r.name && mergeInto ? `Задачи перейдут к «${mergeInto.name}»` : plural(r.count, "задача", "задачи", "задач")}
-            </div>
-          </div>
-          <div className="set-ctl seg">
-            {edit?.name === r.name ? (
-              <>
-                <button type="button" className="btn small" onClick={saveEdit}>{mergeInto ? "Объединить" : "Сохранить"}</button>
-                <button type="button" className="link" onClick={() => setEdit(null)}>Отмена</button>
-              </>
-            ) : (
-              <>
-                <button type="button" className="btn small" onClick={() => setEdit({ name: r.name, value: r.name })}>Переименовать</button>
-                {rows.length > 1 && (
-                  <select className="field set-select" value="" aria-label={`Объединить ${r.name} с`}
-                    onChange={(e) => e.target.value && apply(r.name, e.target.value)}>
-                    <option value="">Объединить с…</option>
-                    {rows.filter((o) => o.name !== r.name).map((o) => <option key={o.name} value={o.name}>{o.name}</option>)}
-                  </select>
-                )}
-                <button type="button" className={`link danger ${armed === r.name ? "armed" : ""}`}
-                  onClick={() => (armed === r.name ? apply(r.name, null) : setArmed(r.name))} onBlur={() => setArmed(null)}>
-                  {armed === r.name ? "Точно? Задачи станут «Сам себе»" : "Удалить"}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      ))}
-      {error && <div className="error">{error}</div>}
     </div>
   );
 }

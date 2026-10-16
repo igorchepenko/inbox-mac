@@ -1,5 +1,7 @@
 // Напоминание, тип задачи и дата создания в интерфейсе: поле в панели задачи и в форме записи, значки в строке и на карточке
-import { CalendarPlus, CheckSquare, FlagTriangleRight, Users } from "lucide-react";
+import { BellRing, CalendarPlus, CheckSquare, FlagTriangleRight, Hourglass, Users } from "lucide-react";
+import { isWaiting, pingDue, presetDate, WAIT_PRESETS, CLEAR_WAITING } from "./waiting";
+import { PersonInput } from "./TagsUI";
 import type { Task, TaskKind } from "./db";
 import { fmtDay, fmtStamp, stampDay, stampTime } from "./dates";
 import { anchorOf, REMIND_BEFORE, REMIND_OFF, setBefore, setCustom, type When } from "./remind";
@@ -83,10 +85,10 @@ export function MeetingMark({ task }: { task: Task }) {
 export const fmtCreated = (stamp: string) => `${fmtDay(stampDay(stamp))} в ${stampTime(stamp)}`;
 
 /** Дата создания в строке и на карточке: день, а полностью в подсказке «Создана 16.10.2026 14:30» */
-export function CreatedMeta({ task }: { task: Task }) {
+export function CreatedMeta({ task, label }: { task: Task; label?: boolean }) {
   return (
     <span className="meta created" data-tip={`Создана ${fmtStamp(task.created_at)}`}>
-      <CalendarPlus size={11} /> {fmtDay(stampDay(task.created_at))}
+      <CalendarPlus size={11} /> {label ? "создана " : ""}{fmtDay(stampDay(task.created_at))}
     </span>
   );
 }
@@ -99,5 +101,48 @@ export function DueFlag({ task: x, day }: { task: DueTask; day?: boolean }) {
     <span className={`meta due ${state ?? ""}`} data-tip={tips.due(x)}>
       <FlagTriangleRight size={11} /> {day ? `${fmtDay(x.due_date!)} ` : ""}до {x.end_time}
     </span>
+  );
+}
+
+/** Статус «Жду» в строке и на карточке: у кого ждём, а в день напоминания «пора напомнить» */
+export function WaitingBadge({ task: x }: { task: Task }) {
+  if (!isWaiting(x)) return null;
+  const ping = pingDue(x);
+  return (
+    <span className={`meta waiting ${ping ? "ping" : ""}`} data-tip={tips.waiting(x)}>
+      {ping ? <BellRing size={11} /> : <Hourglass size={11} />} {ping ? "Пора напомнить" : `Жду: ${x.waiting_for}`}
+    </span>
+  );
+}
+
+/** Поле «Жду» в панели задачи: от кого, когда напомнить, «Пришёл ответ» возвращает задачу в работу */
+export function WaitingField(props: {
+  task: Task;
+  people: string[];
+  disabled?: boolean;
+  onPatch: (p: Pick<Task, "waiting_for" | "waiting_until">) => void;
+}) {
+  const x = props.task;
+  const on = isWaiting(x);
+  const set = (waiting_until: string | null) => props.onPatch({ waiting_for: x.waiting_for, waiting_until });
+  return (
+    <>
+      <PersonInput value={x.waiting_for} people={props.people} disabled={props.disabled} placeholder="От кого жду, например Андрей"
+        onChange={(v) => props.onPatch(v ? { waiting_for: v, waiting_until: x.waiting_until } : CLEAR_WAITING)} />
+      {on && (
+        <>
+          <div className="lbl sub-lbl">Напомнить <span className="opt">необязательно</span></div>
+          <div className="seg">
+            {WAIT_PRESETS.map((p) => {
+              const d = presetDate(p.days);
+              return <Chip key={p.days} accent="move" on={x.waiting_until === d} onClick={() => set(x.waiting_until === d ? null : d)}>{p.name}</Chip>;
+            })}
+            <DateField value={x.waiting_until} onChange={set} accent="move" />
+          </div>
+          {pingDue(x) && <div className="hint wait-ping">Пора напомнить: {x.waiting_for} ждёт тебя в «Сегодня»</div>}
+          <div className="row-btns"><button type="button" className="btn" disabled={props.disabled} onClick={() => props.onPatch(CLEAR_WAITING)}>Пришёл ответ</button></div>
+        </>
+      )}
+    </>
   );
 }

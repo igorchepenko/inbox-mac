@@ -6,17 +6,20 @@ import { invoke } from "@tauri-apps/api/core";
 import * as db from "./db";
 import type { Project, ProjectFields, Tag, Task } from "./db";
 import { fmtDay, fmtRange, nowStamp, stampTime, today, toHHMM } from "./dates";
-import { ALWAYS, inTasks, isSmart, listFor, plural, progressFor, revKey, revOf, scopeOf, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
+import { isWaiting, pingDue } from "./waiting";
+import { ALWAYS, HOTKEY_VIEWS, inTasks, isSmart, listFor, plural, progressFor, revKey, revOf, scopeOf, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
 import { marks } from "./search";
 import "./search.css";
 import { Details, Help, QuickForm, Ring, type TaskPatch } from "./components";
 import { Icon } from "./icons";
 import { ProjectDialog } from "./widgets";
+import PeoplePage from "./PeoplePage";
+import { Assignee, PeopleCtx } from "./PersonCard";
 import { Check, CheckCheck, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Rows3, Tag as TagIcon, Users } from "lucide-react";
 import { applyFilter, EMPTY_FILTER, filterOn, NO_SPACE, peopleOf, type TaskFilter } from "./tags";
-import { Assignee, FilterBar, FilterButton, FIND_EVENT, SearchField, TagChips, TagEditor, type SmartFilter } from "./TagsUI";
+import { FilterBar, FilterButton, FIND_EVENT, SearchField, TagChips, TagEditor, type SmartFilter } from "./TagsUI";
 import { QuadrantGlyph } from "./extras";
-import { CreatedMeta, DueFlag, MeetingMark } from "./TaskBits";
+import { CreatedMeta, DueFlag, MeetingMark, WaitingBadge } from "./TaskBits";
 import { defaultBefore, remindPatch } from "./remind";
 import { boardFor, canMove, CLOSING, dropTo, layoutOf, STAGES, stageOf, type Layout, type Stage } from "./boardOps";
 import { SummaryDialog, type Closing } from "./Summary";
@@ -40,6 +43,9 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
+  // Раздел «Люди»; personFocus — чью карточку открыть при переходе (с дня рождения в календаре)
+  const [roster, setRoster] = useState<db.Person[]>([]);
+  const [personFocus, setPersonFocus] = useState<string | null>(null);
   // Фильтры. Поиск, теги и «кто назначил» живут, пока открыт список, при переходе в другой сбрасываются.
   // Пространства остаются выбранными во всех списках и в календаре, пока их не сбросят
   const [filter, setFilter] = useState<TaskFilter>(EMPTY_FILTER);
@@ -71,8 +77,9 @@ export default function App() {
   const reload = useCallback(async () => {
     try {
       await db.archiveOldDone();
-      const [t, p, st, g] = await Promise.all([db.loadTasks(), db.loadProjects(), db.loadSettings(), db.loadTags()]);
+      const [t, p, st, g, r] = await Promise.all([db.loadTasks(), db.loadProjects(), db.loadSettings(), db.loadTags(), db.loadPeopleList()]);
       setTasks(t);
+      setRoster(r);
       setProjects(p);
       setTags(g);
       setSettings(st);
@@ -125,7 +132,7 @@ export default function App() {
   const listFields = useMemo(() => shownFields(settings, "list"), [settings]);
   const sort = sortOf(view, settings);
   const rev = revOf(view, sort, settings);
-  const people = useMemo(() => peopleOf(tasks), [tasks]);
+  const people = useMemo(() => peopleOf(tasks, roster.map((r) => r.name)), [tasks, roster]);
   // Удалённый тег или пространство из фильтра выпадает само. Внутри пространства фильтр по пространствам не действует
   const inSpace = view.startsWith("p:");
   const filt = useMemo(() => ({
@@ -263,7 +270,7 @@ export default function App() {
   // Задача с главной открывается в своём списке
   const homeOf = (x: Task): ViewId => {
     const t = today();
-    return x.status === "inbox" ? "inbox" : x.status === "archived" ? "archive"
+    return x.status === "inbox" ? "inbox" : x.status === "archived" ? "archive" : pingDue(x, t) ? "today" : isWaiting(x) ? "waiting"
       : x.due_date && x.due_date <= t ? "today" : x.status === "done" ? "today" : "soon";
   };
   const openTask = (x: Task) => {
@@ -410,11 +417,12 @@ export default function App() {
       if (e.metaKey && e.altKey && e.code === "KeyI") return e.preventDefault(), togglePane("det");
       if (e.metaKey && e.code === "Digit0") return e.preventDefault(), openView("home");
       if (e.metaKey && e.code === "Digit7") return e.preventDefault(), openView("projects");
+      if (e.metaKey && e.code === "Digit8") return e.preventDefault(), openView("people");
       if (e.metaKey && e.code === "KeyP") return e.preventDefault(), window.dispatchEvent(new Event(FIND_PROJECT_EVENT));
       if (e.metaKey && e.code === "KeyF") return e.preventDefault(), window.dispatchEvent(new Event(FIND_EVENT));
       if (e.metaKey && /^Digit[1-6]$/.test(e.code)) {
         e.preventDefault();
-        const v = VIEWS[Number(e.code.slice(5)) - 1].id;
+        const v = HOTKEY_VIEWS[Number(e.code.slice(5)) - 1].id;
         if (!hidden(v)) openView(v);
         return;
       }
@@ -472,7 +480,7 @@ export default function App() {
   });
 
   // Главная и страница проектов занимают всё место справа от меню, без панели деталей
-  const wide = view === "home" || view === "projects";
+  const wide = view === "home" || view === "projects" || view === "people";
   const current = VIEWS.find((v) => v.id === view);
   const project = view.startsWith("p:") ? projects.find((p) => `p:${p.id}` === view) : undefined;
   const tag = view.startsWith("t:") ? tags.find((g) => `t:${g.id}` === view) : undefined;
@@ -482,11 +490,12 @@ export default function App() {
   const progress = progressFor(view, tasks);
 
   return (
-    <div className={`app ${view === "home" ? "app-home" : view === "projects" ? "app-wide" : ""} ${panes.side.collapsed ? "side-off" : ""} ${panes.det.collapsed && !wide ? "det-off" : ""}`}
+    <PeopleCtx.Provider value={roster}>
+    <div className={`app ${view === "home" ? "app-home" : view === "projects" || view === "people" ? "app-wide" : ""} ${panes.side.collapsed ? "side-off" : ""} ${panes.det.collapsed && !wide ? "det-off" : ""}`}
       style={{ "--side-w": `${panes.side.collapsed ? 0 : panes.side.width}px`, "--det-w": `${panes.det.collapsed ? 0 : panes.det.width}px` } as CSSProperties}>
       <div className="titlebar" data-tauri-drag-region />
       <Frame panes={panes} hasDetails={!wide} onWidth={setPaneWidth} onToggle={togglePane} onReset={resetPane} />
-      <Sidebar view={view} tasks={tasks} projects={projects} tags={tags} settings={settings} onOpen={openView}
+      <Sidebar view={view} tasks={tasks} projects={projects} tags={tags} peopleCount={roster.length} settings={settings} onOpen={openView}
         onTagSave={saveTag} onTagDelete={(id) => run(() => db.deleteTag(id))}
         onNewProject={() => setProjectDlg("new")} onEditProject={(p) => setProjectDlg(p)}
         onSettings={() => setSettingsOpen(true)} onShortcuts={() => setHelpOpen(true)}
@@ -509,10 +518,13 @@ export default function App() {
             if (p.remind_at) ensurePermission();
             run(() => db.updateTask(id, p));
           }}
-          onCreate={createAt} show={shownFields(settings, "calendar")} />
+          onCreate={createAt} show={shownFields(settings, "calendar")}
+          birthdays={roster} onOpenPerson={(name) => (setPersonFocus(name), openView("people"))} />
       ) : (
       <main className={`main ${project ? "in-space" : ""}`} style={spaceVars(project?.color)}>
-        {view === "projects" ? (
+        {view === "people" ? (
+          <PeoplePage people={roster} tasks={tasks} tags={tags} reload={reload} focus={personFocus} onFocused={() => setPersonFocus(null)} />
+        ) : view === "projects" ? (
           <ProjectsPage projects={projects} tasks={tasks} onOpen={openView}
             onEdit={(p) => setProjectDlg(p)} onNew={() => setProjectDlg("new")} />
         ) : view === "home" ? (
@@ -540,27 +552,29 @@ export default function App() {
             <h2>{project?.name ?? tag?.name ?? (inTasks(view) ? "Задачи" : current?.name) ?? ""}</h2>
             <p className="head-sub" data-tip={project?.description || undefined} data-tip-full="">{project?.description || progress?.subtitle || subtitleFor(view, list.length)}</p>
           </div>
-          {project && (
-            <button className="icon-btn" data-tip="Изменить пространство" onClick={() => setProjectDlg(project)}>
-              <Pencil size={13} /> Изменить
+          <div className="head-tools">
+            {project && (
+              <button className="icon-btn" data-tip="Изменить пространство" onClick={() => setProjectDlg(project)}>
+                <Pencil size={13} /> Изменить
+              </button>
+            )}
+            {tag && (
+              <button className="icon-btn" data-tip="Переименовать, сменить цвет, удалить" onClick={(e) => setTagEdit(tagEdit ? null : e.currentTarget)}>
+                <Pencil size={13} /> Изменить
+              </button>
+            )}
+            <SearchField value={filter.text} onChange={setText} onArrow={stepSel} placeholder="Найти задачу"
+              tip="Поиск по задачам на этом экране: название, заметка, чеклист, теги, люди, ссылки" />
+            {view !== "archive" && <SortSwitch value={sort} rev={rev} onChange={setSort} onReverse={reverseSort} />}
+            <FilterButton filter={filt} projects={projects} tags={tags} people={people} lockTag={tag?.id} noSpaces={!!project} onChange={setFilter} smart={smart} />
+            {fieldsButton}
+            <LayoutSwitch value={layout} onChange={setLayout} />
+            <button className={`icon-btn ${selecting ? "on" : ""}`} data-tip="Выбрать несколько задач, ⌘-клик по строке" data-key="⌘A"
+              onClick={() => (selecting ? clearPick() : (setSelecting(true), setPicked(sel != null ? [sel] : [])))}>
+              <CheckCheck size={13} /> Выбрать
             </button>
-          )}
-          {tag && (
-            <button className="icon-btn" data-tip="Переименовать, сменить цвет, удалить" onClick={(e) => setTagEdit(tagEdit ? null : e.currentTarget)}>
-              <Pencil size={13} /> Изменить
-            </button>
-          )}
-          <SearchField value={filter.text} onChange={setText} onArrow={stepSel} placeholder="Найти задачу"
-            tip="Поиск по задачам на этом экране: название, заметка, чеклист, теги, люди, ссылки" />
-          {view !== "archive" && <SortSwitch value={sort} rev={rev} onChange={setSort} onReverse={reverseSort} />}
-          <FilterButton filter={filt} projects={projects} tags={tags} people={people} lockTag={tag?.id} noSpaces={!!project} onChange={setFilter} smart={smart} />
-          {fieldsButton}
-          <LayoutSwitch value={layout} onChange={setLayout} />
-          <button className={`icon-btn ${selecting ? "on" : ""}`} data-tip="Выбрать несколько задач, ⌘-клик по строке" data-key="⌘A"
-            onClick={() => (selecting ? clearPick() : (setSelecting(true), setPicked(sel != null ? [sel] : [])))}>
-            <CheckCheck size={13} /> Выбрать
-          </button>
-          <button className="icon-btn" data-tip="Сочетания клавиш" data-key="⌘/" aria-label="Сочетания клавиш" onClick={() => setHelpOpen(true)}><Keyboard size={14} /></button>
+            <button className="icon-btn" data-tip="Сочетания клавиш" data-key="⌘/" aria-label="Сочетания клавиш" onClick={() => setHelpOpen(true)}><Keyboard size={14} /></button>
+          </div>
         </header>
 
         <FilterBar filter={filt} projects={projects} tags={tags} shown={ids.length} onChange={setFilter} smart={smart} />
@@ -663,18 +677,21 @@ export default function App() {
         />
       )}
     </div>
+    </PeopleCtx.Provider>
   );
 }
 
 function subtitleFor(view: ViewId, n: number): string {
   if (view === "archive") return n ? `${plural(n, "задача сделана или отменена", "задачи сделаны или отменены", "задач сделаны или отменены")}` : "";
   if (view === "tasks") return n ? `Все задачи, кроме завершённых: ${n}` : "";
+  if (view === "waiting") return n ? "Задачи, которые ждут ответа или результата от других людей" : "";
   if (view === "soon") return n ? "Запланированное на будущее и разобранное без даты" : "";
   return n ? `${n} в работе` : "";
 }
 
 function emptyText(view: ViewId): string {
   if (view === "inbox") return `Здесь пусто. Нажми ${quickKeyLabel()} в любом приложении, чтобы записать задачу.`;
+  if (view === "waiting") return "Никого не ждёшь. В панели задачи поле «Жду» ставит задачу сюда.";
   if (view === "today") return "На сегодня ничего. Поставь дату «Сегодня» при разборе.";
   if (view === "archive") return "Сделанные и отменённые задачи попадают сюда на следующий день.";
   if (view === "tasks") return `Задач пока нет. Нажми ${quickKeyLabel()} в любом приложении, чтобы записать задачу.`;
@@ -716,6 +733,7 @@ function TaskRow(props: {
         {props.query ? marks(x.title, props.query).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part)) : x.title}
       </span>
       {show("tags") && <TagChips tags={x.tags} max={2} />}
+      <WaitingBadge task={x} />
       {show("assignee") && x.assigned_by && <Assignee name={x.assigned_by} />}
       {show("participants") && x.participants.length > 0 && (
         <span className="meta badge" data-tip={tips.participants(x.participants)}><Users size={12} /> {x.participants.length}</span>

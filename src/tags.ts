@@ -119,10 +119,10 @@ export function compareNames(a: string | null, b: string | null): number {
   return (a ? 0 : 1) - (b ? 0 : 1);
 }
 
-/** Все люди из задач, по алфавиту, без повторов с разным регистром */
-export function peopleOf(tasks: Task[]): string[] {
+/** Все люди из задач и из раздела «Люди» (extra), по алфавиту, без повторов с разным регистром */
+export function peopleOf(tasks: Task[], extra: string[] = []): string[] {
   const out: string[] = [];
-  for (const x of tasks) if (x.assigned_by && !out.some((p) => sameName(p, x.assigned_by!))) out.push(x.assigned_by);
+  for (const n of [...tasks.map((x) => x.assigned_by), ...extra]) if (n && !out.some((p) => sameName(p, n))) out.push(n);
   return out.sort(byName);
 }
 

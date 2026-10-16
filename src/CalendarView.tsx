@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ChevronLeft, ChevronRight, Repeat } from "lucide-react";
-import type { Project, Task } from "./db";
+import { ChevronLeft, ChevronRight, Gift, Repeat } from "lucide-react";
+import type { Person, Project, Task } from "./db";
+import { birthdaysOn, birthdayTitle } from "./people";
 import * as db from "./db";
 import { DAY_END, pad, parseDay, today, toHHMM, weekdayShort, WEEKDAYS } from "./dates";
 import { Icon } from "./icons";
@@ -61,6 +62,8 @@ export default function CalendarView(props: {
   filterButton?: ReactNode;
   filterBar?: ReactNode;
   show?: Shown; // какие поля видны на плашке, Настройки → «Поля задач» → Календарь
+  birthdays?: Person[]; // дни рождения людей из раздела «Люди»: повторяются каждый год
+  onOpenPerson?: (name: string) => void;
 }) {
   const show = props.show ?? ALL_SHOWN;
   const [mode, setModeState] = useState<CalMode>(() => loadPref("cal:mode", ["day", "week", "month"] as const, "week"));
@@ -267,6 +270,15 @@ export default function CalendarView(props: {
   const moving = drag?.active ? drag : null;
   const openCount = items.filter((i) => !i.done && !i.virtual).length;
 
+  // День рождения: не задача, не двигается и не отмечается. Клик открывает карточку человека
+  const bdays = (day: string) => birthdaysOn(props.birthdays ?? [], day).map((p) => (
+    <button key={`b${p.id}`} type="button" className="cal-chip cal-bday" title={birthdayTitle(p, day)} onPointerDown={(e) => e.stopPropagation()}
+      onClick={() => props.onOpenPerson?.(p.name)}>
+      <Gift size={12} className="cal-bday-i" />
+      <span className="cal-chip-t">{p.name}</span>
+    </button>
+  ));
+
   const chip = (it: Item, extra = "") => {
     const p = project(it.task);
     const isMoving = moving?.item.key === it.key;
@@ -366,6 +378,7 @@ export default function CalendarView(props: {
                   title={moving ? undefined : "Клик по пустому месту — новая задача на этот день"}
                   onPointerDown={emptyDown} onPointerUp={(e) => emptyUp(e, d, false)}>
                   <button className="cal-cell-n" onClick={() => openDay(d)}>{parseDay(d).getDate()}</button>
+                  {bdays(d)}
                   {shown.map((it) => chip(it))}
                   {its.length > shown.length && (
                     <button className="cal-more" onClick={() => openDay(d)}>ещё {its.length - shown.length}</button>
@@ -405,6 +418,7 @@ export default function CalendarView(props: {
                 return (
                   <div key={d} className={`cal-allday-col ${target ? "target" : ""}`}
                     onPointerDown={emptyDown} onPointerUp={(e) => emptyUp(e, d, false)}>
+                    {bdays(d)}
                     {its.map((it) => chip(it))}
                     {target && moving.item.start != null && (
                       <div className={`cal-chip dragging ${chipClass(moving.item, null)}`} style={accent(project(moving.item.task)?.color)}>

@@ -3,6 +3,7 @@ import { isCancelled, isClosed, type Task } from "./db";
 import { addDays, nowStamp, stampDay, today } from "./dates";
 import { compareBy, isSmart, listFor, scopeOf, VIEWS, type ListItem, type SortBy, type ViewId } from "./views";
 import { remindPatch } from "./remind";
+import { CLEAR_WAITING, isWaiting } from "./waiting";
 
 /** Как показан список: строками или канбаном. Хранится в settings под ключом layout:<вид> */
 export type Layout = "list" | "board";
@@ -105,7 +106,10 @@ function targetOf(x: Task): Target {
  * Сделанной отмечаем только через completeTask, вернуть через reopenTask: иначе сломаются повторы.
  */
 export async function moveTo(x: Task, col: Target): Promise<void> {
-  if (targetOf(x) === col) return;
+  // Ждущая задача в «Сегодня» и «Скоро» не показывается, поэтому перенос туда забирает её из «Жду»: ответ получен или ждать больше не нужно
+  const wasWaiting = isWaiting(x) && col !== "archive";
+  if (targetOf(x) === col && !wasWaiting) return;
+  if (wasWaiting) await db.updateTask(x.id, CLEAR_WAITING);
   const t = today();
   if (col === "archive") {
     if (x.status === "inbox" || x.status === "active") await db.completeTask(x);

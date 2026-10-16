@@ -159,6 +159,18 @@ fn migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/012_cancel_summary.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 13,
+            description: "waiting status",
+            sql: include_str!("../migrations/013_waiting.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 14,
+            description: "people directory",
+            sql: include_str!("../migrations/014_people.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 

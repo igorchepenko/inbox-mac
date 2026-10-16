@@ -2,7 +2,6 @@
 
 .cal-main { gap: 10px; }
 .cal-main.is-dragging, .cal-main.is-dragging * { cursor: grabbing !important; }
-.cal-tools { display: flex; align-items: center; gap: 10px; flex: none; }
 .cal-stepper { display: flex; align-items: center; gap: 2px; }
 .cal-today { padding: 4px 10px; border-radius: 8px; font-weight: 600; font-size: 12px; border: 1px solid var(--line); }
 .cal-today:hover { border-color: var(--border); }
