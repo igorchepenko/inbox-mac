@@ -2,16 +2,18 @@ import { isCancelled, isClosed, type Task } from "./db";
 import { fmtDay, stampDay, stampTime, today } from "./dates";
 import { quickKeyLabel } from "./prefs";
 import { PRIORITY } from "./priority";
-import { compareNames, firstTag } from "./tags";
+import { compareNames, firstTag, sameName } from "./tags";
+import { isWaiting, pingDue } from "./waiting";
 
-export type ViewId = "home" | "projects" | "tasks" | "inbox" | "today" | "soon" | "archive" | "calendar" | `p:${number}` | `t:${number}`;
+export type ViewId = "home" | "projects" | "tasks" | "inbox" | "today" | "soon" | "waiting" | "archive" | "calendar" | `p:${number}` | `t:${number}`;
 
-/** Пункты меню по порядку: ⌘1 … ⌘6. «Новые», «Сегодня» и «Скоро» стоят в меню под «Задачами» */
+/** Пункты меню по порядку. «Новые», «Сегодня», «Скоро» и «Жду» стоят в меню под «Задачами» */
 export const VIEWS: { id: ViewId; name: string; accent: string; icon: string }[] = [
   { id: "tasks", name: "Задачи", accent: "stand", icon: "tasks" },
   { id: "inbox", name: "Новые", accent: "move", icon: "inbox" },
   { id: "today", name: "Сегодня", accent: "exercise", icon: "sun" },
   { id: "soon", name: "Скоро", accent: "stand", icon: "calendar" },
+  { id: "waiting", name: "Жду", accent: "move", icon: "hourglass" },
   { id: "archive", name: "Завершённые", accent: "muted", icon: "finished" },
   { id: "calendar", name: "Календарь", accent: "stand", icon: "schedule" },
 ];
@@ -24,7 +26,10 @@ export const SMART: { id: ViewId; name: string }[] = [
   { id: "inbox", name: "Новые" },
   { id: "today", name: "Сегодня" },
   { id: "soon", name: "Скоро" },
+  { id: "waiting", name: "Жду" },
 ];
+/** Пункты с сочетанием ⌘1 … ⌘6; «Жду» без сочетания: ⌘7 занят пространствами */
+export const HOTKEY_VIEWS = VIEWS.filter((v) => v.id !== "waiting");
 /** Эти пункты меню нельзя спрятать */
 export const ALWAYS: ViewId[] = ["tasks", "inbox"];
 export const isSmart = (v: ViewId) => SMART.some((s) => s.id === v);
@@ -138,20 +143,38 @@ function arrange(xs: Task[], sort: SortBy, rev: boolean): ListItem[] {
   });
 }
 
+/** «Жду»: открытые задачи, которые кого-то ждут, по людям (по алфавиту). Внутри группы сначала те, кому пора напомнить */
+function waitingList(tasks: Task[], sort: SortBy, rev: boolean): ListItem[] {
+  const cmp = compareBy(sort === "assignee" ? "date" : sort, rev);
+  const t = today();
+  const xs = tasks.filter(isWaiting).sort((a, b) =>
+    compareNames(a.waiting_for!, b.waiting_for!) || Number(pingDue(b, t)) - Number(pingDue(a, t)) || cmp(a, b));
+  let last = "";
+  return xs.map((task) => {
+    const g = task.waiting_for!;
+    const item = !sameName(g, last) ? { task, group: g } : { task };
+    last = g;
+    return item;
+  });
+}
+
 export function listFor(view: ViewId, tasks: Task[], sort: SortBy = "date", rev = false): ListItem[] {
   const t = today();
   if (view === "home" || view === "projects") return [];
   // Все задачи в работе и неразобранные; сделанные и отменённые живут в «Завершённых»
   if (view === "tasks") return arrange(tasks.filter((x) => !isClosed(x)), sort, rev);
   if (view === "inbox") return arrange(tasks.filter((x) => x.status === "inbox"), sort, rev);
-  if (view === "today") return arrange(tasks.filter((x) => (x.status === "active" && !!x.due_date && x.due_date <= t) || doneToday(x, t)), sort, rev);
+  // Ждущая задача уходит из «Сегодня», пока не пора напомнить; в день напоминания возвращается, даже без срока
+  if (view === "today")
+    return arrange(tasks.filter((x) => (x.status === "active" && (pingDue(x, t) || (!isWaiting(x) && !!x.due_date && x.due_date <= t))) || doneToday(x, t)), sort, rev);
+  if (view === "waiting") return waitingList(tasks, sort, rev);
   if (view === "archive")
     return tasks
       .filter((x) => x.status === "archived")
       .sort((a, b) => ((a.done_at ?? "") < (b.done_at ?? "") ? 1 : -1))
       .map((task) => ({ task }));
   if (view === "soon") {
-    const active = tasks.filter((x) => x.status === "active" && (!x.due_date || x.due_date > t));
+    const active = tasks.filter((x) => x.status === "active" && !isWaiting(x) && (!x.due_date || x.due_date > t));
     if (sort !== "date") return arrange(active, sort, rev);
     // По дате: будущие даты по дням, затем всё разобранное без даты, чтобы ничего не терялось
     const out: ListItem[] = [];

@@ -140,7 +140,7 @@ export function TagInput(props: { value: string[]; tags: Tag[]; onChange: (names
 }
 
 /** Кто назначил задачу. Подсказки из имён, которые уже вводил; «андрей» станет «Андрей», если так писал раньше */
-export function PersonInput(props: { value: string | null; people: string[]; onChange: (v: string | null) => void; disabled?: boolean }) {
+export function PersonInput(props: { value: string | null; people: string[]; onChange: (v: string | null) => void; disabled?: boolean; placeholder?: string }) {
   const [text, setText] = useState(props.value ?? "");
   const [focus, setFocus] = useState(false);
   useEffect(() => setText(props.value ?? ""), [props.value]);
@@ -158,7 +158,7 @@ export function PersonInput(props: { value: string | null; people: string[]; onC
       <label className={`person-input field ${props.disabled ? "disabled" : ""}`}>
         <UserRound size={13} />
         <input value={text} maxLength={40} spellCheck={false} autoComplete="off" disabled={props.disabled}
-          placeholder="Кто назначил, например Андрей"
+          placeholder={props.placeholder ?? "Кто назначил, например Андрей"}
           onChange={(e) => (setText(e.target.value), setHi(-1))}
           onFocus={() => setFocus(true)}
           onBlur={() => (setFocus(false), commit(text))}

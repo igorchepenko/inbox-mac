@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronsUpDown, Keyboard, LayoutGrid, Plus, Search, Settings as Gear, X } from "lucide-react";
 import type { Project, Tag, TagPatch, Task } from "./db";
 import { TagEditor } from "./TagsUI";
-import { ALWAYS, countFor, isSmart, VIEWS, type ViewId } from "./views";
+import { ALWAYS, countFor, HOTKEY_VIEWS, isSmart, VIEWS, type ViewId } from "./views";
 import { Icon } from "./icons";
 import { IconGrid, Popover, ThemeSwitch } from "./widgets";
 import { HomeIcon } from "./home/Home";
@@ -122,7 +122,7 @@ export function Sidebar(props: {
     );
   };
   const pickerView = picker && VIEWS.find((v) => v.id === picker.id);
-  const visibleViews = VIEWS.map((v, i) => ({ v, key: `⌘${i + 1}` })).filter(({ v }) => ALWAYS.includes(v.id) || props.settings[`hidden:${v.id}`] !== "1");
+  const visibleViews = VIEWS.map((v) => ({ v, key: HOTKEY_VIEWS.includes(v) ? `⌘${HOTKEY_VIEWS.indexOf(v) + 1}` : undefined })).filter(({ v }) => ALWAYS.includes(v.id) || props.settings[`hidden:${v.id}`] !== "1");
 
   return (
     <nav className="side">
