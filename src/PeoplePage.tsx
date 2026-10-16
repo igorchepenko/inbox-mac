@@ -165,6 +165,45 @@ function PeopleFieldsButton(props: { settings: Record<string, string>; onSet: (k
 }
 
 /** Раздел «Люди»: все, кто ставит задачи и ходит на встречи. Поиск, сортировка, фильтры, массовые действия */
+/** Теги человека в строке: не больше двух строк, по одному тегу в строке, «+N» (N — все теги человека). Если что-то скрыто или обрезано,
+ *  при наведении поверх колонки встаёт окошко со всеми тегами; строка при этом не растёт. Клик по тегу отбирает людей с ним. */
+function PersonTags({ tags, onPick }: { tags: Tag[]; onPick: (id: number) => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const enter = () => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      const el = box.current;
+      if (!el) return;
+      const cut = tags.length > 2 || [...el.querySelectorAll<HTMLElement>(".tchip-n")].some((n) => n.scrollWidth > n.clientWidth + 1);
+      if (cut) setRect(el.getBoundingClientRect());
+    }, 120);
+  };
+  const leave = () => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setRect(null), 100);
+  };
+  const chip = (t: Tag) => (
+    <button type="button" key={t.id} className="ppl-tag" data-tip={`Показать людей с тегом «${t.name}»`} onClick={(e) => (e.stopPropagation(), setRect(null), onPick(t.id))}>
+      <TagChip name={t.name} color={t.color} />
+    </button>
+  );
+  const [a, b] = tags;
+  return (
+    <div ref={box} className="ppl-tags" onMouseEnter={enter} onMouseLeave={leave}>
+      {a && <div className="ppl-tline">{chip(a)}</div>}
+      {b && <div className="ppl-tline">{chip(b)}{tags.length > 2 && <span className="tchip more">+{tags.length}</span>}</div>}
+      {rect && (
+        <div className="ppl-tpop" style={{ left: Math.max(8, rect.left - 8), top: Math.min(rect.top - 8, window.innerHeight - 280), minWidth: rect.width + 16 }}>
+          {tags.map(chip)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PeoplePage(props: {
   people: Person[];
   tasks: Task[];
@@ -299,7 +338,7 @@ export default function PeoplePage(props: {
                 </span>
               )}
             </div>
-            <div className="ppl-tags">{p.tags.map((t) => <TagChip key={t.id} name={t.name} color={t.color} />)}</div>
+            <PersonTags tags={p.tags} onPick={(id) => setFilter((f) => (f.tags.includes(id) ? f : { ...f, tags: [...f.tags, id] }))} />
             <div className="ppl-contacts">
               {p.phone && (
                 <button type="button" className="ppl-copy" data-tip="Скопировать номер" onClick={(e) => (e.stopPropagation(), copy(`ph${p.id}`, p.phone))}>
