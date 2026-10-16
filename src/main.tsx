@@ -14,7 +14,6 @@ import "./people.css";
 import "./glass.css";
 import { installPalette } from "./palette";
 import { applyLook, applyTheme, followLookChanges, followThemeChanges, savedLook, savedTheme } from "./theme";
-import { followGlass } from "./glassbg";
 import { applyAppearance, followAppearanceChanges, savedAppearance } from "./prefs";
 import { followProfileChanges } from "./profile";
 
@@ -27,7 +26,6 @@ applyTheme(savedTheme());
 followThemeChanges();
 applyLook(savedLook());
 followLookChanges();
-followGlass();
 applyAppearance(savedAppearance());
 followAppearanceChanges();
 
