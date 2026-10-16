@@ -72,3 +72,5 @@
 .cal-chip.cal-bday { --c: var(--orchid, var(--stand)); width: 100%; text-align: left; background: color-mix(in srgb, var(--c) 16%, var(--surface)); border-color: color-mix(in srgb, var(--c) 45%, transparent); }
 .cal-chip.cal-bday { cursor: pointer; }
 .cal-bday-i { color: var(--c); flex: none; }
+.bulk-h { margin: 0; font-size: 17px; font-weight: 700; padding-right: 36px; }
+.qi.person-qi > .hint { margin: 0; }
