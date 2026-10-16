@@ -1,27 +1,27 @@
 /* Стиль «Стекло» (data-look="glass"): мягкий приглушённый фон, полупрозрачные меню, панели и окна с размытием.
    Работает поверх светлой и тёмной темы, меняет только переменные и оформление, раскладку не трогает. */
 :root[data-look="glass"] {
-  --bg: #E4E9F2; --side: rgba(255, 255, 255, .42); --surface: rgba(255, 255, 255, .6); --field: rgba(255, 255, 255, .5);
+  --bg: #E4E9F2; --side: rgba(255, 255, 255, calc(.42 * var(--glass-k, 1))); --surface: rgba(255, 255, 255, calc(.6 * var(--glass-k, 1))); --field: rgba(255, 255, 255, calc(.5 * var(--glass-k, 1)));
   --line: rgba(30, 45, 90, .1); --border: rgba(255, 255, 255, .75); --sel: rgba(255, 255, 255, .75);
-  --pane: rgba(255, 255, 255, .55); --pane-strong: rgba(255, 255, 255, .8); --edge: rgba(255, 255, 255, .8);
+  --pane: rgba(255, 255, 255, calc(.55 * var(--glass-k, 1))); --pane-strong: rgba(255, 255, 255, calc(.8 * var(--glass-k, 1))); --edge: rgba(255, 255, 255, .8);
   --card-shadow: 0 6px 20px -10px rgba(40, 60, 130, .25);
   --wall: radial-gradient(60% 70% at 12% 8%, #E9D3DF 0, transparent 60%), radial-gradient(55% 60% at 92% 12%, #CFE2EE 0, transparent 62%),
     radial-gradient(70% 70% at 80% 100%, #D3CDE8 0, transparent 62%), radial-gradient(50% 50% at 5% 95%, #EEE4D0 0, transparent 60%), #E4E9F2;
 }
 @media (prefers-color-scheme: dark) {
   :root[data-look="glass"]:not([data-theme="light"]) {
-    --bg: #0E1126; --side: rgba(40, 46, 84, .45); --surface: rgba(255, 255, 255, .08); --field: rgba(255, 255, 255, .07);
+    --bg: #0E1126; --side: rgba(40, 46, 84, calc(.45 * var(--glass-k, 1))); --surface: rgba(255, 255, 255, calc(.08 * var(--glass-k, 1))); --field: rgba(255, 255, 255, calc(.07 * var(--glass-k, 1)));
     --line: rgba(255, 255, 255, .1); --border: rgba(255, 255, 255, .2); --sel: rgba(255, 255, 255, .15);
-    --pane: rgba(40, 46, 84, .55); --pane-strong: rgba(40, 46, 90, .85); --edge: rgba(255, 255, 255, .25);
+    --pane: rgba(40, 46, 84, calc(.55 * var(--glass-k, 1))); --pane-strong: rgba(40, 46, 90, calc(.85 * var(--glass-k, 1))); --edge: rgba(255, 255, 255, .25);
     --card-shadow: 0 8px 24px -12px rgba(0, 0, 10, .6);
     --wall: radial-gradient(60% 70% at 12% 8%, #3D2A47 0, transparent 60%), radial-gradient(55% 60% at 92% 12%, #233F56 0, transparent 62%),
       radial-gradient(70% 70% at 80% 100%, #2C2C55 0, transparent 62%), radial-gradient(50% 50% at 5% 95%, #4A3D2C 0, transparent 60%), #0E1126;
   }
 }
 :root[data-look="glass"][data-theme="dark"] {
-  --bg: #0E1126; --side: rgba(40, 46, 84, .45); --surface: rgba(255, 255, 255, .08); --field: rgba(255, 255, 255, .07);
+  --bg: #0E1126; --side: rgba(40, 46, 84, calc(.45 * var(--glass-k, 1))); --surface: rgba(255, 255, 255, calc(.08 * var(--glass-k, 1))); --field: rgba(255, 255, 255, calc(.07 * var(--glass-k, 1)));
   --line: rgba(255, 255, 255, .1); --border: rgba(255, 255, 255, .2); --sel: rgba(255, 255, 255, .15);
-  --pane: rgba(40, 46, 84, .55); --pane-strong: rgba(40, 46, 90, .85); --edge: rgba(255, 255, 255, .25);
+  --pane: rgba(40, 46, 84, calc(.55 * var(--glass-k, 1))); --pane-strong: rgba(40, 46, 90, calc(.85 * var(--glass-k, 1))); --edge: rgba(255, 255, 255, .25);
   --card-shadow: 0 8px 24px -12px rgba(0, 0, 10, .6);
   --wall: radial-gradient(60% 70% at 12% 8%, #3D2A47 0, transparent 60%), radial-gradient(55% 60% at 92% 12%, #233F56 0, transparent 62%),
     radial-gradient(70% 70% at 80% 100%, #2C2C55 0, transparent 62%), radial-gradient(50% 50% at 5% 95%, #4A3D2C 0, transparent 60%), #0E1126;
@@ -29,13 +29,13 @@
 
 :root[data-look="glass"]:not(.quick) body { background: var(--wall) fixed; }
 :root[data-look="glass"] .side, :root[data-look="glass"] .det {
-  background: var(--pane); backdrop-filter: blur(30px) saturate(1.8); -webkit-backdrop-filter: blur(30px) saturate(1.8);
+  background: var(--pane); backdrop-filter: blur(var(--glass-blur, 30px)) saturate(1.8); -webkit-backdrop-filter: blur(var(--glass-blur, 30px)) saturate(1.8);
 }
 :root[data-look="glass"] .side { border-right: 1px solid var(--edge); box-shadow: inset -1px 0 0 var(--line); }
 :root[data-look="glass"] .det { border-left: 1px solid var(--edge); }
 :root[data-look="glass"] .nav { border-radius: 12px; }
 :root[data-look="glass"] .nav.on { box-shadow: inset 0 1px 0 var(--edge), 0 2px 10px -4px rgba(40, 60, 130, .3); }
-:root[data-look="glass"] .row { border-radius: 14px; border-color: var(--edge); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+:root[data-look="glass"] .row { border-radius: 14px; border-color: var(--edge); backdrop-filter: blur(calc(var(--glass-blur, 30px) * .4)); -webkit-backdrop-filter: blur(calc(var(--glass-blur, 30px) * .4)); }
 :root[data-look="glass"] .row.done { background: transparent; box-shadow: none; }
 :root[data-look="glass"] .chk { border-radius: 50%; }
 :root[data-look="glass"] .field { border-color: var(--edge); }
@@ -45,7 +45,7 @@
 :root[data-look="glass"] .popover, :root[data-look="glass"] .settings, :root[data-look="glass"] .help,
 :root[data-look="glass"] .dialog, :root[data-look="glass"] .sum-dlg, :root[data-look="glass"] .qi {
   background: var(--pane-strong); border-color: var(--edge); border-radius: 22px;
-  backdrop-filter: blur(34px) saturate(1.8); -webkit-backdrop-filter: blur(34px) saturate(1.8);
+  backdrop-filter: blur(calc(var(--glass-blur, 30px) * 1.13)) saturate(1.8); -webkit-backdrop-filter: blur(calc(var(--glass-blur, 30px) * 1.13)) saturate(1.8);
   box-shadow: inset 0 1px 0 var(--edge), 0 24px 60px -24px rgba(20, 30, 80, .5);
 }
 :root[data-look="glass"] .overlay { background: rgba(20, 26, 60, .22); }
@@ -55,3 +55,18 @@
 :root[data-look="glass"] .x-close { background: color-mix(in srgb, var(--fg) 8%, var(--bg)); border-color: color-mix(in srgb, var(--fg) 22%, var(--bg)); }
 /* Шапка: у поиска и кнопок одинаковая заметная рамка, иначе поле выглядит ниже остальных */
 :root[data-look="glass"] .head .fsearch, :root[data-look="glass"] .head .icon-btn, :root[data-look="glass"] .head .theme-switch { border-color: var(--edge); }
+
+/* Настройки фона: цвета, ползунки, превью */
+.gl-swatch { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--border); padding: 0; }
+.gl-swatch.on { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--stand); }
+.gl-pick { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.gl-pick input { width: 32px; height: 24px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: none; }
+.gl-range { width: 160px; accent-color: var(--stand); }
+.gl-prev { width: 220px; height: 84px; border-radius: 12px; border: 1px solid var(--line); background: var(--wall); position: relative; overflow: hidden; }
+.gl-prev::before, .gl-prev::after { content: ""; position: absolute; border-radius: 50%; background: var(--stand); opacity: .55; }
+.gl-prev::before { width: 46px; height: 46px; left: 24px; top: 28px; }
+.gl-prev::after { width: 30px; height: 30px; left: 70px; top: 6px; background: var(--violet); }
+.gl-prev-card { position: absolute; inset: 14px 14px 14px 60px; border-radius: 12px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px;
+  background: var(--pane); border: 1px solid var(--edge); backdrop-filter: blur(var(--glass-blur, 30px)); -webkit-backdrop-filter: blur(var(--glass-blur, 30px)); }
+.gl-prev-card span { font-size: 11px; color: var(--muted); }
+.gl-prev-card i { margin-top: auto; height: 6px; width: 40%; border-radius: 3px; background: var(--stand); }
