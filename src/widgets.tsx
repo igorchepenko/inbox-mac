@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Monitor, Moon, Sun, X } from "lucide-react";
 import { dayKey, MONTHS, pad, parseDay, today, typeTimeDigit, WEEKDAYS, weekdayIndex } from "./dates";
 import { Icon, ICONS } from "./icons";
@@ -63,11 +64,13 @@ export function Popover(props: { anchor: HTMLElement | null; onClose: () => void
       window.removeEventListener("keydown", key, true);
     };
   });
-  return (
+  // Через портал в body: у панелей со стеклом (backdrop-filter) position: fixed считается от самой панели, и всплывашка уезжала за экран
+  return createPortal(
     <div ref={ref} className="popover" style={{ width: props.width, top: pos?.top ?? -9999, left: pos?.left ?? -9999 }}>
       <CloseX onClick={props.onClose} />
       {props.children}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
