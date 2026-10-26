@@ -156,6 +156,9 @@ export type Draft = Partial<Pick<Task, "priority" | "project_id" | "due_date" | 
   tags?: string[];
   participants?: string[];
   link?: string;
+  /** Ссылки с необязательным названием и пути файлов, которые копируются в папку приложения */
+  links?: { url: string; title: string }[];
+  files?: string[];
 };
 
 const DRAFT_KEYS = ["priority", "project_id", "due_date", "remind_at", "start_time", "end_time", "quadrant", "recurrence", "assigned_by", "remind_before", "kind"] as const;
@@ -175,6 +178,9 @@ export async function addTask(title: string, note: string, draft: Draft = {}): P
   if (id && draft.tags?.length) await setTaskTags(id, draft.tags);
   if (id && draft.participants?.length) await setTaskPeople(id, draft.participants);
   if (id && draft.link) await addLink(id, draft.link, "", 1);
+  if (id && draft.links?.length) for (const [i, l] of draft.links.entries()) await addLink(id, l.url, l.title, i + 2);
+  // Задача уже записана: сбой копирования файла не должен её потерять
+  if (id && draft.files?.length) await attachFiles(id, draft.files).catch(() => {});
   // Сразу сделанная: через completeTask, чтобы у повторяющейся появился следующий повтор
   if (id && draft.stage === "done") {
     const x = (await loadTasks()).find((t) => t.id === id);
