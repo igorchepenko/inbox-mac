@@ -20,7 +20,8 @@ import { Check, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Rows3, T
 import { applyFilter, EMPTY_FILTER, filterOn, NO_SPACE, peopleOf, type TaskFilter } from "./tags";
 import { FilterBar, FilterButton, FIND_EVENT, SearchField, TagChips, TagEditor, type SmartFilter } from "./TagsUI";
 import { QuadrantGlyph } from "./extras";
-import { CreatedMeta, DueFlag, MeetingMark, WaitingBadge } from "./TaskBits";
+import { CreatedMeta, DueFlag, MeetingMark, RelationBadges, WaitingBadge } from "./TaskBits";
+import { isBlocked, openBlockers } from "./relations";
 import { defaultBefore, remindPatch } from "./remind";
 import { boardFor, canMove, CLOSING, dropTo, layoutOf, STAGES, stageOf, type Layout, type Stage } from "./boardOps";
 import { SummaryDialog, type Closing } from "./Summary";
@@ -34,6 +35,7 @@ import CalendarView from "./CalendarView";
 import { PriorityIcon } from "./priority";
 import { FIND_PROJECT_EVENT, Sidebar, viewIcon } from "./Sidebar";
 import ProjectsPage from "./ProjectsPage";
+import TagsPage from "./TagsPage";
 import { Tooltips } from "./Tooltips";
 import { ALL_SHOWN, shownFields, tips, type Shown } from "./fields";
 import { QuickKeyBanner } from "./QuickKeyCheck";
@@ -66,6 +68,8 @@ export default function App() {
   const [newOpen, setNewOpen] = useState(false);
   // Окно итогов после перевода в «Готово» или «Отменено»
   const [closing, setClosing] = useState<Closing | null>(null);
+  // Завершение заблокированной задачи: блокировка мягкая, но сначала спрашиваем
+  const [blockedAsk, setBlockedAsk] = useState<Task[] | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Раздел настроек, открытый сразу: кнопка «Поля» в шапке открывает «Поля задач»
@@ -251,12 +255,22 @@ export default function App() {
       return String(e).replace(/^Error: /, "");
     }
   };
+  const createTag = async (name: string): Promise<string | null> => {
+    try {
+      await db.createTag(name);
+      await reload();
+      return null;
+    } catch (e) {
+      return String(e).replace(/^Error: /, "");
+    }
+  };
   const triage = (x: Task) => run(() => db.updateTask(x.id, { status: "active", triaged_at: nowStamp() }));
   // Перевод в этап из панели, канбана и по галочке. Через dropTo: completeTask и cancelTask создают следующий повтор,
   // reopenTask его убирает. «Готово» и «Отменено» закрывают задачу сразу, а потом спрашивают итоги
-  const toStage = async (xs: Task[], stage: Stage) => {
+  const toStage = async (xs: Task[], stage: Stage, sure = false) => {
     const moved = xs.filter((x) => stageOf(x) !== stage && canMove(x, stage));
     if (!moved.length) return;
+    if (stage === "done" && !sure && moved.some(isBlocked)) return setBlockedAsk(moved);
     if (CLOSING.includes(stage)) setClosing({ ids: moved.map((x) => x.id), stage: stage as Closing["stage"] });
     // Канбан ждёт перечитанных задач, чтобы карточка села уже на новое место
     await run(async () => {
@@ -373,7 +387,7 @@ export default function App() {
   const [dropOnDetails, setDropOnDetails] = useState(false);
   const live = useRef({ sel, tasks, busy: false });
   const lastRow = useRef<number | null>(null);
-  live.current = { sel, tasks, busy: newOpen || !!projectDlg || helpOpen || !!closing };
+  live.current = { sel, tasks, busy: newOpen || !!projectDlg || helpOpen || !!closing || !!blockedAsk };
   useEffect(() => {
     // Над панелью задачи зона горит всё время, пока там курсор: решает панель целиком, а не то, что под курсором внутри неё.
     // Между строками списка остаётся последняя строка, иначе подсветка моргала бы на каждом зазоре.
@@ -414,7 +428,7 @@ export default function App() {
       if (e.metaKey && e.code === "Comma") return e.preventDefault(), setSettingsOpen(true);
       // Формы сами ловят Enter и Esc, пока фокус в них. Если фокус выпал из окна (клик по пустому месту),
       // Esc закрывает его отсюда; настройки и итоги закрываются сами
-      if (newOpen || projectDlg || settingsOpen || closing) {
+      if (newOpen || projectDlg || settingsOpen || closing || blockedAsk) {
         if (e.key === "Escape" && !settingsOpen && !closing) (setNewOpen(false), setProjectDlg(null));
         return;
       }
@@ -492,7 +506,7 @@ export default function App() {
   });
 
   // Главная и страница проектов занимают всё место справа от меню, без панели деталей
-  const wide = view === "home" || view === "projects" || view === "people";
+  const wide = view === "home" || view === "projects" || view === "tags" || view === "people";
   const current = VIEWS.find((v) => v.id === view);
   const project = view.startsWith("p:") ? projects.find((p) => `p:${p.id}` === view) : undefined;
   const tag = view.startsWith("t:") ? tags.find((g) => `t:${g.id}` === view) : undefined;
@@ -503,12 +517,12 @@ export default function App() {
 
   return (
     <PeopleCtx.Provider value={roster}>
-    <div className={`app ${view === "home" ? "app-home" : view === "projects" || view === "people" ? "app-wide" : ""} ${panes.side.collapsed ? "side-off" : ""} ${panes.det.collapsed && !wide ? "det-off" : ""}`}
+    <div className={`app ${view === "home" ? "app-home" : view === "projects" || view === "tags" || view === "people" ? "app-wide" : ""} ${panes.side.collapsed ? "side-off" : ""} ${panes.det.collapsed && !wide ? "det-off" : ""}`}
       style={{ "--side-w": `${panes.side.collapsed ? 0 : panes.side.width}px`, "--det-w": `${panes.det.collapsed ? 0 : panes.det.width}px` } as CSSProperties}>
       <div className="titlebar" data-tauri-drag-region />
       <Frame panes={panes} hasDetails={!wide} onWidth={setPaneWidth} onToggle={togglePane} onReset={resetPane} />
       <Sidebar view={view} tasks={tasks} projects={projects} tags={tags} peopleCount={roster.length} settings={settings} onOpen={openView}
-        onTagSave={saveTag} onTagDelete={(id) => run(() => db.deleteTag(id))}
+        onTagSave={saveTag} onTagCreate={createTag} onTagDelete={(id) => run(() => db.deleteTag(id))}
         onNewProject={() => setProjectDlg("new")} onEditProject={(p) => setProjectDlg(p)}
         onSettings={() => setSettingsOpen(true)} onShortcuts={() => setHelpOpen(true)}
         onSetting={(key, value) => {
@@ -543,6 +557,8 @@ export default function App() {
         ) : view === "projects" ? (
           <ProjectsPage projects={projects} tasks={tasks} onOpen={openView}
             onEdit={(p) => setProjectDlg(p)} onNew={() => setProjectDlg("new")} />
+        ) : view === "tags" ? (
+          <TagsPage tags={tags} tasks={tasks} onOpen={openView} onCreate={createTag} onSave={saveTag} onDelete={(id) => run(() => db.deleteTag(id))} />
         ) : view === "home" ? (
           <Home tasks={tasks} projects={projects} settings={settings}
             onOpenInbox={() => openView("inbox")} onOpenToday={() => openView("today")}
@@ -583,8 +599,8 @@ export default function App() {
               tip="Поиск по задачам на этом экране: название, заметка, чеклист, теги, люди, ссылки" />
             {view !== "archive" && <SortSwitch value={sort} rev={rev} onChange={setSort} onReverse={reverseSort} />}
             <FilterButton filter={filt} projects={projects} tags={tags} people={people} lockTag={tag?.id} noSpaces={!!project} onChange={setFilter} smart={smart} />
-            {fieldsButton}
             <LayoutSwitch value={layout} onChange={setLayout} />
+            {fieldsButton}
             <button className="icon-btn" data-tip="Сочетания клавиш" data-key="⌘/" aria-label="Сочетания клавиш" onClick={() => setHelpOpen(true)}><Keyboard size={14} /></button>
           </div>
         </header>
@@ -626,7 +642,7 @@ export default function App() {
         <BulkPanel tasks={pickedTasks} total={ids.length} projects={projects} run={run}
           onSelectAll={() => setPicked(ids)} onClear={clearPick} />
       ) : task ? (
-        <Details key={task.id} task={task} projects={projects} tags={tags} people={people} remindBefore={defaultBefore(settings)}
+        <Details key={task.id} task={task} projects={projects} tags={tags} people={people} allTasks={tasks} onOpenTask={(id) => { const t = tasks.find((y) => y.id === id); if (t) openTask(t); }} remindBefore={defaultBefore(settings)}
           onPatch={(p) => patch(task.id, p)} onCreateProject={createProject} run={run} onError={setError}
           dropping={dropTarget === task.id && dropOnDetails}
           onTriage={() => triage(task)} onToggleDone={() => toggleDone(task)} onStage={(st) => toStage([task], st)}
@@ -647,6 +663,25 @@ export default function App() {
           onSave={(p) => saveTag(tag.id, p)} onDelete={() => (setTagEdit(null), run(() => db.deleteTag(tag.id)))} />
       )}
       {helpOpen && <Help onClose={() => setHelpOpen(false)} />}
+      {blockedAsk && (
+        <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && setBlockedAsk(null)}>
+          <div className="sum-dlg" role="dialog" aria-label="Задача заблокирована"
+            onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") setBlockedAsk(null); }}>
+            <div className="sum-head"><span className="sum-badge">Заблокирована</span></div>
+            <p className="rel-ask">
+              {blockedAsk.length === 1
+                ? `Сначала нужно закончить «${openBlockers(blockedAsk[0])[0].other_title}». Завершить «${blockedAsk[0].title}» всё равно?`
+                : `Часть задач ждёт других незавершённых задач. Завершить все равно?`}
+            </p>
+            <div className="sum-foot">
+              <span className="grow" />
+              <button type="button" className="btn" autoFocus onClick={() => setBlockedAsk(null)}>Отмена <kbd>Esc</kbd></button>
+              <button type="button" className="cta narrow go" onClick={() => { const xs = blockedAsk; setBlockedAsk(null); void toStage(xs, "done", true); }}>Всё равно завершить</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {closing && (
         <SummaryDialog key={`sum:${closing.ids.join(",")}`} closing={closing} tasks={tasks.filter((x) => closing.ids.includes(x.id))}
           onSkip={() => setClosing(null)}
@@ -733,7 +768,7 @@ function TaskRow(props: {
   const overdue = x.status === "active" && !!x.due_date && x.due_date < today();
   return (
     <div ref={ref} role="option" aria-selected={props.selected} data-task-id={x.id}
-      className={`row ${x.kind === "meeting" ? "meeting" : ""} ${props.selected ? "sel" : ""} ${props.picked ? "picked" : ""} ${done ? "done" : ""} ${cancelled ? "cancelled" : ""} ${props.dropping ? "drop" : ""} ${project ? "pc" : ""}`}
+      className={`row ${x.kind === "meeting" ? "meeting" : ""} ${props.selected ? "sel" : ""} ${props.picked ? "picked" : ""} ${done ? "done" : ""} ${cancelled ? "cancelled" : ""} ${isBlocked(x) ? "blocked" : ""} ${props.dropping ? "drop" : ""} ${project ? "pc" : ""}`}
       style={spaceVars(project?.color)}
       onMouseDown={(e) => props.onSelect({ meta: e.metaKey || e.ctrlKey, shift: e.shiftKey })}>
       <PickBox checked={props.picked} label={`Выбрать «${x.title}»`} onToggle={props.onBox} />
@@ -748,6 +783,7 @@ function TaskRow(props: {
       </span>
       {show("tags") && <TagChips tags={x.tags} max={2} />}
       <WaitingBadge task={x} />
+      <RelationBadges task={x} />
       {show("assignee") && x.assigned_by && <Assignee name={x.assigned_by} />}
       {show("participants") && x.participants.length > 0 && (
         <span className="meta badge" data-tip={tips.participants(x.participants)}><Users size={12} /> {x.participants.length}</span>

@@ -3,7 +3,7 @@ import { spaceVars } from "./palette";
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, Bell, CalendarDays, CalendarPlus, Check, Clock, X, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound, Users } from "lucide-react";
 import { TagChip } from "./TagsUI";
 import { Assignee } from "./PersonCard";
-import { CreatedMeta, DueFlag, MeetingMark, WaitingBadge } from "./TaskBits";
+import { CreatedMeta, DueFlag, MeetingMark, RelationBadges, WaitingBadge } from "./TaskBits";
 import { isCancelled, type Project, type Task } from "./db";
 import { addDays, fmtDay, fmtRange, nextMonday, stampTime, today } from "./dates";
 import { TARGETS, type BoardColumn, type Layout, type Stage } from "./boardOps";
@@ -90,6 +90,7 @@ function Meta({ task: x, project, show }: { task: Task; project?: Project; show:
       {show("matrix") && x.quadrant && !done && <span className="tipped" data-tip={tips.matrix(x.quadrant)}><QuadrantGlyph q={x.quadrant} /></span>}
       {show("space") && project && <span className="tag" data-tip={tips.space(project.name)} style={{ background: `var(--${project.color})`, color: `var(--${project.color}-ink, var(--on-acc))` }}>{project.name}</span>}
       <WaitingBadge task={x} />
+      <RelationBadges task={x} />
       {show("assignee") && x.assigned_by && <Assignee name={x.assigned_by} />}
       {show("participants") && x.participants.length > 0 && <span className="meta" data-tip={tips.participants(x.participants)}><Users size={11} /> {x.participants.length}</span>}
       {show("tags") && x.tags.map((t) => <TagChip key={t.id} name={t.name} color={t.color} title={tips.tag(t.name)} />)}

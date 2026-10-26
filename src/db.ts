@@ -1,3 +1,4 @@
+import { relationsByTask, rowFor, wouldCycle, type Relation, type RelationKind, type RelationRow } from "./relations";
 import Database from "@tauri-apps/plugin-sql";
 import { invoke } from "@tauri-apps/api/core";
 import { nowStamp, stampDay, today } from "./dates";
@@ -46,6 +47,7 @@ export interface Task {
   files: Attachment[];
   tags: Tag[]; // в порядке, в каком добавлены
   participants: string[]; // участники встречи, из списка «Кто назначил» (миграция 011)
+  relations: Relation[]; // связи с другими задачами с её стороны (миграция 015), см. relations.ts
 }
 
 /** Закрыта: сделана или отменена, в том числе уже в архиве */
@@ -121,7 +123,7 @@ function db(): Promise<Database> {
 
 export async function loadTasks(): Promise<Task[]> {
   const d = await db();
-  const [tasks, subs, links, files, tags, people] = await Promise.all([
+  const [tasks, subs, links, files, tags, people, rels] = await Promise.all([
     d.select<Task[]>("SELECT * FROM tasks ORDER BY created_at DESC"),
     d.select<Subtask[]>("SELECT * FROM subtasks ORDER BY position, id"),
     d.select<Link[]>("SELECT * FROM links ORDER BY position, id"),
@@ -130,6 +132,7 @@ export async function loadTasks(): Promise<Task[]> {
       "SELECT tt.task_id, t.id, t.name, t.color FROM task_tags tt JOIN tags t ON t.id = tt.tag_id ORDER BY tt.position, t.id",
     ),
     d.select<{ task_id: number; name: string }[]>("SELECT task_id, name FROM task_people ORDER BY position"),
+    d.select<RelationRow[]>("SELECT id, from_id, to_id, kind FROM task_relations ORDER BY id"),
   ]);
   const byTask = <T extends { task_id: number }>(rows: T[]) => {
     const m = new Map<number, T[]>();
@@ -137,10 +140,12 @@ export async function loadTasks(): Promise<Task[]> {
     return m;
   };
   const s = byTask(subs), l = byTask(links), f = byTask(files), g = byTask(tags), p = byTask(people);
+  const r = relationsByTask(rels, tasks);
   return tasks.map((t) => ({
     ...t, subtasks: s.get(t.id) ?? [], links: l.get(t.id) ?? [], files: f.get(t.id) ?? [],
     tags: (g.get(t.id) ?? []).map(({ id, name, color }) => ({ id, name, color })),
     participants: (p.get(t.id) ?? []).map((r) => r.name),
+    relations: r.get(t.id) ?? [],
   }));
 }
 
@@ -156,6 +161,9 @@ export type Draft = Partial<Pick<Task, "priority" | "project_id" | "due_date" | 
   tags?: string[];
   participants?: string[];
   link?: string;
+  /** Ссылки с необязательным названием и пути файлов, которые копируются в папку приложения */
+  links?: { url: string; title: string }[];
+  files?: string[];
 };
 
 const DRAFT_KEYS = ["priority", "project_id", "due_date", "remind_at", "start_time", "end_time", "quadrant", "recurrence", "assigned_by", "remind_before", "kind"] as const;
@@ -175,6 +183,9 @@ export async function addTask(title: string, note: string, draft: Draft = {}): P
   if (id && draft.tags?.length) await setTaskTags(id, draft.tags);
   if (id && draft.participants?.length) await setTaskPeople(id, draft.participants);
   if (id && draft.link) await addLink(id, draft.link, "", 1);
+  if (id && draft.links?.length) for (const [i, l] of draft.links.entries()) await addLink(id, l.url, l.title, i + 2);
+  // Задача уже записана: сбой копирования файла не должен её потерять
+  if (id && draft.files?.length) await attachFiles(id, draft.files).catch(() => {});
   // Сразу сделанная: через completeTask, чтобы у повторяющейся появился следующий повтор
   if (id && draft.stage === "done") {
     const x = (await loadTasks()).find((t) => t.id === id);
@@ -199,6 +210,7 @@ export async function deleteTask(id: number): Promise<void> {
   const d = await db();
   const files = await d.select<Attachment[]>("SELECT * FROM attachments WHERE task_id = $1", [id]);
   for (const t of ["subtasks", "links", "attachments", "task_tags", "task_people"]) await d.execute(`DELETE FROM ${t} WHERE task_id = $1`, [id]);
+  await d.execute("DELETE FROM task_relations WHERE from_id = $1 OR to_id = $1", [id]);
   await d.execute("DELETE FROM tasks WHERE id = $1", [id]);
   for (const f of files) await dropFileIfUnused(f.path);
 }
@@ -458,6 +470,17 @@ export async function setTaskTags(taskId: number, names: string[]): Promise<void
   for (const [i, id] of ids.entries()) await d.execute("INSERT INTO task_tags (task_id, tag_id, position) VALUES ($1, $2, $3)", [taskId, id, i]);
 }
 
+/** Создать тег вручную, без задачи. Цвет подбирается подальше от занятых; такое имя уже есть, значит ошибка */
+export async function createTag(raw: string): Promise<Tag> {
+  const name = normalizeTag(raw);
+  if (!name) throw new Error("Пустое название тега");
+  const all = await loadTags();
+  if (all.some((t) => sameName(t.name, name))) throw new Error(`Тег «${name}» уже есть`);
+  const color = pickColor(all.map((t) => t.color));
+  const r = await (await db()).execute("INSERT INTO tags (name, color, created_at) VALUES ($1, $2, $3)", [name, color, nowStamp()]);
+  return { id: r.lastInsertId ?? 0, name, color };
+}
+
 export type TagPatch = Partial<Pick<Tag, "name" | "color">>;
 
 /** Переименовать или перекрасить. Имя, которое уже занято другим тегом, не принимается */
@@ -596,4 +619,25 @@ export async function deleteProject(id: number, fate: ProjectTasksFate = "keep")
 /** Сделанные до сегодняшнего дня задачи сами уходят в архив: сегодняшние ещё видны и считаются в кольце */
 export async function archiveOldDone(): Promise<void> {
   await (await db()).execute("UPDATE tasks SET status = 'archived' WHERE status = 'done' AND done_at < $1", [today()]);
+}
+
+/**
+ * Связать задачу с другой. «Заблокирована» записывается как «блокирует» с другой стороны, поэтому у второй задачи
+ * парная связь появляется сама. Возвращает текст ошибки, если связь не получится (цикл, уже связаны)
+ */
+export async function addRelation(self: number, other: number, kind: RelationKind): Promise<string | null> {
+  const d = await db();
+  const rows = await d.select<RelationRow[]>("SELECT id, from_id, to_id, kind FROM task_relations");
+  if (self === other) return "Задачу нельзя связать с самой собой";
+  if (rows.some((r) => (r.from_id === self && r.to_id === other) || (r.from_id === other && r.to_id === self)))
+    return "Эти задачи уже связаны. Сначала убери старую связь";
+  const row = rowFor(self, other, kind);
+  if (row.kind === "blocks" && wouldCycle(rows, row.from_id, row.to_id)) return "Получится цикл: эти задачи уже блокируют друг друга";
+  await d.execute("INSERT INTO task_relations (from_id, to_id, kind) VALUES ($1, $2, $3)", [row.from_id, row.to_id, row.kind]);
+  return null;
+}
+
+/** Убрать связь: она исчезает у обеих задач */
+export async function removeRelation(id: number): Promise<void> {
+  await (await db()).execute("DELETE FROM task_relations WHERE id = $1", [id]);
 }

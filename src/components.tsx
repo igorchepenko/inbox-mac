@@ -4,11 +4,14 @@ import { isCancelled, isClosed, type Draft, type Project, type Tag, type Task } 
 import { fmtStamp, today } from "./dates";
 import { CloseX, useAutosize } from "./widgets";
 import { firstOccurrence, parseRule } from "./recurrence";
-import { Paperclip } from "lucide-react";
-import { Checklist, DateField, Files, Line, Links, normalizeUrl, PriorityPicker, QuadrantPicker, RepeatField, TimeRange, type RunDb } from "./extras";
+import { Paperclip, Link2, FileText, X } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Checklist, DateField, Files, Line, Links, normalizeUrl, prettyUrl, PriorityPicker, QuadrantPicker, RepeatField, TimeRange, type RunDb } from "./extras";
 import { quickKeyLabel } from "./prefs";
 import { PeopleInput, PersonInput, TagInput } from "./TagsUI";
-import { fmtCreated, KindSwitch, RemindField, WaitingField } from "./TaskBits";
+import { fmtCreated, KindSwitch, RelationsField, RemindField, WaitingField } from "./TaskBits";
 import { anchorOf, remindPatch, remindAtFor, type When } from "./remind";
 import { SpacePicker } from "./SpaceUI";
 import { addTagName, canonicalPerson, parseQuick } from "./tags";
@@ -24,8 +27,8 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
   const [note, setNote] = useState("");
   const [more, setMore] = useState(false);
   const [d, setD] = useState<Draft>(props.initial ?? {});
-  const [link, setLink] = useState("");
   const [badLink, setBadLink] = useState(false);
+  const [newLink, setNewLink] = useState("");
   const titleRef = useRef<HTMLInputElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
   const linkRef = useRef<HTMLInputElement>(null);
@@ -34,7 +37,7 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
   const set = (patch: Partial<typeof d>) => setD((cur) => ({ ...cur, ...patch }));
   const meeting = d.kind === "meeting";
   const filled = [d.stage, d.due_date, d.start_time ?? d.end_time, d.remind_at, d.recurrence, d.project_id, d.priority, d.quadrant, d.assigned_by].filter((v) => v != null && v !== "").length
-    + (d.tags?.length ? 1 : 0) + (meeting ? 1 : 0) + (d.participants?.length ? 1 : 0) + (link.trim() ? 1 : 0);
+    + (d.tags?.length ? 1 : 0) + (meeting ? 1 : 0) + (d.participants?.length ? 1 : 0) + (d.links?.length || newLink.trim() ? 1 : 0) + (d.files?.length ? 1 : 0);
   const when: When = { due_date: d.due_date ?? null, start_time: d.start_time ?? null, end_time: d.end_time ?? null, remind_at: d.remind_at ?? null, remind_before: d.remind_before ?? null };
   // Напоминание едет вместе с датой и временем, как в панели задачи
   const moveRemind = (next: Parameters<typeof remindPatch>[1]) => {
@@ -44,18 +47,44 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
   // У встречи нет матрицы: она про срочность и важность дел, а не созвонов
   const setKind = (kind: Draft["kind"]) => set(kind === "meeting" ? { kind, quadrant: null } : { kind });
 
+  const [fileErr, setFileErr] = useState<string | null>(null);
+  const addLink = () => {
+    if (!newLink.trim()) return setBadLink(false);
+    const u = normalizeUrl(newLink);
+    if (!u) return setBadLink(true);
+    setNewLink("");
+    setBadLink(false);
+    if (!(d.links ?? []).some((l) => l.url === u)) set({ links: [...(d.links ?? []), { url: u, title: "" }] });
+  };
+  // Выбор файлов уводит фокус из окна быстрого ввода: на это время не даём ему спрятаться и сбросить форму
+  const pickFiles = async () => {
+    setFileErr(null);
+    await invoke("quick_picking", { on: true }).catch(() => {});
+    try {
+      const paths = await openDialog({ multiple: true, directory: false, title: "Прикрепить к задаче" });
+      if (paths?.length) set({ files: [...new Set([...(d.files ?? []), ...paths])] });
+    } catch (e) {
+      setFileErr(String(e));
+    } finally {
+      await invoke("quick_picking", { on: false }).catch(() => {});
+      getCurrentWindow().setFocus().catch(() => {});
+    }
+  };
+
   const submit = () => {
     // #тег и @Имя прямо в названии: убираем из текста, добавляем к выбранному в параметрах
     const q = parseQuick(title);
     const t = q.title || title.trim();
     if (!t) return titleRef.current?.focus();
-    const url = meeting && link.trim() ? normalizeUrl(link) : null;
-    if (meeting && link.trim() && !url) {
+    // Адрес, который напечатали, но не подтвердили Enter, тоже берём; на ссылку не похоже — не сохраняем молча
+    const typed = newLink.trim() ? normalizeUrl(newLink) : null;
+    if (newLink.trim() && !typed) {
       setMore(true);
       setBadLink(true);
       return linkRef.current?.focus();
     }
-    const draft: Draft = { ...d, ...(url ? { link: url } : {}) };
+    const links = [...(d.links ?? []), ...(typed && !(d.links ?? []).some((l) => l.url === typed) ? [{ url: typed, title: "" }] : [])];
+    const draft: Draft = { ...d, ...(links.length ? { links } : {}) };
     if (!meeting) delete draft.participants;
     if (q.title) {
       draft.tags = q.tags.reduce(addTagName, draft.tags ?? []);
@@ -112,11 +141,6 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
           {meeting ? (
             <>
               <Line label="Участники"><PeopleInput value={d.participants ?? []} people={props.people} onChange={(participants) => set({ participants })} /></Line>
-              <Line label="Ссылка">
-                <input ref={linkRef} className={`field qi-link ${badLink ? "bad" : ""}`} value={link} placeholder="Zoom, Meet, Телемост…" spellCheck={false} autoComplete="off"
-                  onChange={(e) => (setLink(e.target.value), setBadLink(false))} />
-                {badLink && <span className="hint">Не похоже на ссылку</span>}
-              </Line>
             </>
           ) : (
             <Line label="Матрица"><QuadrantPicker value={d.quadrant ?? null} onChange={(q) => set({ quadrant: q })} /></Line>
@@ -136,6 +160,36 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
               <SpacePicker projects={props.projects} value={d.project_id ?? null} onChange={(id) => set({ project_id: id })} onCreate={props.onCreateProject} />
             </Line>
           )}
+          <Line label="Ссылки">
+            <div className="qi-attach">
+              {(d.links ?? []).map((l) => (
+                <div key={l.url} className="att">
+                  <Link2 size={14} className="att-ic" />
+                  <span className="att-link raw" title={l.url}>{prettyUrl(l.url)}</span>
+                  <button type="button" className="x show" title="Убрать ссылку" onClick={() => set({ links: (d.links ?? []).filter((x) => x.url !== l.url) })}><X size={12} /></button>
+                </div>
+              ))}
+              <input ref={linkRef} className={`field qi-link ${badLink ? "bad" : ""}`} value={newLink} placeholder="Вставь ссылку и нажми Enter" spellCheck={false} autoComplete="off"
+                onChange={(e) => (setNewLink(e.target.value), setBadLink(false))} onBlur={addLink}
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), e.stopPropagation(), addLink())} />
+              {badLink && <span className="hint">Не похоже на ссылку</span>}
+            </div>
+          </Line>
+          <Line label="Файлы">
+            <div className="qi-attach">
+              {(d.files ?? []).map((p) => (
+                <div key={p} className="att">
+                  <FileText size={14} className="att-ic" />
+                  <span className="att-name" title={p}>{p.split(/[\\/]/).pop()}</span>
+                  <button type="button" className="x show" title="Убрать файл" onClick={() => set({ files: (d.files ?? []).filter((x) => x !== p) })}><X size={12} /></button>
+                </div>
+              ))}
+              <div className="files-add">
+                <button type="button" className="btn small" onClick={pickFiles} title="Выбрать файлы в Finder"><Paperclip size={13} /> Файл</button>
+              </div>
+              {fileErr && <span className="hint">{fileErr}</span>}
+            </div>
+          </Line>
           <Line label="Теги"><TagInput value={d.tags ?? []} tags={props.tags} onChange={(tags) => set({ tags })} /></Line>
           <Line label="От кого"><PersonInput value={d.assigned_by ?? null} people={props.people} onChange={(v) => set({ assigned_by: v })} /></Line>
         </div>
@@ -176,6 +230,8 @@ export function Details(props: {
   projects: Project[];
   tags: Tag[];
   people: string[];
+  allTasks: Task[]; // для поиска задачи в «Связях»
+  onOpenTask: (id: number) => void;
   remindBefore: number;
   onPatch: (patch: TaskPatch) => void;
   onCreateProject?: (name: string) => Promise<number>;
@@ -254,6 +310,16 @@ export function Details(props: {
       )}
 
       <fieldset className="det-sec" disabled={locked}>
+        <div className="lbl">Кто назначил <span className="opt">необязательно</span></div>
+        <PersonInput value={x.assigned_by} people={props.people} disabled={locked} onChange={(v) => onPatch({ assigned_by: v })} />
+      </fieldset>
+
+      <fieldset className="det-sec" disabled={locked}>
+        <div className="lbl">Связи{x.relations.length ? <span className="opt"> {x.relations.length}</span> : null}</div>
+        <RelationsField task={x} all={props.allTasks} disabled={locked} run={props.run} onOpen={props.onOpenTask} />
+      </fieldset>
+
+      <fieldset className="det-sec" disabled={locked}>
         <div className="lbl">Тип</div>
         <div className="seg"><KindSwitch value={x.kind} onChange={(kind) => onPatch({ kind })} /></div>
         {x.kind === "meeting" && (
@@ -301,8 +367,6 @@ export function Details(props: {
         <div className="lbl">Теги{x.tags.length ? <span className="opt"> {x.tags.length} из 6</span> : null}</div>
         <TagInput value={x.tags.map((g) => g.name)} tags={props.tags} disabled={locked}
           onChange={(names) => props.run(() => db.setTaskTags(x.id, names))} />
-        <div className="lbl sub-lbl">Кто назначил <span className="opt">необязательно</span></div>
-        <PersonInput value={x.assigned_by} people={props.people} disabled={locked} onChange={(v) => onPatch({ assigned_by: v })} />
       </fieldset>
 
       <div className="det-sec">

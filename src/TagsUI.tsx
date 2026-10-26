@@ -261,6 +261,28 @@ export function TagEditor(props: {
   );
 }
 
+/** Новый тег с нуля: название и Enter. Цвет подберётся сам, его можно сменить в карточке тега. Ошибку (имя занято) показывает тут же */
+export function NewTag(props: { anchor: HTMLElement; onClose: () => void; onCreate: (name: string) => Promise<string | null> }) {
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const submit = async () => {
+    if (!name.trim()) return;
+    const err = await props.onCreate(name);
+    if (err) setError(err);
+    else props.onClose();
+  };
+  return (
+    <Popover anchor={props.anchor} onClose={props.onClose} width={260}>
+      <div className="lbl">Новый тег</div>
+      <input className="field tag-name" value={name} maxLength={TAG_MAX_LEN} spellCheck={false} autoFocus placeholder="Например: созвон"
+        onChange={(e) => (setName(e.target.value), setError(null))}
+        onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), submit())} />
+      {error && <div className="tag-err">{error}</div>}
+      <button type="button" className="cta stand narrow tag-new-ok" disabled={!name.trim()} onClick={submit}>Создать</button>
+    </Popover>
+  );
+}
+
 /** Пространство в фильтре: иконка его цвета и название */
 function SpaceChip({ project: p, on, onClick, onRemove }: { project?: Project; on?: boolean; onClick?: () => void; onRemove?: () => void }) {
   const body = (

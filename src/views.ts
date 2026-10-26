@@ -5,7 +5,7 @@ import { PRIORITY } from "./priority";
 import { compareNames, firstTag, sameName } from "./tags";
 import { isWaiting, pingDue } from "./waiting";
 
-export type ViewId = "home" | "projects" | "people" | "tasks" | "inbox" | "today" | "soon" | "waiting" | "archive" | "calendar" | `p:${number}` | `t:${number}`;
+export type ViewId = "home" | "projects" | "tags" | "people" | "tasks" | "inbox" | "today" | "soon" | "waiting" | "archive" | "calendar" | `p:${number}` | `t:${number}`;
 
 /** Пункты меню по порядку. «Новые», «Сегодня», «Скоро» и «Жду» стоят в меню под «Задачами» */
 export const VIEWS: { id: ViewId; name: string; accent: string; icon: string }[] = [
@@ -80,7 +80,7 @@ export function directionOf(sort: SortBy, rev: boolean): { asc: boolean; text: s
 
 // Порядок квадрантов задал Игорь: срочно и важно, срочно не важно, важно не срочно, не срочно не важно
 const QUAD_ORDER = [1, 3, 2, 4];
-const QUAD_NAMES: Record<number, string> = { 1: "Срочно и важно", 2: "Важно, не срочно", 3: "Срочно, не важно", 4: "Не срочно, не важно" };
+const QUAD_NAMES: Record<number, string> = { 1: "Срочно, важно", 2: "Не срочно, важно", 3: "Срочно, не важно", 4: "Не срочно, не важно" };
 const quadRank = (x: Task) => (x.quadrant ? QUAD_ORDER.indexOf(x.quadrant) : 9);
 // Время задачи в дне: начало из календаря, иначе срок «до 18:00», иначе напоминание. Без времени после задач со временем
 const timeOf = (x: Task) => x.start_time ?? x.end_time ?? (x.remind_at ? stampTime(x.remind_at) : "99");
@@ -160,7 +160,7 @@ function waitingList(tasks: Task[], sort: SortBy, rev: boolean): ListItem[] {
 
 export function listFor(view: ViewId, tasks: Task[], sort: SortBy = "date", rev = false): ListItem[] {
   const t = today();
-  if (view === "home" || view === "projects") return [];
+  if (view === "home" || view === "projects" || view === "tags") return [];
   // Все задачи в работе и неразобранные; сделанные и отменённые живут в «Завершённых»
   if (view === "tasks") return arrange(tasks.filter((x) => !isClosed(x)), sort, rev);
   if (view === "inbox") return arrange(tasks.filter((x) => x.status === "inbox"), sort, rev);
@@ -197,7 +197,7 @@ export function listFor(view: ViewId, tasks: Task[], sort: SortBy = "date", rev 
 }
 
 export function countFor(view: ViewId, tasks: Task[]): number {
-  if (view === "archive" || view === "calendar" || view === "projects") return 0;
+  if (view === "archive" || view === "calendar" || view === "projects" || view === "tags") return 0;
   return listFor(view, tasks).filter((i) => i.task.status !== "done").length;
 }
 

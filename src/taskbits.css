@@ -39,3 +39,27 @@
 .meta.waiting { display: inline-flex; align-items: center; gap: 3px; flex: none; color: var(--move); font-weight: 600; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .meta.waiting.ping { color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); padding: 1px 6px; border-radius: 6px; font-weight: 700; }
 .wait-ping { color: var(--amber); }
+
+/* Связи задач: значки в строке и блок в панели */
+.meta.rel-lock, .meta.rel-blocks, .meta.rel-rel { display: inline-flex; align-items: center; gap: 3px; flex: none; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meta.rel-lock { color: var(--move); font-weight: 600; }
+.meta.rel-blocks { color: var(--amber); font-weight: 600; }
+.meta.rel-rel { color: var(--stand); }
+.row.blocked .t { opacity: .6; }
+.rel-banner { display: flex; align-items: center; gap: 6px; padding: 6px 8px; margin-bottom: 8px; border-radius: 8px; font-weight: 600; font-size: 12px; color: var(--move); background: color-mix(in srgb, var(--move) 12%, transparent); }
+.rel-item { display: flex; align-items: center; gap: 8px; padding: 5px 8px; margin-bottom: 4px; border: 1px solid var(--line); border-radius: 8px; }
+.rel-kind { flex: none; min-width: 92px; font-size: 11px; font-weight: 700; color: var(--stand); }
+.rel-item.blocks .rel-kind { color: var(--amber); }
+.rel-item.blocked .rel-kind { color: var(--move); }
+.rel-title { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rel-title:hover { text-decoration: underline; }
+.rel-title.closed { color: var(--muted); }
+.rel-x { flex: none; color: var(--muted); visibility: hidden; }
+.rel-item:hover .rel-x, .rel-x:focus-visible { visibility: visible; }
+.rel-plus { color: var(--stand); font-weight: 600; font-size: 12px; padding: 4px 0; }
+.rel-add { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px dashed var(--border); border-radius: 8px; }
+.rel-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.rel-found { display: flex; flex-direction: column; }
+.rel-found button { text-align: left; padding: 5px 8px; border-radius: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rel-found button:hover { background: var(--sel, color-mix(in srgb, var(--stand) 12%, transparent)); }
+.rel-ask { margin: 8px 0 14px; }

@@ -67,6 +67,8 @@ struct TrayProfiles(Vec<(&'static str, CheckMenuItem<Wry>)>);
 static QUICK_ERROR: Mutex<Option<String>> = Mutex::new(None);
 
 /// Идёт проверка сочетания в настройках: нажатие не открывает карточку, а сообщает главному окну, что дошло
+/// Пока в быстром вводе открыт выбор файлов, потеря фокуса не прячет окно и не сбрасывает форму
+static QUICK_PICKING: AtomicBool = AtomicBool::new(false);
 static TESTING_QUICK: AtomicBool = AtomicBool::new(false);
 
 /// Приложения, которые по умолчанию тоже слушают ⌥Space. macOS разрешает нескольким приложениям
@@ -171,6 +173,12 @@ fn migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/014_people.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 15,
+            description: "task relations",
+            sql: include_str!("../migrations/015_task_relations.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 
@@ -215,6 +223,11 @@ fn place_quick(w: &tauri::WebviewWindow) {
     let pad = (14.0 * m.scale_factor()) as i32;
     let y = area.position.y + area.size.height as i32 / 20 - pad;
     let _ = w.set_position(tauri::PhysicalPosition::new(x, y));
+}
+
+#[tauri::command]
+fn quick_picking(on: bool) {
+    QUICK_PICKING.store(on, Ordering::SeqCst);
 }
 
 /// Спрятать быстрый ввод после сохранения, по Esc или повторному сочетанию.
@@ -659,6 +672,7 @@ pub fn run() {
         .manage(ActiveProfile(Mutex::new(&PROFILES[0])))
         .invoke_handler(tauri::generate_handler![
             hide_quick,
+            quick_picking,
             set_quick_shortcut,
             quick_shortcut_status,
             test_quick_shortcut,
@@ -795,7 +809,7 @@ pub fn run() {
                 let _ = window.hide();
             }
             // Быстрый ввод прячется, как только фокус ушёл в другое приложение, и в следующий раз откроется чистым
-            WindowEvent::Focused(false) if window.label() == "quick" => {
+            WindowEvent::Focused(false) if window.label() == "quick" && !QUICK_PICKING.load(Ordering::SeqCst) => {
                 hide_quick(window.app_handle().clone());
             }
             _ => {}
