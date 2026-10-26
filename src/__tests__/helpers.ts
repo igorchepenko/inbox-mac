@@ -13,7 +13,7 @@ export function task(p: Partial<Task> = {}): Task {
     due_date: null, remind_at: null, reminded: 0, created_at: "2026-10-01T10:00:00",
     triaged_at: null, done_at: null, start_time: null, end_time: null, quadrant: null,
     recurrence: null, series_id: null, next_id: null, started_at: null,
-    assigned_by: null, remind_before: null, kind: "task", cancelled: 0, summary: "", waiting_for: null, waiting_until: null, subtasks: [], links: [], files: [], tags: [], participants: [],
+    assigned_by: null, remind_before: null, kind: "task", cancelled: 0, summary: "", waiting_for: null, waiting_until: null, subtasks: [], links: [], files: [], tags: [], participants: [], relations: [],
     ...p,
   };
 }

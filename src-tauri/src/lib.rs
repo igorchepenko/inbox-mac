@@ -173,6 +173,12 @@ fn migrations() -> Vec<Migration> {
             sql: include_str!("../migrations/014_people.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 15,
+            description: "task relations",
+            sql: include_str!("../migrations/015_task_relations.sql"),
+            kind: MigrationKind::Up,
+        },
     ]
 }
 

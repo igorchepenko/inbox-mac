@@ -11,7 +11,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Checklist, DateField, Files, Line, Links, normalizeUrl, prettyUrl, PriorityPicker, QuadrantPicker, RepeatField, TimeRange, type RunDb } from "./extras";
 import { quickKeyLabel } from "./prefs";
 import { PeopleInput, PersonInput, TagInput } from "./TagsUI";
-import { fmtCreated, KindSwitch, RemindField, WaitingField } from "./TaskBits";
+import { fmtCreated, KindSwitch, RelationsField, RemindField, WaitingField } from "./TaskBits";
 import { anchorOf, remindPatch, remindAtFor, type When } from "./remind";
 import { SpacePicker } from "./SpaceUI";
 import { addTagName, canonicalPerson, parseQuick } from "./tags";
@@ -230,6 +230,8 @@ export function Details(props: {
   projects: Project[];
   tags: Tag[];
   people: string[];
+  allTasks: Task[]; // для поиска задачи в «Связях»
+  onOpenTask: (id: number) => void;
   remindBefore: number;
   onPatch: (patch: TaskPatch) => void;
   onCreateProject?: (name: string) => Promise<number>;
@@ -310,6 +312,11 @@ export function Details(props: {
       <fieldset className="det-sec" disabled={locked}>
         <div className="lbl">Кто назначил <span className="opt">необязательно</span></div>
         <PersonInput value={x.assigned_by} people={props.people} disabled={locked} onChange={(v) => onPatch({ assigned_by: v })} />
+      </fieldset>
+
+      <fieldset className="det-sec" disabled={locked}>
+        <div className="lbl">Связи{x.relations.length ? <span className="opt"> {x.relations.length}</span> : null}</div>
+        <RelationsField task={x} all={props.allTasks} disabled={locked} run={props.run} onOpen={props.onOpenTask} />
       </fieldset>
 
       <fieldset className="det-sec" disabled={locked}>

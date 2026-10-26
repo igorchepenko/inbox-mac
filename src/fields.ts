@@ -3,6 +3,7 @@ import type { Layout } from "./boardOps";
 import { STAGES, stageOf } from "./boardOps";
 import { fmtDay, fmtRange, fmtStamp, parseDay, stampDay, stampTime } from "./dates";
 import { pingDue } from "./waiting";
+import { openBlockers } from "./relations";
 import { dueState, type DueTask } from "./due";
 import { describe, parseRule } from "./recurrence";
 import { priorityName } from "./priority";
@@ -127,6 +128,9 @@ export const tips = {
   tagsRest: (names: string[]) => lines("Ещё теги:", names),
   assignee: (name: string) => `Назначил: ${name}`,
   waiting: (x: Task) => pingDue(x) ? `Пора напомнить: жду ${x.waiting_for}` : `Жду: ${x.waiting_for}${x.waiting_until ? `. Напомнить ${fmtDay(x.waiting_until).toLowerCase()}` : ""}`,
+  blockedBy: (x: Task) => lines(`Заблокирована: ${openBlockers(x).length}`, openBlockers(x).map((r) => r.other_title)),
+  blocking: (x: Task) => lines("Блокирует", x.relations.filter((r) => r.kind === "blocks" && !r.other_closed).map((r) => r.other_title)),
+  related: (x: Task) => lines("Связана с", x.relations.filter((r) => r.kind === "related").map((r) => r.other_title)),
   participants: (names: string[]) => lines(`Участники: ${names.length}`, names),
   checklist: (x: Task) =>
     lines(`Чеклист: выполнено ${x.subtasks.filter((s) => s.done).length} из ${x.subtasks.length}`,
