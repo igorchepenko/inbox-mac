@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown, ChevronsUpDown, Keyboard, LayoutGrid, Plus, Search, Settings as Gear, Users, X } from "lucide-react";
 import type { Project, Tag, TagPatch, Task } from "./db";
-import { TagEditor } from "./TagsUI";
+import { NewTag, TagEditor } from "./TagsUI";
+import { searchNames } from "./search";
 import { ALWAYS, countFor, HOTKEY_VIEWS, isSmart, VIEWS, type ViewId } from "./views";
 import { Icon } from "./icons";
 import { IconGrid, Popover, ThemeSwitch } from "./widgets";
@@ -65,6 +66,7 @@ export function Sidebar(props: {
   settings: Record<string, string>;
   onOpen: (v: ViewId) => void;
   onTagSave: (id: number, patch: TagPatch) => Promise<string | null>;
+  onTagCreate: (name: string) => Promise<string | null>;
   onTagDelete: (id: number) => void;
   onNewProject: () => void;
   onEditProject: (p: Project) => void;
@@ -84,6 +86,11 @@ export function Sidebar(props: {
   const [query, setQuery] = useState("");
   const [hi, setHi] = useState(0);
   const search = useRef<HTMLInputElement>(null);
+  const [tagQuery, setTagQuery] = useState("");
+  const [tagHi, setTagHi] = useState(0);
+  const [newTag, setNewTag] = useState<HTMLElement | null>(null);
+  const tagSearch = useRef<HTMLInputElement>(null);
+  const tagsFound = useMemo(() => searchNames(tagQuery, props.tags), [props.tags, tagQuery]);
   const found = useMemo(() => matchProjects(props.projects, query), [props.projects, query]);
 
   const setFolded = (v: boolean) => {
@@ -194,13 +201,41 @@ export function Sidebar(props: {
           <span>Теги</span>
           {tagsFolded && props.tags.length > 0 && <span className="sec-n">{props.tags.length}</span>}
         </button>
+        <button className={`sec-btn ${cur === "tags" ? "on" : ""}`} onClick={() => props.onOpen("tags")}
+          data-tip="Все теги карточками" aria-label="Все теги">
+          <LayoutGrid size={14} />
+        </button>
       </div>
-      {!tagsFolded && (
+      {!tagsFolded && (<>
+        <button className="nav add-project" onClick={(e) => setNewTag(e.currentTarget)}>
+          <span className="nav-icon"><Plus size={15} /></span>
+          <span className="nav-name">Новый тег</span>
+        </button>
+        {props.tags.length > 0 && (
+          <label className="proj-search" data-tip="Найти тег и перейти">
+            <Search size={13} />
+            <input ref={tagSearch} placeholder="Найти тег" value={tagQuery} spellCheck={false}
+              onChange={(e) => (setTagQuery(e.target.value), setTagHi(0))}
+              onBlur={() => setTagHi(0)}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown") (e.preventDefault(), setTagHi((h) => Math.min(h + 1, tagsFound.length - 1)));
+                else if (e.key === "ArrowUp") (e.preventDefault(), setTagHi((h) => Math.max(h - 1, 0)));
+                else if (e.key === "Enter") {
+                  e.preventDefault();
+                  const t = tagsFound[tagHi];
+                  if (t) (props.onOpen(`t:${t.id}`), setTagQuery(""), tagSearch.current?.blur());
+                } else if (e.key === "Escape") (e.preventDefault(), e.stopPropagation(), setTagQuery(""), e.currentTarget.blur());
+              }} />
+            {tagQuery && (
+              <button className="proj-search-x" aria-label="Очистить" onMouseDown={(e) => e.preventDefault()} onClick={() => setTagQuery("")}><X size={12} /></button>
+            )}
+          </label>
+        )}
         <div className="proj-list tag-list">
-          {props.tags.map((t) => {
+          {tagsFound.map((t, i) => {
             const id: ViewId = `t:${t.id}`;
             return (
-              <div key={t.id} className={`nav tagnav ${cur === id ? "on" : ""}`} role="button" onClick={() => props.onOpen(id)}
+              <div key={t.id} className={`nav tagnav ${cur === id ? "on" : ""} ${tagQuery && i === tagHi ? "hi" : ""}`} role="button" onClick={() => props.onOpen(id)}
                 style={{ "--c": `var(--${t.color})` } as React.CSSProperties}>
                 <button className="nav-icon" data-tip="Изменить тег" onClick={(e) => (e.stopPropagation(), setTagEdit({ id: t.id, el: e.currentTarget }))}>
                   <i className="tdot" />
@@ -211,8 +246,10 @@ export function Sidebar(props: {
             );
           })}
           {!props.tags.length && <div className="side-hint">Появятся здесь, когда поставишь тег задаче. Можно прямо в названии: #созвон</div>}
+          {tagQuery && !tagsFound.length && <div className="proj-none">Ничего не нашлось</div>}
         </div>
-      )}
+      </>)}
+      {newTag && <NewTag anchor={newTag} onClose={() => setNewTag(null)} onCreate={props.onTagCreate} />}
       {editing && tagEdit && (
         <TagEditor key={editing.id} tag={editing} anchor={tagEdit.el} onClose={() => setTagEdit(null)}
           onSave={(p) => props.onTagSave(editing.id, p)} onDelete={() => (setTagEdit(null), props.onTagDelete(editing.id))} />

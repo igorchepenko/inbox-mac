@@ -202,3 +202,10 @@ describe("канбан", () => {
     expect(ids(boardFor("p:3", xs, "date")[1].items)).toEqual([1]);
   });
 });
+
+describe("страница «Теги»", () => {
+  it("не список задач: пусто и без счётчика", () => {
+    expect(listFor("tags", [task({ id: 1 })])).toEqual([]);
+    expect(countFor("tags", [task({ id: 1 })])).toBe(0);
+  });
+});

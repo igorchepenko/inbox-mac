@@ -34,6 +34,7 @@ import CalendarView from "./CalendarView";
 import { PriorityIcon } from "./priority";
 import { FIND_PROJECT_EVENT, Sidebar, viewIcon } from "./Sidebar";
 import ProjectsPage from "./ProjectsPage";
+import TagsPage from "./TagsPage";
 import { Tooltips } from "./Tooltips";
 import { ALL_SHOWN, shownFields, tips, type Shown } from "./fields";
 import { QuickKeyBanner } from "./QuickKeyCheck";
@@ -245,6 +246,15 @@ export default function App() {
   const saveTag = async (id: number, p: db.TagPatch): Promise<string | null> => {
     try {
       await db.updateTag(id, p);
+      await reload();
+      return null;
+    } catch (e) {
+      return String(e).replace(/^Error: /, "");
+    }
+  };
+  const createTag = async (name: string): Promise<string | null> => {
+    try {
+      await db.createTag(name);
       await reload();
       return null;
     } catch (e) {
@@ -492,7 +502,7 @@ export default function App() {
   });
 
   // Главная и страница проектов занимают всё место справа от меню, без панели деталей
-  const wide = view === "home" || view === "projects" || view === "people";
+  const wide = view === "home" || view === "projects" || view === "tags" || view === "people";
   const current = VIEWS.find((v) => v.id === view);
   const project = view.startsWith("p:") ? projects.find((p) => `p:${p.id}` === view) : undefined;
   const tag = view.startsWith("t:") ? tags.find((g) => `t:${g.id}` === view) : undefined;
@@ -503,12 +513,12 @@ export default function App() {
 
   return (
     <PeopleCtx.Provider value={roster}>
-    <div className={`app ${view === "home" ? "app-home" : view === "projects" || view === "people" ? "app-wide" : ""} ${panes.side.collapsed ? "side-off" : ""} ${panes.det.collapsed && !wide ? "det-off" : ""}`}
+    <div className={`app ${view === "home" ? "app-home" : view === "projects" || view === "tags" || view === "people" ? "app-wide" : ""} ${panes.side.collapsed ? "side-off" : ""} ${panes.det.collapsed && !wide ? "det-off" : ""}`}
       style={{ "--side-w": `${panes.side.collapsed ? 0 : panes.side.width}px`, "--det-w": `${panes.det.collapsed ? 0 : panes.det.width}px` } as CSSProperties}>
       <div className="titlebar" data-tauri-drag-region />
       <Frame panes={panes} hasDetails={!wide} onWidth={setPaneWidth} onToggle={togglePane} onReset={resetPane} />
       <Sidebar view={view} tasks={tasks} projects={projects} tags={tags} peopleCount={roster.length} settings={settings} onOpen={openView}
-        onTagSave={saveTag} onTagDelete={(id) => run(() => db.deleteTag(id))}
+        onTagSave={saveTag} onTagCreate={createTag} onTagDelete={(id) => run(() => db.deleteTag(id))}
         onNewProject={() => setProjectDlg("new")} onEditProject={(p) => setProjectDlg(p)}
         onSettings={() => setSettingsOpen(true)} onShortcuts={() => setHelpOpen(true)}
         onSetting={(key, value) => {
@@ -543,6 +553,8 @@ export default function App() {
         ) : view === "projects" ? (
           <ProjectsPage projects={projects} tasks={tasks} onOpen={openView}
             onEdit={(p) => setProjectDlg(p)} onNew={() => setProjectDlg("new")} />
+        ) : view === "tags" ? (
+          <TagsPage tags={tags} tasks={tasks} onOpen={openView} onCreate={createTag} onSave={saveTag} onDelete={(id) => run(() => db.deleteTag(id))} />
         ) : view === "home" ? (
           <Home tasks={tasks} projects={projects} settings={settings}
             onOpenInbox={() => openView("inbox")} onOpenToday={() => openView("today")}
