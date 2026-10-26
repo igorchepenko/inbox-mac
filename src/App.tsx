@@ -583,8 +583,8 @@ export default function App() {
               tip="Поиск по задачам на этом экране: название, заметка, чеклист, теги, люди, ссылки" />
             {view !== "archive" && <SortSwitch value={sort} rev={rev} onChange={setSort} onReverse={reverseSort} />}
             <FilterButton filter={filt} projects={projects} tags={tags} people={people} lockTag={tag?.id} noSpaces={!!project} onChange={setFilter} smart={smart} />
-            {fieldsButton}
             <LayoutSwitch value={layout} onChange={setLayout} />
+            {fieldsButton}
             <button className="icon-btn" data-tip="Сочетания клавиш" data-key="⌘/" aria-label="Сочетания клавиш" onClick={() => setHelpOpen(true)}><Keyboard size={14} /></button>
           </div>
         </header>

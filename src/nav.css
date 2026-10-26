@@ -68,6 +68,9 @@
 .pp-head > div { flex: 1; min-width: 0; }
 .pp-head h2 { font-size: 22px; font-weight: 800; margin: 0; letter-spacing: -.01em; }
 .pp-head p { margin: 2px 0 0; color: var(--muted); }
+.pp-head .fsearch { height: 38px; width: 240px; padding: 0 10px; gap: 8px; border-radius: 12px; }
+.pp-head .fsearch input { font-size: 13px; }
+.pp-head .fsearch:focus-within, .pp-head .fsearch.has { width: 280px; }
 .pp-head .cta { display: inline-flex; align-items: center; gap: 6px; flex: none; }
 .pp-bad { color: var(--move); }
 .pp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; overflow-y: auto; align-content: start;
