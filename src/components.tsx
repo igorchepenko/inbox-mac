@@ -8,7 +8,7 @@ import { Paperclip } from "lucide-react";
 import { Checklist, DateField, Files, Line, Links, normalizeUrl, PriorityPicker, QuadrantPicker, RepeatField, TimeRange, type RunDb } from "./extras";
 import { quickKeyLabel } from "./prefs";
 import { PeopleInput, PersonInput, TagInput } from "./TagsUI";
-import { fmtCreated, KindSwitch, RemindField, WaitingField } from "./TaskBits";
+import { fmtCreated, KindSwitch, RelationsField, RemindField, WaitingField } from "./TaskBits";
 import { anchorOf, remindPatch, remindAtFor, type When } from "./remind";
 import { SpacePicker } from "./SpaceUI";
 import { addTagName, canonicalPerson, parseQuick } from "./tags";
@@ -176,6 +176,8 @@ export function Details(props: {
   projects: Project[];
   tags: Tag[];
   people: string[];
+  allTasks: Task[]; // для поиска задачи в «Связях»
+  onOpenTask: (id: number) => void;
   remindBefore: number;
   onPatch: (patch: TaskPatch) => void;
   onCreateProject?: (name: string) => Promise<number>;
@@ -252,6 +254,11 @@ export function Details(props: {
           <WaitingField task={x} people={props.people} disabled={locked} onPatch={onPatch} />
         </fieldset>
       )}
+
+      <fieldset className="det-sec" disabled={locked}>
+        <div className="lbl">Связи{x.relations.length ? <span className="opt"> {x.relations.length}</span> : null}</div>
+        <RelationsField task={x} all={props.allTasks} disabled={locked} run={props.run} onOpen={props.onOpenTask} />
+      </fieldset>
 
       <fieldset className="det-sec" disabled={locked}>
         <div className="lbl">Тип</div>
