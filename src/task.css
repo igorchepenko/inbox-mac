@@ -74,3 +74,5 @@
 .att .x.show { opacity: .65; }
 .att .x.show:hover { opacity: 1; }
 .btn.small.primary { background: var(--stand); border-color: transparent; color: var(--on-acc); }
+.qi-attach { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.qi-attach .att-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
