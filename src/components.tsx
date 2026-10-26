@@ -254,6 +254,11 @@ export function Details(props: {
       )}
 
       <fieldset className="det-sec" disabled={locked}>
+        <div className="lbl">Кто назначил <span className="opt">необязательно</span></div>
+        <PersonInput value={x.assigned_by} people={props.people} disabled={locked} onChange={(v) => onPatch({ assigned_by: v })} />
+      </fieldset>
+
+      <fieldset className="det-sec" disabled={locked}>
         <div className="lbl">Тип</div>
         <div className="seg"><KindSwitch value={x.kind} onChange={(kind) => onPatch({ kind })} /></div>
         {x.kind === "meeting" && (
@@ -301,8 +306,6 @@ export function Details(props: {
         <div className="lbl">Теги{x.tags.length ? <span className="opt"> {x.tags.length} из 6</span> : null}</div>
         <TagInput value={x.tags.map((g) => g.name)} tags={props.tags} disabled={locked}
           onChange={(names) => props.run(() => db.setTaskTags(x.id, names))} />
-        <div className="lbl sub-lbl">Кто назначил <span className="opt">необязательно</span></div>
-        <PersonInput value={x.assigned_by} people={props.people} disabled={locked} onChange={(v) => onPatch({ assigned_by: v })} />
       </fieldset>
 
       <div className="det-sec">

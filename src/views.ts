@@ -80,7 +80,7 @@ export function directionOf(sort: SortBy, rev: boolean): { asc: boolean; text: s
 
 // Порядок квадрантов задал Игорь: срочно и важно, срочно не важно, важно не срочно, не срочно не важно
 const QUAD_ORDER = [1, 3, 2, 4];
-const QUAD_NAMES: Record<number, string> = { 1: "Срочно и важно", 2: "Важно, не срочно", 3: "Срочно, не важно", 4: "Не срочно, не важно" };
+const QUAD_NAMES: Record<number, string> = { 1: "Срочно, важно", 2: "Не срочно, важно", 3: "Срочно, не важно", 4: "Не срочно, не важно" };
 const quadRank = (x: Task) => (x.quadrant ? QUAD_ORDER.indexOf(x.quadrant) : 9);
 // Время задачи в дне: начало из календаря, иначе срок «до 18:00», иначе напоминание. Без времени после задач со временем
 const timeOf = (x: Task) => x.start_time ?? x.end_time ?? (x.remind_at ? stampTime(x.remind_at) : "99");

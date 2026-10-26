@@ -68,7 +68,7 @@ describe("подсказки при наведении", () => {
   it("срок, важность, матрица, повтор", () => {
     expect(tips.due(task({ due_date: "2026-10-10", end_time: "18:00" }))).toBe("Срок: сегодня до 18:00. Скоро");
     expect(tips.priority(4)).toBe("Важность: высокая");
-    expect(tips.matrix(1)).toBe("Матрица: срочно и важно, сделать сейчас");
+    expect(tips.matrix(1)).toBe("Матрица: срочно, важно, сделать сейчас");
     expect(tips.repeat(task({ recurrence: JSON.stringify({ freq: "day", every: 1 }) }))).toBe("Повтор: каждый день");
   });
 });
