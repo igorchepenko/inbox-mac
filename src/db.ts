@@ -458,6 +458,17 @@ export async function setTaskTags(taskId: number, names: string[]): Promise<void
   for (const [i, id] of ids.entries()) await d.execute("INSERT INTO task_tags (task_id, tag_id, position) VALUES ($1, $2, $3)", [taskId, id, i]);
 }
 
+/** Создать тег вручную, без задачи. Цвет подбирается подальше от занятых; такое имя уже есть, значит ошибка */
+export async function createTag(raw: string): Promise<Tag> {
+  const name = normalizeTag(raw);
+  if (!name) throw new Error("Пустое название тега");
+  const all = await loadTags();
+  if (all.some((t) => sameName(t.name, name))) throw new Error(`Тег «${name}» уже есть`);
+  const color = pickColor(all.map((t) => t.color));
+  const r = await (await db()).execute("INSERT INTO tags (name, color, created_at) VALUES ($1, $2, $3)", [name, color, nowStamp()]);
+  return { id: r.lastInsertId ?? 0, name, color };
+}
+
 export type TagPatch = Partial<Pick<Tag, "name" | "color">>;
 
 /** Переименовать или перекрасить. Имя, которое уже занято другим тегом, не принимается */

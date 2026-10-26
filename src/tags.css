@@ -63,3 +63,6 @@
 /* Участник встречи: чипс без цвета тега, с иконкой человека */
 .tchip.person { color: var(--fg); background: color-mix(in srgb, var(--fg) 7%, transparent); border-color: transparent; }
 .tchip.person svg { color: var(--muted); flex: none; }
+.tag-new-ok { margin-top: 10px; width: 100%; justify-content: center; }
+.tag-new-ok:disabled { opacity: .5; cursor: default; }
+.tg-card .pp-icon .tdot { width: 14px; height: 14px; }
