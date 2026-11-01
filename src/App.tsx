@@ -41,6 +41,7 @@ import { ALL_SHOWN, shownFields, tips, type Shown } from "./fields";
 import { QuickKeyBanner } from "./QuickKeyCheck";
 import { usePanes } from "./panes";
 import { Frame } from "./Frame";
+import { followTask, type Where } from "./follow";
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -80,10 +81,12 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [, setTick] = useState(0);
 
-  const reload = useCallback(async () => {
+  // after вызывается с свежими задачами в том же проходе, что и setTasks: переход за задачей не успевает мигнуть выбором соседа
+  const reload = useCallback(async (after?: (t: Task[]) => void) => {
     try {
       await db.archiveOldDone();
       const [t, p, st, g, r] = await Promise.all([db.loadTasks(), db.loadProjects(), db.loadSettings(), db.loadTags(), db.loadPeopleList()]);
+      if (typeof after === "function") after(t);
       setTasks(t);
       setRoster(r);
       setProjects(p);
@@ -106,13 +109,13 @@ export default function App() {
 
   // Действие с базой, затем перечитать всё. Задач у одного человека сотни, это мгновенно
   const run = useCallback(
-    async (fn: () => Promise<unknown>) => {
+    async (fn: () => Promise<unknown>, after?: (t: Task[]) => void) => {
       try {
         await fn();
       } catch (e) {
         setError(String(e));
       }
-      await reload();
+      await reload(after);
     },
     [reload],
   );
@@ -135,6 +138,20 @@ export default function App() {
   }, [reload]);
 
   const layout = layoutOf(view, settings);
+  // Правка из панели увела задачу из списка: идём за ней, а не выбираем соседа
+  const whereRef = useRef<Where>({ view, multi, filter, board: layout === "board" });
+  whereRef.current = { view, multi, filter, board: layout === "board" };
+  const follow = (id: number) => (t: Task[]) => {
+    const w = followTask(whereRef.current, t, id);
+    if (!w) return;
+    setView(w.view);
+    setMulti(w.multi);
+    setFilter(w.filter);
+    clearPick();
+    setTagEdit(null);
+    togglePane("det", false);
+    db.setSetting("last.view", w.view).catch(() => {});
+  };
   const listFields = useMemo(() => shownFields(settings, "list"), [settings]);
   const sort = sortOf(view, settings);
   const rev = revOf(view, sort, settings);
@@ -146,7 +163,13 @@ export default function App() {
     spaces: inSpace ? [] : filter.spaces.filter((id) => id === NO_SPACE || projects.some((p) => p.id === id)),
     tags: filter.tags.filter((id) => tags.some((g) => g.id === id)),
   }), [filter, tags, projects, inSpace]);
-  const shown = useMemo(() => applyFilter(tasks, filt), [tasks, filt]);
+  // Название выбранной задачи поправили так, что поиск её не находит: пока она выбрана, остаётся в списке
+  const [pin, setPin] = useState<number | null>(null);
+  const shown = useMemo(() => {
+    const r = applyFilter(tasks, filt);
+    const p = pin == null || r.some((x) => x.id === pin) ? undefined : tasks.find((x) => x.id === pin);
+    return p && applyFilter([p], { ...filt, text: "" }).length ? [...r, p] : r;
+  }, [tasks, filt, pin]);
   // В фильтре ровно одно пространство: новые задачи сразу записываются в него
   const oneSpace = filt.spaces.length === 1 && filt.spaces[0] !== NO_SPACE ? filt.spaces[0] : null;
   // Несколько умных списков: задачи, которые попадают хотя бы в один из них
@@ -175,6 +198,7 @@ export default function App() {
   // Выбор задачи открывает правую панель: по умолчанию она свёрнута
   const select = (id: number | null) => {
     setSel(id);
+    if (id !== pin) setPin(null);
     if (id != null) togglePane("det", false);
   };
   const clearPick = () => setPicked([]);
@@ -186,6 +210,7 @@ export default function App() {
     setTagEdit(null);
     lastIdx.current = 0;
     setSel(null);
+    setPin(null);
     togglePane("det", true); // в списке, доске и календаре панель закрыта и ничего не выделено, пока не кликнешь по задаче
     db.setSetting("last.view", v).catch(() => {}); // для начального экрана «Где остановился»
   };
@@ -241,9 +266,11 @@ export default function App() {
     applyShortcut(accel).then((err) => err && accel !== "Alt+Space" && setShortcutError(`Не удалось занять ${labelFromAccel(accel)}: ${err}`));
   }
 
-  const patch = (id: number, p: TaskPatch) => {
+  // fromPanel: правка в правой панели, выбранная задача идёт за своим списком. С клавиатуры (T, 1-5) выбор уходит к соседу: так разбирают очередь
+  const patch = (id: number, p: TaskPatch, fromPanel = false) => {
     if (p.remind_at) ensurePermission();
-    run(() => db.updateTask(id, p));
+    if (fromPanel && p.title != null) setPin(id);
+    run(() => db.updateTask(id, p), fromPanel ? follow(id) : undefined);
   };
   // Правка тега: ошибку (имя уже занято) показывает сама панель тега
   const saveTag = async (id: number, p: db.TagPatch): Promise<string | null> => {
@@ -264,10 +291,10 @@ export default function App() {
       return String(e).replace(/^Error: /, "");
     }
   };
-  const triage = (x: Task) => run(() => db.updateTask(x.id, { status: "active", triaged_at: nowStamp() }));
+  const triage = (x: Task, fromPanel = false) => run(() => db.updateTask(x.id, { status: "active", triaged_at: nowStamp() }), fromPanel ? follow(x.id) : undefined);
   // Перевод в этап из панели, канбана и по галочке. Через dropTo: completeTask и cancelTask создают следующий повтор,
   // reopenTask его убирает. «Готово» и «Отменено» закрывают задачу сразу, а потом спрашивают итоги
-  const toStage = async (xs: Task[], stage: Stage, sure = false) => {
+  const toStage = async (xs: Task[], stage: Stage, sure = false, fromPanel = false) => {
     const moved = xs.filter((x) => stageOf(x) !== stage && canMove(x, stage));
     if (!moved.length) return;
     if (stage === "done" && !sure && moved.some(isBlocked)) return setBlockedAsk(moved);
@@ -275,11 +302,11 @@ export default function App() {
     // Канбан ждёт перечитанных задач, чтобы карточка села уже на новое место
     await run(async () => {
       for (const x of moved) await dropTo(x, stage);
-    });
+    }, fromPanel && moved.length === 1 ? follow(moved[0].id) : undefined);
   };
-  const toggleDone = (x: Task) => void (x.status === "done" ? run(() => db.reopenTask(x)) : toStage([x], "done"));
-  const archive = (x: Task) => run(() => db.updateTask(x.id, { status: "archived", done_at: x.done_at ?? nowStamp() }));
-  const restore = (x: Task) => run(() => db.updateTask(x.id, { status: "active", done_at: null, cancelled: 0 }));
+  const toggleDone = (x: Task, fromPanel = false) => void (x.status === "done" ? run(() => db.reopenTask(x), fromPanel ? follow(x.id) : undefined) : toStage([x], "done", false, fromPanel));
+  const archive = (x: Task) => run(() => db.updateTask(x.id, { status: "archived", done_at: x.done_at ?? nowStamp() }), follow(x.id));
+  const restore = (x: Task) => run(() => db.updateTask(x.id, { status: "active", done_at: null, cancelled: 0 }), follow(x.id));
 
   // С главной: отметка учитывает повторы, перенос просроченного сохраняет время напоминания
   const toggleFromHome = toggleDone;
@@ -303,7 +330,7 @@ export default function App() {
     const next = ids[i < 0 ? 0 : i + dir];
     if (next != null) select(next);
   };
-  const setText = (text: string) => setFilter((f) => ({ ...f, text }));
+  const setText = (text: string) => (setPin(null), setFilter((f) => ({ ...f, text })));
   // Клик выбирает задачу, ⌘-клик добавляет к выделению, ⇧-клик берёт всё подряд от выбранной, чекбокс только отмечает строку
   const pick: Pick = (id, m) => {
     if (m.box) {
@@ -643,9 +670,9 @@ export default function App() {
           onSelectAll={() => setPicked(ids)} onClear={clearPick} />
       ) : task ? (
         <Details key={task.id} task={task} projects={projects} tags={tags} people={people} allTasks={tasks} onOpenTask={(id) => { const t = tasks.find((y) => y.id === id); if (t) openTask(t); }} remindBefore={defaultBefore(settings)}
-          onPatch={(p) => patch(task.id, p)} onCreateProject={createProject} run={run} onError={setError}
+          onPatch={(p) => patch(task.id, p, true)} onCreateProject={createProject} run={(fn) => void run(fn, follow(task.id))} onError={setError}
           dropping={dropTarget === task.id && dropOnDetails}
-          onTriage={() => triage(task)} onToggleDone={() => toggleDone(task)} onStage={(st) => toStage([task], st)}
+          onTriage={() => triage(task, true)} onToggleDone={() => toggleDone(task, true)} onStage={(st) => toStage([task], st, false, true)}
           onArchive={() => archive(task)} onRestore={() => restore(task)}
           onDelete={() => run(() => db.deleteTask(task.id))} />
       ) : (
@@ -676,7 +703,7 @@ export default function App() {
             <div className="sum-foot">
               <span className="grow" />
               <button type="button" className="btn" autoFocus onClick={() => setBlockedAsk(null)}>Отмена <kbd>Esc</kbd></button>
-              <button type="button" className="cta narrow go" onClick={() => { const xs = blockedAsk; setBlockedAsk(null); void toStage(xs, "done", true); }}>Всё равно завершить</button>
+              <button type="button" className="cta narrow go" onClick={() => { const xs = blockedAsk; setBlockedAsk(null); void toStage(xs, "done", true, xs.length === 1 && xs[0].id === sel); }}>Всё равно завершить</button>
             </div>
           </div>
         </div>
