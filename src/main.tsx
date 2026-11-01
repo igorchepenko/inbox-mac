@@ -15,20 +15,27 @@ import "./glass.css";
 import { installPalette } from "./palette";
 import { applyLook, applyTheme, followLookChanges, followThemeChanges, savedLook, savedTheme } from "./theme";
 import { applyAppearance, followAppearanceChanges, savedAppearance } from "./prefs";
-import { followProfileChanges } from "./profile";
+import { followProfileChanges, loadProfiles } from "./profile";
+import { ProfileGate } from "./ProfileSetup";
 
 // Одна сборка на два окна: главное и быстрый ввод (index.html?window=quick)
 const isQuick = new URLSearchParams(location.search).get("window") === "quick";
 document.documentElement.classList.toggle("quick", isQuick);
-followProfileChanges(!isQuick);
-installPalette();
-applyTheme(savedTheme());
-followThemeChanges();
-applyLook(savedLook());
-followLookChanges();
-applyAppearance(savedAppearance());
-followAppearanceChanges();
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>{isQuick ? <QuickApp /> : <App />}</React.StrictMode>,
-);
+// Сначала список профилей: тема, внешний вид и база зависят от активного
+loadProfiles().finally(() => {
+  followProfileChanges(!isQuick);
+  installPalette();
+  applyTheme(savedTheme());
+  followThemeChanges();
+  applyLook(savedLook());
+  followLookChanges();
+  applyAppearance(savedAppearance());
+  followAppearanceChanges();
+
+  ReactDOM.createRoot(document.getElementById("root")!).render(
+    <React.StrictMode>
+      <ProfileGate quick={isQuick}>{isQuick ? <QuickApp /> : <App />}</ProfileGate>
+    </React.StrictMode>,
+  );
+});
