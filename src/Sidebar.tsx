@@ -8,7 +8,7 @@ import { Icon } from "./icons";
 import { IconGrid, Popover, ThemeSwitch } from "./widgets";
 import { HomeIcon } from "./home/Home";
 import { spaceVars } from "./palette";
-import { activeProfile, PROFILES, profileName, switchProfile } from "./profile";
+import { activeProfile, profileName, switchProfile, useProfiles } from "./profile";
 
 export const KEY_PROJECTS_COLLAPSED = "side.projects.collapsed";
 export const KEY_TAGS_COLLAPSED = "side.tags.collapsed";
@@ -277,6 +277,7 @@ export function Sidebar(props: {
 /** Активный профиль внизу меню, чтобы не перепутать, где ты. Клик открывает выбор профиля */
 function ProfileSwitch() {
   const cur = activeProfile();
+  const all = useProfiles();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   return (
     <>
@@ -288,13 +289,14 @@ function ProfileSwitch() {
       {anchor && (
         <Popover anchor={anchor} onClose={() => setAnchor(null)} width={250}>
           <div className="lbl">Профиль</div>
-          {PROFILES.map((p) => (
+          {all.map((p) => (
             <button key={p.id} className="profile-opt" data-profile={p.id} onClick={() => (setAnchor(null), switchProfile(p.id))}>
               <span className="side-profile-dot" />
-              <span className="profile-opt-text"><b>{p.name}</b><span>{p.hint}</span></span>
+              <span className="profile-opt-text"><b>{p.name}</b></span>
               {p.id === cur && <Check size={14} />}
             </button>
           ))}
+          <div className="profile-opt-add profile-opt-text" style={{ padding: "6px 8px" }}><span>Создать, переименовать и удалить: Настройки → Профиль</span></div>
         </Popover>
       )}
     </>
