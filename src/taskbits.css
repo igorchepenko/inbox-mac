@@ -63,3 +63,7 @@
 .rel-found button { text-align: left; padding: 5px 8px; border-radius: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rel-found button:hover { background: var(--sel, color-mix(in srgb, var(--stand) 12%, transparent)); }
 .rel-ask { margin: 8px 0 14px; }
+
+/* «Жду»: кнопка «Пришёл ответ» не липнет к чипсам напоминания */
+.wait-done { margin-top: 14px; }
+.wait-ping { margin-top: 8px; }
