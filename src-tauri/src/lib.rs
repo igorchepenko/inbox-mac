@@ -14,54 +14,125 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
-/// Профиль: своя база, свои вложения, свои настройки. У «Теста» база и папки прежние,
-/// поэтому всё, что было до профилей, осталось в нём без переноса
-struct ProfileDef {
-    id: &'static str,
-    name: &'static str,
-    /// Файл базы в ~/Library/Application Support/com.igorchepenko.inbox
-    file: &'static str,
-    /// Папка вложений внутри attachments: у «Теста» пустая, файлы лежат как раньше
-    files: &'static str,
+/// Профили: список лежит в profiles.json рядом с базами. У каждого своя база, свои вложения и свои настройки.
+/// Движок миграций (tauri-plugin-sql) принимает файлы баз только при старте, поэтому файлов заранее
+/// заведено десять: два прежних, «test» и «igor», и восемь запасных p1…p8 для новых профилей.
+/// У «test» база и папка вложений прежние, поэтому всё, что было до профилей, осталось в нём без переноса
+const LEGACY: &[(&str, &str)] = &[("test", "Тест"), ("igor", "Игорь")];
+const SLOTS: &[&str] = &["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"];
+const NAME_MAX: usize = 40;
+
+fn all_ids() -> impl Iterator<Item = &'static str> {
+    LEGACY
+        .iter()
+        .map(|(id, _)| *id)
+        .chain(SLOTS.iter().copied())
 }
 
-const PROFILES: &[ProfileDef] = &[
-    ProfileDef {
-        id: "test",
-        name: "Тест",
-        file: "inbox.db",
-        files: "",
-    },
-    ProfileDef {
-        id: "igor",
-        name: "Игорь",
-        file: "inbox-igor.db",
-        files: "igor",
-    },
-];
+/// Файл базы в ~/Library/Application Support/com.igorchepenko.inbox
+fn db_file(id: &str) -> String {
+    match id {
+        "test" => "inbox.db".into(),
+        "igor" => "inbox-igor.db".into(),
+        _ => format!("inbox-{id}.db"),
+    }
+}
+
+/// Папка вложений внутри attachments: у «test» пустая, файлы лежат как раньше
+fn files_sub(id: &str) -> String {
+    if id == "test" {
+        String::new()
+    } else {
+        id.to_string()
+    }
+}
+
+fn db_url(id: &str) -> String {
+    format!("sqlite:{}", db_file(id))
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+struct Entry {
+    id: String,
+    name: String,
+}
+
+/// Список профилей. Меняется только командами ниже и сразу пишется в profiles.json
+struct Registry(Mutex<Vec<Entry>>);
 
 /// Сколько копий базы хранить на профиль: старые удаляются
 const KEEP_BACKUPS: usize = 10;
 
-fn profile(id: &str) -> Result<&'static ProfileDef, String> {
-    PROFILES
+fn registry_path(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(data_dir(app)?.join("profiles.json"))
+}
+
+/// Читает список. Первый запуск с профилями: заводит записи для баз, что уже лежат на диске
+/// (прежние «Тест» и «Игорь»), так что при обновлении ничего не переносится и не теряется.
+/// Чистая установка даёт пустой список, и приложение предлагает создать профиль
+fn load_registry(app: &AppHandle) -> Vec<Entry> {
+    let dir = data_dir(app).ok();
+    if let Some(list) = registry_path(app)
+        .ok()
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|t| serde_json::from_str::<Vec<Entry>>(&t).ok())
+    {
+        return list;
+    }
+    let seeded: Vec<Entry> = LEGACY
         .iter()
-        .find(|p| p.id == id)
+        .filter(|(id, _)| dir.as_ref().is_some_and(|d| d.join(db_file(id)).exists()))
+        .map(|(id, name)| Entry {
+            id: id.to_string(),
+            name: name.to_string(),
+        })
+        .collect();
+    let _ = save_registry(app, &seeded);
+    seeded
+}
+
+fn save_registry(app: &AppHandle, list: &[Entry]) -> Result<(), String> {
+    let path = registry_path(app)?;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    let text = serde_json::to_string_pretty(list).map_err(|e| e.to_string())?;
+    std::fs::write(&tmp, text).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+}
+
+fn entry(app: &AppHandle, id: &str) -> Result<Entry, String> {
+    app.state::<Registry>()
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .iter()
+        .find(|e| e.id == id)
+        .cloned()
         .ok_or_else(|| format!("Нет профиля {id}"))
 }
 
-fn db_url(p: &ProfileDef) -> String {
-    format!("sqlite:{}", p.file)
+/// Активный профиль (id, пусто, пока нет ни одного). Выбор хранит интерфейс (localStorage)
+/// и сообщает сюда при каждой загрузке окна
+struct ActiveProfile(Mutex<String>);
+
+fn active_id(app: &AppHandle) -> String {
+    app.state::<ActiveProfile>()
+        .0
+        .lock()
+        .map(|a| a.clone())
+        .unwrap_or_default()
 }
 
-/// Активный профиль. Выбор хранит интерфейс (localStorage) и сообщает сюда при каждой загрузке окна
-struct ActiveProfile(Mutex<&'static ProfileDef>);
-
 /// Профили, у которых в этом запуске уже проверили копию базы
-static BACKED_UP: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
+static BACKED_UP: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-/// Пункты профилей в меню строки меню: галочка у активного
-struct TrayProfiles(Vec<(&'static str, CheckMenuItem<Wry>)>);
+/// Подменю «Профиль» в меню строки меню: пункты пересобираются при любых изменениях списка, галочка у активного
+struct TrayProfiles {
+    sub: Submenu<Wry>,
+    items: Mutex<Vec<(String, CheckMenuItem<Wry>)>>,
+}
 
 /// Ошибка, с которой не удалось занять сочетание быстрого ввода. Главное окно показывает её плашкой
 static QUICK_ERROR: Mutex<Option<String>> = Mutex::new(None);
@@ -316,16 +387,16 @@ fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path().app_config_dir().map_err(|e| e.to_string())
 }
 
-fn backups_dir(app: &AppHandle, p: &ProfileDef) -> Result<PathBuf, String> {
-    Ok(data_dir(app)?.join("backups").join(p.id))
+fn backups_dir(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
+    Ok(data_dir(app)?.join("backups").join(id))
 }
 
 /// Копия базы перед миграциями. Миграции приходят только с новой сборкой, поэтому копию делаем
 /// при первом открытии базы в каждой новой версии приложения, до того как плагин её тронет.
 /// Не получилось скопировать: базу не открываем, лучше ошибка на экране, чем миграция без копии
-fn backup_before_migrations(app: &AppHandle, p: &ProfileDef) -> Result<(), String> {
-    let db = data_dir(app)?.join(p.file);
-    let dir = backups_dir(app, p)?;
+fn backup_before_migrations(app: &AppHandle, id: &str) -> Result<(), String> {
+    let db = data_dir(app)?.join(db_file(id));
+    let dir = backups_dir(app, id)?;
     let marker = dir.join("version");
     let version = app.package_info().version.to_string();
     let last = std::fs::read_to_string(&marker).unwrap_or_default();
@@ -388,14 +459,229 @@ fn prune_backups(dir: &Path) {
 }
 
 fn mark_tray_profile(app: &AppHandle, id: &str) {
-    if let Some(items) = app.try_state::<TrayProfiles>() {
-        for (pid, item) in &items.0 {
-            let _ = item.set_checked(*pid == id);
+    if let Some(t) = app.try_state::<TrayProfiles>() {
+        if let Ok(items) = t.items.lock() {
+            for (pid, item) in items.iter() {
+                let _ = item.set_checked(pid == id);
+            }
         }
     }
-    if let (Some(tray), Ok(p)) = (app.tray_by_id("tray"), profile(id)) {
-        let _ = tray.set_tooltip(Some(format!("Inbox · {}", p.name)));
+    if let Some(tray) = app.tray_by_id("tray") {
+        let tip = match entry(app, id) {
+            Ok(e) => format!("Inbox · {}", e.name),
+            Err(_) => "Inbox".to_string(),
+        };
+        let _ = tray.set_tooltip(Some(tip));
     }
+}
+
+/// Пересобирает пункты профилей в меню строки меню по текущему списку
+fn rebuild_tray_profiles(app: &AppHandle) -> tauri::Result<()> {
+    let Some(t) = app.try_state::<TrayProfiles>() else {
+        return Ok(());
+    };
+    let list = app
+        .state::<Registry>()
+        .0
+        .lock()
+        .map(|l| l.clone())
+        .unwrap_or_default();
+    for item in t.sub.items()? {
+        t.sub.remove(&item)?;
+    }
+    let mut built = Vec::new();
+    for e in list {
+        let item = CheckMenuItem::with_id(
+            app,
+            format!("profile:{}", e.id),
+            &e.name,
+            true,
+            false,
+            None::<&str>,
+        )?;
+        t.sub.append(&item)?;
+        built.push((e.id, item));
+    }
+    if let Ok(mut items) = t.items.lock() {
+        *items = built;
+    }
+    mark_tray_profile(app, &active_id(app));
+    Ok(())
+}
+
+/// Список изменился: пересобрать меню и сообщить окнам
+fn profiles_changed(app: &AppHandle) {
+    let _ = rebuild_tray_profiles(app);
+    let _ = app.emit("profiles-changed", ());
+}
+
+fn clean_name(name: &str, list: &[Entry], except: Option<&str>) -> Result<String, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("У профиля должно быть название".into());
+    }
+    if name.chars().count() > NAME_MAX {
+        return Err(format!("Название длиннее {NAME_MAX} символов"));
+    }
+    let low = name.to_lowercase();
+    if list
+        .iter()
+        .any(|e| Some(e.id.as_str()) != except && e.name.to_lowercase() == low)
+    {
+        return Err("Профиль с таким названием уже есть".into());
+    }
+    Ok(name)
+}
+
+#[tauri::command]
+fn list_profiles(reg: State<'_, Registry>) -> Result<Vec<Entry>, String> {
+    Ok(reg.0.lock().map_err(|e| e.to_string())?.clone())
+}
+
+/// Адрес базы профиля: по нему окно закрывает базу перед удалением профиля
+#[tauri::command]
+fn profile_url(app: AppHandle, id: String) -> Result<String, String> {
+    entry(&app, &id).map(|e| db_url(&e.id))
+}
+
+/// Новый профиль: берёт свободный запасной файл базы. Название и есть имя профиля
+#[tauri::command]
+fn create_profile(app: AppHandle, reg: State<'_, Registry>, name: String) -> Result<Entry, String> {
+    let created = {
+        let mut list = reg.0.lock().map_err(|e| e.to_string())?;
+        let name = clean_name(&name, &list, None)?;
+        let dir = data_dir(&app)?;
+        let id = SLOTS
+            .iter()
+            .find(|s| !list.iter().any(|e| e.id == **s) && !dir.join(db_file(s)).exists())
+            .ok_or("Больше восьми новых профилей завести нельзя. Удали ненужный")?;
+        let e = Entry {
+            id: id.to_string(),
+            name,
+        };
+        list.push(e.clone());
+        save_registry(&app, &list)?;
+        e
+    };
+    profiles_changed(&app);
+    Ok(created)
+}
+
+/// Порядок профилей: список id в новом порядке. Профили не добавляются и не пропадают, только переставляются
+#[tauri::command]
+fn reorder_profiles(
+    app: AppHandle,
+    reg: State<'_, Registry>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    {
+        let mut list = reg.0.lock().map_err(|e| e.to_string())?;
+        let mut next: Vec<Entry> = Vec::with_capacity(list.len());
+        for id in &ids {
+            if let Some(e) = list.iter().find(|e| &e.id == id) {
+                if !next.iter().any(|n| &n.id == id) {
+                    next.push(e.clone());
+                }
+            }
+        }
+        if next.len() != list.len() {
+            return Err("Список профилей изменился, открой настройки заново".into());
+        }
+        *list = next;
+        save_registry(&app, &list)?;
+    }
+    profiles_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn rename_profile(
+    app: AppHandle,
+    reg: State<'_, Registry>,
+    id: String,
+    name: String,
+) -> Result<(), String> {
+    {
+        let mut list = reg.0.lock().map_err(|e| e.to_string())?;
+        let name = clean_name(&name, &list, Some(&id))?;
+        let e = list
+            .iter_mut()
+            .find(|e| e.id == id)
+            .ok_or_else(|| format!("Нет профиля {id}"))?;
+        e.name = name;
+        save_registry(&app, &list)?;
+    }
+    profiles_changed(&app);
+    Ok(())
+}
+
+/// Удаление: база и вложения не стираются, а уезжают в backups/deleted/<профиль>-<время>.
+/// Окно перед этим закрывает базу, иначе движок держал бы её открытой
+#[tauri::command]
+fn delete_profile(
+    app: AppHandle,
+    reg: State<'_, Registry>,
+    active: State<'_, ActiveProfile>,
+    id: String,
+) -> Result<(), String> {
+    {
+        let mut list = reg.0.lock().map_err(|e| e.to_string())?;
+        let pos = list
+            .iter()
+            .position(|e| e.id == id)
+            .ok_or_else(|| format!("Нет профиля {id}"))?;
+        let name = list[pos].name.clone();
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let grave = data_dir(&app)?
+            .join("backups")
+            .join("deleted")
+            .join(format!("{id}-{secs}"));
+        std::fs::create_dir_all(&grave).map_err(|e| e.to_string())?;
+        let _ = std::fs::write(grave.join("name.txt"), &name);
+        let dir = data_dir(&app)?;
+        for ext in ["", "-wal", "-shm"] {
+            let src = dir.join(format!("{}{ext}", db_file(&id)));
+            if src.exists() {
+                std::fs::rename(&src, grave.join(format!("{}{ext}", db_file(&id))))
+                    .map_err(|e| format!("Не удалось убрать базу: {e}"))?;
+            }
+        }
+        // Вложения: у «test» это числовые папки прямо в attachments, у остальных своя подпапка
+        let att = attachments_dir(&app)?;
+        if id == "test" {
+            if let Ok(rd) = std::fs::read_dir(&att) {
+                for e in rd.flatten() {
+                    let n = e.file_name().to_string_lossy().to_string();
+                    if n.chars().all(|c| c.is_ascii_digit()) {
+                        let to = grave.join("attachments");
+                        let _ = std::fs::create_dir_all(&to);
+                        let _ = std::fs::rename(e.path(), to.join(&n));
+                    }
+                }
+            }
+        } else {
+            let src = att.join(files_sub(&id));
+            if src.exists() {
+                let _ = std::fs::rename(&src, grave.join("attachments"));
+            }
+        }
+        let _ = std::fs::remove_file(backups_dir(&app, &id)?.join("version"));
+        list.remove(pos);
+        save_registry(&app, &list)?;
+    }
+    if let Ok(mut done) = BACKED_UP.lock() {
+        done.retain(|d| d != &id);
+    }
+    if let Ok(mut a) = active.0.lock() {
+        if *a == id {
+            a.clear();
+        }
+    }
+    profiles_changed(&app);
+    Ok(())
 }
 
 /// Окно открывает базу профиля: сначала сюда, потом Database.load по возвращённому адресу.
@@ -406,25 +692,36 @@ fn use_profile(
     active: State<'_, ActiveProfile>,
     id: String,
 ) -> Result<String, String> {
-    let p = profile(&id)?;
+    let e = entry(&app, &id)?;
     {
         // Держим замок, пока копируем: второе окно подождёт и не откроет базу посреди копирования
         let mut done = BACKED_UP.lock().map_err(|e| e.to_string())?;
-        if !done.contains(&p.id) {
-            backup_before_migrations(&app, p)?;
-            done.push(p.id);
+        if !done.contains(&e.id) {
+            backup_before_migrations(&app, &e.id)?;
+            done.push(e.id.clone());
         }
     }
-    *active.0.lock().map_err(|e| e.to_string())? = p;
-    mark_tray_profile(&app, p.id);
-    Ok(db_url(p))
+    *active.0.lock().map_err(|e| e.to_string())? = e.id.clone();
+    mark_tray_profile(&app, &e.id);
+    Ok(db_url(&e.id))
 }
 
-/// Папка с копиями базы активного профиля в Finder
+/// Папка с копиями базы активного профиля в Finder. С deleted: папка с удалёнными профилями
 #[tauri::command]
-fn open_backups(app: AppHandle, active: State<'_, ActiveProfile>) -> Result<(), String> {
-    let p = *active.0.lock().map_err(|e| e.to_string())?;
-    let dir = backups_dir(&app, p)?;
+fn open_backups(
+    app: AppHandle,
+    active: State<'_, ActiveProfile>,
+    deleted: Option<bool>,
+) -> Result<(), String> {
+    let dir = if deleted == Some(true) {
+        data_dir(&app)?.join("backups").join("deleted")
+    } else {
+        let id = active.0.lock().map_err(|e| e.to_string())?.clone();
+        if id.is_empty() {
+            return Err("Профиль не выбран".into());
+        }
+        backups_dir(&app, &id)?
+    };
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     app.opener()
         .open_path(dir.to_string_lossy(), None::<&str>)
@@ -455,7 +752,7 @@ fn attach_file(
     task_id: i64,
     src: String,
 ) -> Result<StoredFile, String> {
-    let sub = active.0.lock().map_err(|e| e.to_string())?.files;
+    let sub = files_sub(&active.0.lock().map_err(|e| e.to_string())?);
     let src = PathBuf::from(src);
     let meta = std::fs::metadata(&src).map_err(|e| format!("Файл не найден: {e}"))?;
     if meta.is_dir() {
@@ -639,11 +936,9 @@ pub fn run() {
     let autostart_args: Option<Vec<&'static str>> = None;
 
     // У каждого профиля своя база с теми же миграциями
-    let sql = PROFILES
-        .iter()
-        .fold(tauri_plugin_sql::Builder::default(), |b, p| {
-            b.add_migrations(&db_url(p), migrations())
-        });
+    let sql = all_ids().fold(tauri_plugin_sql::Builder::default(), |b, id| {
+        b.add_migrations(&db_url(id), migrations())
+    });
 
     let app = tauri::Builder::default()
         .plugin(sql.build())
@@ -669,7 +964,7 @@ pub fn run() {
                 .build(),
         )
         .manage(QuickKey(Mutex::new(quick_shortcut)))
-        .manage(ActiveProfile(Mutex::new(&PROFILES[0])))
+        .manage(ActiveProfile(Mutex::new(String::new())))
         .invoke_handler(tauri::generate_handler![
             hide_quick,
             quick_picking,
@@ -682,6 +977,12 @@ pub fn run() {
             reveal_path,
             open_url,
             use_profile,
+            list_profiles,
+            profile_url,
+            create_profile,
+            rename_profile,
+            reorder_profiles,
+            delete_profile,
             open_backups,
             notify::notify_status,
             notify::notify_send,
@@ -723,29 +1024,21 @@ pub fn run() {
             let sep = PredefinedMenuItem::separator(app)?;
             let quit_i =
                 MenuItem::with_id(app, "quit", "Выйти из Inbox", true, Some("CmdOrCtrl+Q"))?;
-            // Профиль: галочку ставит use_profile, когда окно открыло базу
-            let mut profile_items = Vec::new();
-            for p in PROFILES {
-                let item = CheckMenuItem::with_id(
-                    app,
-                    format!("profile:{}", p.id),
-                    p.name,
-                    true,
-                    false,
-                    None::<&str>,
-                )?;
-                profile_items.push((p.id, item));
-            }
-            let refs: Vec<&dyn tauri::menu::IsMenuItem<Wry>> =
-                profile_items.iter().map(|(_, i)| i as &dyn tauri::menu::IsMenuItem<Wry>).collect();
-            let profile_sub = Submenu::with_items(app, "Профиль", true, &refs)?;
+            // Список профилей читаем здесь: до этого окна не открыты и команд не шлют
+            app.manage(Registry(Mutex::new(load_registry(app.handle()))));
+            // Пункты профилей и галочку расставляют rebuild_tray_profiles и use_profile
+            let profile_sub = Submenu::with_items(app, "Профиль", true, &[])?;
             let sep2 = PredefinedMenuItem::separator(app)?;
             let menu = Menu::with_items(
                 app,
                 &[&quick_i, &open_i, &settings_i, &sep2, &profile_sub, &sep, &quit_i],
             )?;
             app.manage(TrayQuickItem(quick_i.clone()));
-            app.manage(TrayProfiles(profile_items));
+            app.manage(TrayProfiles {
+                sub: profile_sub.clone(),
+                items: Mutex::new(Vec::new()),
+            });
+            rebuild_tray_profiles(app.handle())?;
 
             // Стандартное меню macOS (Правка с копированием и вставкой, Окно) плюс «Настройки…» после «О программе»
             #[cfg(target_os = "macos")]
@@ -779,8 +1072,8 @@ pub fn run() {
                     id => {
                         if let Some(pid) = id.strip_prefix("profile:") {
                             // Меню само переключило галочку: вернём её к активному, пока окно не перезагрузилось
-                            let cur = app.state::<ActiveProfile>().0.lock().map(|p| p.id).unwrap_or("test");
-                            mark_tray_profile(app, cur);
+                            let cur = active_id(app);
+                            mark_tray_profile(app, &cur);
                             if pid != cur {
                                 // Переключает главное окно: запоминает выбор и перезагружает оба окна
                                 show_main(app);

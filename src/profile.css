@@ -16,3 +16,19 @@
 .profile-opt-text span { color: var(--muted); font-size: 12px; }
 
 .qi-profile { color: var(--profile); }
+
+.profile-setup { height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; color: var(--fg); background: var(--bg); }
+.profile-setup form { width: 360px; max-width: 100%; display: flex; flex-direction: column; gap: 12px; }
+.profile-setup h1 { margin: 0; font-size: 20px; }
+.profile-setup p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.profile-setup.quick { color: var(--muted); font-size: 13px; text-align: center; }
+
+.profile-opt-add { color: var(--muted); }
+.profile-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.profile-row .field { flex: 1; min-width: 0; padding: 7px 10px; }
+.profile-row .pname { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-list { display: flex; flex-direction: column; gap: 4px; width: 100%; min-width: 340px; }
+.profile-sort { display: flex; flex-direction: column; gap: 4px; }
+.profile-row .grip { opacity: .8; flex: none; }
+.profile-row .cal-nav { width: 24px; height: 24px; }
+.profile-row .cal-nav:disabled { opacity: .3; }

@@ -2,7 +2,7 @@
 
 /* Меню: разделитель между списками и проектами, сворачиваемая секция, поиск */
 .side-div { height: 1px; margin: 10px 8px 6px; background: var(--line); flex: none; }
-.sec-row { display: flex; align-items: center; gap: 4px; margin: 4px 0 2px; flex: none; }
+.sec-row { position: relative; display: flex; align-items: center; gap: 4px; margin: 4px 0 2px; flex: none; }
 .sec-toggle { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 8px;
   font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); text-align: left; }
 .sec-toggle:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 5%, transparent); }
@@ -14,9 +14,9 @@
 .sec-btn.on { color: var(--fg); background: var(--sel); }
 .nav.add-project { font-weight: 500; flex: none; }
 .add-project .nav-icon { color: var(--stand); }
-.proj-search { display: flex; align-items: center; gap: 6px; margin: 2px 2px 4px; padding: 0 8px; height: 28px; border-radius: 8px;
+.proj-search, .sec-find { display: flex; align-items: center; gap: 6px; margin: 2px 2px 4px; padding: 0 8px; height: 28px; border-radius: 8px;
   background: var(--field); border: 1px solid var(--line); color: var(--muted); flex: none; }
-.proj-search:focus-within { border-color: var(--stand); }
+.proj-search:focus-within, .sec-find { border-color: var(--stand); }
 .proj-search input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 12px; padding: 0; }
 .proj-search input::placeholder { color: var(--muted); }
 .proj-search kbd { font-size: 10px; padding: 0 4px; }
@@ -136,3 +136,11 @@
 /* Умные списки под «Задачами»: с отступом и чуть мельче, это тот же раздел с готовым фильтром */
 .side .nav.smart { padding-left: 26px; font-size: 13px; }
 .set-row.menu-row.smart { padding-left: 22px; }
+
+/* Поиск в заголовке секции: поле закрывает заголовок и кнопки, высота меню не растёт */
+.sec-find { position: absolute; inset: 0; margin: 0; height: auto; z-index: 1; border-color: var(--stand); }
+.sec-find kbd { font-size: 10px; padding: 0 4px; }
+.sec-find input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 12px; padding: 0; }
+/* Пока открыт поиск, заголовок и кнопки под полем не просвечивают */
+.sec-row:has(.sec-find) > :not(.sec-find) { visibility: hidden; }
+.sec-find { background: color-mix(in srgb, var(--bg) 88%, var(--field)); }

@@ -14,7 +14,6 @@ import { PeopleInput, PersonInput, TagInput } from "./TagsUI";
 import { fmtCreated, KindSwitch, RelationsField, RemindField, WaitingField } from "./TaskBits";
 import { anchorOf, remindPatch, remindAtFor, type When } from "./remind";
 import { SpacePicker } from "./SpaceUI";
-import { addTagName, canonicalPerson, parseQuick } from "./tags";
 import { canMove, STAGES, stageOf, type Stage } from "./boardOps";
 import { Icon } from "./icons";
 
@@ -72,9 +71,8 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
   };
 
   const submit = () => {
-    // #тег и @Имя прямо в названии: убираем из текста, добавляем к выбранному в параметрах
-    const q = parseQuick(title);
-    const t = q.title || title.trim();
+    // Название берём как есть: теги и «кто назначил» задаются только в параметрах
+    const t = title.trim();
     if (!t) return titleRef.current?.focus();
     // Адрес, который напечатали, но не подтвердили Enter, тоже берём; на ссылку не похоже — не сохраняем молча
     const typed = newLink.trim() ? normalizeUrl(newLink) : null;
@@ -86,10 +84,6 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
     const links = [...(d.links ?? []), ...(typed && !(d.links ?? []).some((l) => l.url === typed) ? [{ url: typed, title: "" }] : [])];
     const draft: Draft = { ...d, ...(links.length ? { links } : {}) };
     if (!meeting) delete draft.participants;
-    if (q.title) {
-      draft.tags = q.tags.reduce(addTagName, draft.tags ?? []);
-      if (q.person && !draft.assigned_by) draft.assigned_by = canonicalPerson(q.person, props.people);
-    }
     const rule = parseRule(draft.recurrence);
     if (!draft.due_date && (draft.start_time || draft.end_time || draft.remind_at || rule)) draft.due_date = rule ? firstOccurrence(rule, today()) : today();
     // «За 15 минут» считаем от окончательных даты и времени. Свой день и время напоминания остаются как выбрали
@@ -122,7 +116,7 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
   return (
     <form className="qi" onSubmit={(e) => (e.preventDefault(), submit())} onKeyDown={onKey}>
       {props.closable && <CloseX onClick={props.onCancel} />}
-      <input ref={titleRef} className="field qi-title" placeholder="Что нужно сделать? #тег @кто назначил" value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="off" spellCheck={false} />
+      <input ref={titleRef} className="field qi-title" placeholder="Что нужно сделать?" value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="off" spellCheck={false} />
       <textarea ref={noteRef} rows={2} className="field qi-note" placeholder="Заметка, если нужна" value={note} onChange={(e) => setNote(e.target.value)} />
       {more && (
         <div className="qi-more lines">
@@ -286,16 +280,15 @@ export function Details(props: {
   return (
     <aside ref={asideRef} className={`det split ${props.dropping ? "dropping" : ""}`}>
       {/* Прокручивается только содержимое, кнопки внизу живут отдельно и ничего не закрывают */}
-      <div className="det-body">
-      <div>
+      <div className="det-head">
         <div className="lbl">{isInbox ? "Разбор" : locked ? "Завершена" : x.kind === "meeting" ? "Встреча" : "Задача"}</div>
         <textarea className="det-title" rows={1} value={title} disabled={locked}
           onChange={(e) => setTitle(e.target.value.replace(/\n/g, ""))}
           onBlur={saveTitle}
           onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLElement).blur(); } }} />
+        <div className="det-created hint" data-tip={`Создана ${fmtStamp(x.created_at)}`}>Создана {fmtCreated(x.created_at).toLowerCase()}</div>
       </div>
-
-      <div className="det-created hint" data-tip={`Создана ${fmtStamp(x.created_at)}`}>Создана {fmtCreated(x.created_at).toLowerCase()}</div>
+      <div className="det-body">
 
       <fieldset className="det-sec" disabled={locked}>
         <div className="lbl">Статус</div>
@@ -480,7 +473,6 @@ export const SHORTCUTS: [string, string][] = [
   ["⌥ Space", "Быстрый ввод из любого приложения"],
   ["N", "Записать задачу, а в разделе «Люди» человека"],
   ["⌘E", "Дата, напоминание, пространство, теги при записи"],
-  ["#тег @Имя", "В названии: тег и кто назначил"],
   ["↑ ↓", "Выбрать задачу"],
   ["Enter", "Разобрать (в «Новые»)"],
   ["Space", "Сделано / вернуть"],

@@ -138,6 +138,8 @@ export function TagInput(props: { value: string[]; tags: Tag[]; onChange: (names
 export function PersonInput(props: { value: string | null; people: string[]; onChange: (v: string | null) => void; disabled?: boolean; placeholder?: string }) {
   const [text, setText] = useState(props.value ?? "");
   const [focus, setFocus] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const skipBlur = useRef(false); // выбор уже зафиксирован: blur не должен сохранять устаревший текст
   useEffect(() => setText(props.value ?? ""), [props.value]);
   const exact = props.people.some((p) => p === text.trim());
   const items = focus && !exact ? suggest(props.people, text) : [];
@@ -148,28 +150,35 @@ export function PersonInput(props: { value: string | null; people: string[]; onC
     setHi(-1);
     if (v !== props.value) props.onChange(v);
   };
+  /** Выбор человека (клик по подсказке, Enter, Tab): фиксируем и убираем фокус из поля */
+  const pick = (raw: string) => {
+    commit(raw);
+    skipBlur.current = true;
+    input.current?.blur();
+    skipBlur.current = false;
+  };
   return (
     <div className="tag-field">
       <label className={`person-input field ${props.disabled ? "disabled" : ""}`}>
         <UserRound size={13} />
-        <input value={text} maxLength={40} spellCheck={false} autoComplete="off" disabled={props.disabled}
+        <input ref={input} value={text} maxLength={40} spellCheck={false} autoComplete="off" disabled={props.disabled}
           placeholder={props.placeholder ?? "Кто назначил, например Андрей"}
           onChange={(e) => (setText(e.target.value), setHi(-1))}
           onFocus={() => setFocus(true)}
-          onBlur={() => (setFocus(false), commit(text))}
+          onBlur={() => (setFocus(false), !skipBlur.current && commit(text))}
           onKeyDown={(e) => {
             if (onArrow(e)) return;
             if (e.key === "Enter" || (e.key === "Tab" && hi >= 0)) {
               e.preventDefault();
               e.stopPropagation();
-              commit(hi >= 0 ? items[hi] : text);
+              pick(hi >= 0 ? items[hi] : text);
             }
           }} />
         {props.value && !props.disabled && (
           <button type="button" className="tchip-x" aria-label="Убрать" onMouseDown={(e) => e.preventDefault()} onClick={() => commit("")}><X size={11} /></button>
         )}
       </label>
-      <Suggestions items={items} hi={hi} onPick={commit} person />
+      <Suggestions items={items} hi={hi} onPick={pick} person />
     </div>
   );
 }
@@ -385,7 +394,7 @@ export function FilterButton(props: {
                 <TagChip name={t.name} color={t.color} />
               </button>
             ))}
-            {!tags.length && <span className="hint">Тегов пока нет. Их ставят в панели задачи или #тегом в названии</span>}
+            {!tags.length && <span className="hint">Тегов пока нет. Их ставят в панели задачи и в параметрах быстрого создания</span>}
           </div>
           <div className="lbl sub-lbl">Кто назначил</div>
           <div className="seg">

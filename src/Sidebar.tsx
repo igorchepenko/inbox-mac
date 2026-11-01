@@ -8,7 +8,7 @@ import { Icon } from "./icons";
 import { IconGrid, Popover, ThemeSwitch } from "./widgets";
 import { HomeIcon } from "./home/Home";
 import { spaceVars } from "./palette";
-import { activeProfile, PROFILES, profileName, switchProfile } from "./profile";
+import { activeProfile, profileName, switchProfile, useProfiles } from "./profile";
 
 export const KEY_PROJECTS_COLLAPSED = "side.projects.collapsed";
 export const KEY_TAGS_COLLAPSED = "side.tags.collapsed";
@@ -80,12 +80,16 @@ export function Sidebar(props: {
   const [picker, setPicker] = useState<{ id: ViewId; el: HTMLElement } | null>(null);
   const [collapsed, setCollapsed] = useState(props.settings[KEY_PROJECTS_COLLAPSED] === "1");
   useEffect(() => setCollapsed(props.settings[KEY_PROJECTS_COLLAPSED] === "1"), [props.settings[KEY_PROJECTS_COLLAPSED]]); // eslint-disable-line react-hooks/exhaustive-deps
-  const tagsFolded = props.settings[KEY_TAGS_COLLAPSED] === "1";
+  // Раскрыт только один из блоков: пространства или теги. Если по старым настройкам раскрыты оба, остаются пространства
+  const tagsFolded = props.settings[KEY_TAGS_COLLAPSED] === "1" || !collapsed;
   const [tagEdit, setTagEdit] = useState<{ id: number; el: HTMLElement } | null>(null);
   const editing = tagEdit && props.tags.find((t) => t.id === tagEdit.id);
   const [query, setQuery] = useState("");
   const [hi, setHi] = useState(0);
   const search = useRef<HTMLInputElement>(null);
+  // Поиск спрятан за лупой в заголовке секции: открытое поле закрывает заголовок
+  const [findOpen, setFindOpen] = useState(false);
+  const [tagFindOpen, setTagFindOpen] = useState(false);
   const [tagQuery, setTagQuery] = useState("");
   const [tagHi, setTagHi] = useState(0);
   const [newTag, setNewTag] = useState<HTMLElement | null>(null);
@@ -96,21 +100,35 @@ export function Sidebar(props: {
   const setFolded = (v: boolean) => {
     setCollapsed(v);
     props.onSetting(KEY_PROJECTS_COLLAPSED, v ? "1" : "0");
+    if (!v) props.onSetting(KEY_TAGS_COLLAPSED, "1");
+  };
+  const setTagsFolded = (v: boolean) => {
+    props.onSetting(KEY_TAGS_COLLAPSED, v ? "1" : "0");
+    if (!v) setFolded(true);
   };
 
   useEffect(() => {
     const find = () => {
       if (collapsed) setFolded(false);
+      setFindOpen(true);
       requestAnimationFrame(() => search.current?.focus());
     };
     window.addEventListener(FIND_PROJECT_EVENT, find);
     return () => window.removeEventListener(FIND_PROJECT_EVENT, find);
   });
 
+  useEffect(() => {
+    if (findOpen) search.current?.focus();
+  }, [findOpen]);
+  useEffect(() => {
+    if (tagFindOpen) tagSearch.current?.focus();
+  }, [tagFindOpen]);
+
   const jump = (p: Project | undefined) => {
     if (!p) return;
     props.onOpen(`p:${p.id}`);
     setQuery("");
+    setFindOpen(false);
     search.current?.blur();
   };
 
@@ -159,10 +177,32 @@ export function Sidebar(props: {
           <span>Пространства</span>
           {collapsed && props.projects.length > 0 && <span className="sec-n">{props.projects.length}</span>}
         </button>
+        {!collapsed && props.projects.length > 0 && (
+          <button className="sec-btn" onClick={() => setFindOpen(true)} data-tip="Найти пространство и перейти" data-key="⌘P" aria-label="Найти пространство">
+            <Search size={14} />
+          </button>
+        )}
         <button className={`sec-btn ${cur === "projects" ? "on" : ""}`} onClick={() => props.onOpen("projects")}
           data-tip="Все пространства карточками" data-key="⌘7" aria-label="Все пространства">
           <LayoutGrid size={14} />
         </button>
+        {findOpen && !collapsed && (
+          <label className="sec-find">
+            <Search size={13} />
+            <input ref={search} placeholder="Найти пространство" value={query} spellCheck={false}
+              onChange={(e) => (setQuery(e.target.value), setHi(0))}
+              onBlur={() => (setHi(0), !query && setFindOpen(false))}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowDown") (e.preventDefault(), setHi((h) => Math.min(h + 1, found.length - 1)));
+                else if (e.key === "ArrowUp") (e.preventDefault(), setHi((h) => Math.max(h - 1, 0)));
+                else if (e.key === "Enter") (e.preventDefault(), jump(found[hi]));
+                else if (e.key === "Escape") (e.preventDefault(), e.stopPropagation(), setQuery(""), setFindOpen(false));
+              }} />
+            {query ? (
+              <button className="proj-search-x" aria-label="Очистить" onMouseDown={(e) => e.preventDefault()} onClick={() => (setQuery(""), setFindOpen(false))}><X size={12} /></button>
+            ) : <kbd>⌘P</kbd>}
+          </label>
+        )}
       </div>
 
       {!collapsed && (<>
@@ -170,23 +210,6 @@ export function Sidebar(props: {
           <span className="nav-icon"><Plus size={15} /></span>
           <span className="nav-name">Новое пространство</span>
         </button>
-        {props.projects.length > 0 && (
-          <label className="proj-search" data-tip="Найти пространство и перейти" data-key="⌘P">
-            <Search size={13} />
-            <input ref={search} placeholder="Найти пространство" value={query} spellCheck={false}
-              onChange={(e) => (setQuery(e.target.value), setHi(0))}
-              onBlur={() => setHi(0)}
-              onKeyDown={(e) => {
-                if (e.key === "ArrowDown") (e.preventDefault(), setHi((h) => Math.min(h + 1, found.length - 1)));
-                else if (e.key === "ArrowUp") (e.preventDefault(), setHi((h) => Math.max(h - 1, 0)));
-                else if (e.key === "Enter") (e.preventDefault(), jump(found[hi]));
-                else if (e.key === "Escape") (e.preventDefault(), e.stopPropagation(), setQuery(""), e.currentTarget.blur());
-              }} />
-            {query ? (
-              <button className="proj-search-x" aria-label="Очистить" onMouseDown={(e) => e.preventDefault()} onClick={() => setQuery("")}><X size={12} /></button>
-            ) : <kbd>⌘P</kbd>}
-          </label>
-        )}
         <div className="proj-list">
           {found.map((p, i) => item(`p:${p.id}`, p.name, p.color, p.icon, () => props.onEditProject(p), undefined, query && i === hi ? "hi" : "", true))}
           {query && !found.length && <div className="proj-none">Ничего не нашлось</div>}
@@ -195,42 +218,47 @@ export function Sidebar(props: {
 
       <div className="side-div" role="separator" />
       <div className="sec-row">
-        <button className="sec-toggle" aria-expanded={!tagsFolded} onClick={() => props.onSetting(KEY_TAGS_COLLAPSED, tagsFolded ? "0" : "1")}
+        <button className="sec-toggle" aria-expanded={!tagsFolded} onClick={() => setTagsFolded(!tagsFolded)}
           data-tip={tagsFolded ? "Показать теги" : "Свернуть теги"}>
           <ChevronDown size={13} className={`chev ${tagsFolded ? "folded" : ""}`} />
           <span>Теги</span>
           {tagsFolded && props.tags.length > 0 && <span className="sec-n">{props.tags.length}</span>}
         </button>
+        {!tagsFolded && props.tags.length > 0 && (
+          <button className="sec-btn" onClick={() => setTagFindOpen(true)} data-tip="Найти тег и перейти" aria-label="Найти тег">
+            <Search size={14} />
+          </button>
+        )}
         <button className={`sec-btn ${cur === "tags" ? "on" : ""}`} onClick={() => props.onOpen("tags")}
           data-tip="Все теги карточками" aria-label="Все теги">
           <LayoutGrid size={14} />
         </button>
-      </div>
-      {!tagsFolded && (<>
-        <button className="nav add-project" onClick={(e) => setNewTag(e.currentTarget)}>
-          <span className="nav-icon"><Plus size={15} /></span>
-          <span className="nav-name">Новый тег</span>
-        </button>
-        {props.tags.length > 0 && (
-          <label className="proj-search" data-tip="Найти тег и перейти">
+        {tagFindOpen && !tagsFolded && (
+          <label className="sec-find">
             <Search size={13} />
             <input ref={tagSearch} placeholder="Найти тег" value={tagQuery} spellCheck={false}
               onChange={(e) => (setTagQuery(e.target.value), setTagHi(0))}
-              onBlur={() => setTagHi(0)}
+              onBlur={() => (setTagHi(0), !tagQuery && setTagFindOpen(false))}
               onKeyDown={(e) => {
                 if (e.key === "ArrowDown") (e.preventDefault(), setTagHi((h) => Math.min(h + 1, tagsFound.length - 1)));
                 else if (e.key === "ArrowUp") (e.preventDefault(), setTagHi((h) => Math.max(h - 1, 0)));
                 else if (e.key === "Enter") {
                   e.preventDefault();
                   const t = tagsFound[tagHi];
-                  if (t) (props.onOpen(`t:${t.id}`), setTagQuery(""), tagSearch.current?.blur());
-                } else if (e.key === "Escape") (e.preventDefault(), e.stopPropagation(), setTagQuery(""), e.currentTarget.blur());
+                  if (t) (props.onOpen(`t:${t.id}`), setTagQuery(""), setTagFindOpen(false));
+                } else if (e.key === "Escape") (e.preventDefault(), e.stopPropagation(), setTagQuery(""), setTagFindOpen(false));
               }} />
             {tagQuery && (
-              <button className="proj-search-x" aria-label="Очистить" onMouseDown={(e) => e.preventDefault()} onClick={() => setTagQuery("")}><X size={12} /></button>
+              <button className="proj-search-x" aria-label="Очистить" onMouseDown={(e) => e.preventDefault()} onClick={() => (setTagQuery(""), setTagFindOpen(false))}><X size={12} /></button>
             )}
           </label>
         )}
+      </div>
+      {!tagsFolded && (<>
+        <button className="nav add-project" onClick={(e) => setNewTag(e.currentTarget)}>
+          <span className="nav-icon"><Plus size={15} /></span>
+          <span className="nav-name">Новый тег</span>
+        </button>
         <div className="proj-list tag-list">
           {tagsFound.map((t, i) => {
             const id: ViewId = `t:${t.id}`;
@@ -277,6 +305,7 @@ export function Sidebar(props: {
 /** Активный профиль внизу меню, чтобы не перепутать, где ты. Клик открывает выбор профиля */
 function ProfileSwitch() {
   const cur = activeProfile();
+  const all = useProfiles();
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   return (
     <>
@@ -288,13 +317,14 @@ function ProfileSwitch() {
       {anchor && (
         <Popover anchor={anchor} onClose={() => setAnchor(null)} width={250}>
           <div className="lbl">Профиль</div>
-          {PROFILES.map((p) => (
+          {all.map((p) => (
             <button key={p.id} className="profile-opt" data-profile={p.id} onClick={() => (setAnchor(null), switchProfile(p.id))}>
               <span className="side-profile-dot" />
-              <span className="profile-opt-text"><b>{p.name}</b><span>{p.hint}</span></span>
+              <span className="profile-opt-text"><b>{p.name}</b></span>
               {p.id === cur && <Check size={14} />}
             </button>
           ))}
+          <div className="profile-opt-add profile-opt-text" style={{ padding: "6px 8px" }}><span>Создать, переименовать и удалить: Настройки → Профиль</span></div>
         </Popover>
       )}
     </>

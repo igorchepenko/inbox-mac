@@ -143,7 +143,7 @@ export function WaitingField(props: {
             <DateField value={x.waiting_until} onChange={set} accent="move" />
           </div>
           {pingDue(x) && <div className="hint wait-ping">Пора напомнить: {x.waiting_for} ждёт тебя в «Сегодня»</div>}
-          <div className="row-btns"><button type="button" className="btn" disabled={props.disabled} onClick={() => props.onPatch(CLEAR_WAITING)}>Пришёл ответ</button></div>
+          <div className="row-btns wait-done"><button type="button" className="btn" disabled={props.disabled} onClick={() => props.onPatch(CLEAR_WAITING)}>Пришёл ответ</button></div>
         </>
       )}
     </>

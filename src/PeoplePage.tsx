@@ -385,7 +385,7 @@ export default function PeoplePage(props: {
           </div>
         ))}
         {!props.people.length && (
-          <div className="pp-none">Здесь будут все, кто ставит тебе задачи и ходит на встречи. Имя появится само, когда впишешь его в задачу или наберёшь @Имя при записи. Можно записать и вручную: кнопка выше или клавиша N.</div>
+          <div className="pp-none">Здесь будут все, кто ставит тебе задачи и ходит на встречи. Имя появится само, когда впишешь его в задачу. Можно записать и вручную: кнопка выше или клавиша N.</div>
         )}
         {(query.trim() || peopleFilterCount(filter) > 0) && !shown.length && props.people.length > 0 && (
           <div className="pp-none">{query.trim() ? "Никого не нашлось. Ищу по имени." : "С такими фильтрами людей нет."}</div>

@@ -170,3 +170,5 @@ button.h-ds:hover { border-color: var(--border); }
   .h-blk { transition: box-shadow .15s, opacity .15s; }
   .h-arc { transition: stroke-dasharray .5s cubic-bezier(.2, .8, .2, 1); }
 }
+/* Панель настройки дашборда непрозрачна: в стеклянном оформлении --surface полупрозрачный, и блоки просвечивали сквозь неё */
+.h-cust { background: linear-gradient(var(--surface), var(--surface)), var(--bg); z-index: 20; }
