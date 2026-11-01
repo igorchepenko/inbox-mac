@@ -119,6 +119,17 @@ export async function renameProfile(id: ProfileId, name: string): Promise<string
   }
 }
 
+/** Поставить профили в новом порядке: он же в меню внизу слева и в строке меню */
+export async function reorderProfiles(ids: ProfileId[]): Promise<string | null> {
+  try {
+    await invoke("reorder_profiles", { ids });
+    await loadProfiles();
+    return null;
+  } catch (e) {
+    return String(e);
+  }
+}
+
 /**
  * Удалить профиль. Сначала закрываем его базу в движке: иначе он держал бы файл открытым и,
  * когда запасной файл достанется новому профилю, отдал бы ему старое соединение.

@@ -141,3 +141,6 @@
 .sec-find { position: absolute; inset: 0; margin: 0; height: auto; z-index: 1; border-color: var(--stand); }
 .sec-find kbd { font-size: 10px; padding: 0 4px; }
 .sec-find input { flex: 1; min-width: 0; border: 0; background: none; outline: none; font-size: 12px; padding: 0; }
+/* Пока открыт поиск, заголовок и кнопки под полем не просвечивают */
+.sec-row:has(.sec-find) > :not(.sec-find) { visibility: hidden; }
+.sec-find { background: color-mix(in srgb, var(--bg) 88%, var(--field)); }

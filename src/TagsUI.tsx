@@ -394,7 +394,7 @@ export function FilterButton(props: {
                 <TagChip name={t.name} color={t.color} />
               </button>
             ))}
-            {!tags.length && <span className="hint">Тегов пока нет. Их ставят в панели задачи или #тегом в названии</span>}
+            {!tags.length && <span className="hint">Тегов пока нет. Их ставят в панели задачи и в параметрах быстрого создания</span>}
           </div>
           <div className="lbl sub-lbl">Кто назначил</div>
           <div className="seg">

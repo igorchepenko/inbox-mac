@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BellRing, Check, FolderOpen, Pencil, Trash2, Info, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, Rows3, SlidersHorizontal, Type, UserRound, type LucideIcon } from "lucide-react";
+import { moveItem, useSortable } from "./drag";
+import { BellRing, Check, ChevronDown, ChevronUp, FolderOpen, GripVertical, Pencil, Trash2, Info, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, Rows3, SlidersHorizontal, Type, UserRound, type LucideIcon } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as autostartEnabled } from "@tauri-apps/plugin-autostart";
 import { Icon } from "./icons";
@@ -11,7 +12,7 @@ import { HomeSettings } from "./HomeSettings";
 import { FieldsSettings } from "./FieldsSettings";
 import { HomeIcon } from "./home/Home";
 import { QuickKeyTest } from "./QuickKeyCheck";
-import { activeProfile, createProfile, deleteProfile, renameProfile, switchProfile, useProfiles } from "./profile";
+import { activeProfile, createProfile, deleteProfile, renameProfile, reorderProfiles, switchProfile, useProfiles } from "./profile";
 import { notify, permission } from "./reminders";
 import { fmtDate } from "./buildInfo";
 import {
@@ -188,6 +189,13 @@ function Profiles(p: SettingsProps) {
   const [fresh, setFresh] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [name, setName] = useState(p.settings["home:name"] ?? "Игорь");
+  // Порядок держим локально, чтобы перетаскивание шло без задержки на запись
+  const [order, setOrder] = useState(all.map((x) => x.id));
+  const key = all.map((x) => x.id).join(",");
+  useEffect(() => setOrder(key.split(",").filter(Boolean)), [key]);
+  const shown = order.map((id) => all.find((x) => x.id === id)).filter((x): x is NonNullable<typeof x> => !!x);
+  const saveOrder = (o: string[]) => (setOrder(o), reorderProfiles(o).then(setErr));
+  const sort = useSortable({ onDrop: (from, to) => saveOrder(moveItem(order, from, to)) });
   return (
     <div className="set-group">
       <Row name="Твоё имя" hint="Так приложение обращается к тебе в приветствии на дашборде. Своё у каждого профиля">
@@ -199,8 +207,10 @@ function Profiles(p: SettingsProps) {
       <Row name="Профили"
         hint="У каждого профиля свои задачи, пространства и настройки, между профилями связи нет. Название и есть имя профиля. Быстрый ввод пишет в активный. Переключиться можно и в меню Inbox в строке меню">
         <div className="profile-list">
-          {all.map((x) => (
-            <div className="profile-row" key={x.id} data-profile={x.id}>
+          <div className={`profile-sort ${sort.dragging != null ? "sorting" : ""}`} ref={sort.listRef}>
+          {shown.map((x, i) => (
+            <div className={`profile-row sort-row ${sort.dragging === i ? "lifted" : ""}`} style={sort.rowStyle(i)} key={x.id} data-profile={x.id}>
+              <span className="grip" title="Перетащи, чтобы поменять порядок" {...sort.grip(i)}><GripVertical size={14} /></span>
               {editing === x.id ? (
                 <input className="field" autoFocus maxLength={40} value={draft} spellCheck={false}
                   onChange={(e) => setDraft(e.target.value)}
@@ -222,6 +232,8 @@ function Profiles(p: SettingsProps) {
                 <>
                   <button type="button" className={`chip ${cur === x.id ? "on" : ""}`} style={cur === x.id ? { background: "var(--profile)" } : undefined}
                     onClick={() => switchProfile(x.id)}>{cur === x.id ? <><Check size={13} /> Активный</> : "Выбрать"}</button>
+                  <button type="button" className="cal-nav" disabled={i === 0} aria-label="Выше" onClick={() => saveOrder(moveItem(order, i, i - 1))}><ChevronUp size={14} /></button>
+                  <button type="button" className="cal-nav" disabled={i === shown.length - 1} aria-label="Ниже" onClick={() => saveOrder(moveItem(order, i, i + 1))}><ChevronDown size={14} /></button>
                   <button type="button" className="gear" aria-label="Переименовать" data-tip="Переименовать"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => (setEditing(x.id), setDraft(x.name), setErr(null))}><Pencil size={14} /></button>
@@ -230,6 +242,7 @@ function Profiles(p: SettingsProps) {
               )}
             </div>
           ))}
+          </div>
           <div className="profile-row">
             <input className="field" maxLength={40} value={fresh} placeholder="Название нового профиля" spellCheck={false}
               onChange={(e) => (setFresh(e.target.value), setErr(null))}

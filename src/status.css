@@ -53,3 +53,9 @@
 /* Галочка в зелёном чекбоксе списка выполненных, как на карточке доски */
 .row.done:not(.cancelled) .chk { display: grid; place-items: center; padding: 0; color: #fff; }
 .row.done:not(.cancelled) .chk svg { display: block; }
+/* Шапка задачи (тип, название, дата создания) закреплена, под ней прокручивается только содержимое */
+.det-head { flex: none; padding: 0 16px 10px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+.det-head .lbl { margin-bottom: 0; }
+.det-head .det-created { margin-top: 0; }
+.det-head .det-title { max-height: 5.4em; overflow-y: auto; }
+.det-body { padding-top: 14px; }

@@ -567,6 +567,33 @@ fn create_profile(app: AppHandle, reg: State<'_, Registry>, name: String) -> Res
     Ok(created)
 }
 
+/// Порядок профилей: список id в новом порядке. Профили не добавляются и не пропадают, только переставляются
+#[tauri::command]
+fn reorder_profiles(
+    app: AppHandle,
+    reg: State<'_, Registry>,
+    ids: Vec<String>,
+) -> Result<(), String> {
+    {
+        let mut list = reg.0.lock().map_err(|e| e.to_string())?;
+        let mut next: Vec<Entry> = Vec::with_capacity(list.len());
+        for id in &ids {
+            if let Some(e) = list.iter().find(|e| &e.id == id) {
+                if !next.iter().any(|n| &n.id == id) {
+                    next.push(e.clone());
+                }
+            }
+        }
+        if next.len() != list.len() {
+            return Err("Список профилей изменился, открой настройки заново".into());
+        }
+        *list = next;
+        save_registry(&app, &list)?;
+    }
+    profiles_changed(&app);
+    Ok(())
+}
+
 #[tauri::command]
 fn rename_profile(
     app: AppHandle,
@@ -954,6 +981,7 @@ pub fn run() {
             profile_url,
             create_profile,
             rename_profile,
+            reorder_profiles,
             delete_profile,
             open_backups,
             notify::notify_status,

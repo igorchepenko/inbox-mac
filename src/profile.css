@@ -28,3 +28,7 @@
 .profile-row .field { flex: 1; min-width: 0; padding: 7px 10px; }
 .profile-row .pname { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .profile-list { display: flex; flex-direction: column; gap: 4px; width: 100%; min-width: 340px; }
+.profile-sort { display: flex; flex-direction: column; gap: 4px; }
+.profile-row .grip { opacity: .8; flex: none; }
+.profile-row .cal-nav { width: 24px; height: 24px; }
+.profile-row .cal-nav:disabled { opacity: .3; }
