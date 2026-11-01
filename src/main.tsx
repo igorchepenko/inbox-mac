@@ -2,6 +2,8 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import QuickApp from "./Quick";
+import "./design/tokens.css";
+import "./design/bundle.css";
 import "./styles.css";
 import "./task.css";
 import "./nav.css";

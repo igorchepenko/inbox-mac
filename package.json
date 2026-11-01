@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "test": "vitest run",
+    "tokens": "node scripts/gen-tokens.mjs",
+    "tokens:check": "node scripts/gen-tokens.mjs --check",
     "build": "tsc --noEmit && vite build",
     "tauri": "tauri",
     "app:dev": "tauri dev",
