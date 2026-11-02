@@ -1,7 +1,7 @@
 import { relationsByTask, rowFor, wouldCycle, type Relation, type RelationKind, type RelationRow } from "./relations";
 import Database from "@tauri-apps/plugin-sql";
 import { invoke } from "@tauri-apps/api/core";
-import { nowStamp, stampDay, today } from "./dates";
+import { nowStamp, stampDay } from "./dates";
 import { nextOccurrence, parseRule } from "./recurrence";
 import { activeProfile } from "./profile";
 import { normalizeTag, pickColor, sameName, TAG_MAX, byName } from "./tags";
