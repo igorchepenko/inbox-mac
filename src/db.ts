@@ -616,11 +616,6 @@ export async function deleteProject(id: number, fate: ProjectTasksFate = "keep")
   await d.execute("DELETE FROM projects WHERE id = $1", [id]);
 }
 
-/** Сделанные до сегодняшнего дня задачи сами уходят в архив: сегодняшние ещё видны и считаются в кольце */
-export async function archiveOldDone(): Promise<void> {
-  await (await db()).execute("UPDATE tasks SET status = 'archived' WHERE status = 'done' AND done_at < $1", [today()]);
-}
-
 /**
  * Связать задачу с другой. «Заблокирована» записывается как «блокирует» с другой стороны, поэтому у второй задачи
  * парная связь появляется сама. Возвращает текст ошибки, если связь не получится (цикл, уже связаны)

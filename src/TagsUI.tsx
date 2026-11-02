@@ -12,6 +12,8 @@ import { plural, SMART, type ViewId } from "./views";
 
 /** Умные списки в фильтрах раздела «Задачи»: можно выбрать несколько, пусто — все задачи */
 export interface SmartFilter {
+  /** Умные списки, которые не спрятаны в настройках меню */
+  lists: { id: ViewId; name: string }[];
   value: ViewId[];
   onToggle: (v: ViewId) => void;
   onClear: () => void;
@@ -369,7 +371,7 @@ export function FilterButton(props: {
             <>
               <div className="lbl">Умный список <span className="opt">задачи из любого выбранного</span></div>
               <div className="seg">
-                {SMART.map((x) => (
+                {props.smart.lists.map((x) => (
                   <button type="button" key={x.id} className={`fchip person ${props.smart!.value.includes(x.id) ? "on" : ""}`}
                     onClick={() => props.smart!.onToggle(x.id)}>
                     <Sparkles size={11} /> {x.name}

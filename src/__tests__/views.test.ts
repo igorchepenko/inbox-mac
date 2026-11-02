@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { compareBy, countFor, directionOf, listFor, plural, revOf, sortOf } from "../views";
+import { ALWAYS, compareBy, countFor, directionOf, HOTKEY_VIEWS, listFor, plural, revOf, SMART, sortOf, sortsFor } from "../views";
 import { boardFor, layoutOf, stageOf } from "../boardOps";
 import { freezeToday, task } from "./helpers";
 
@@ -111,8 +111,14 @@ describe("списки", () => {
     task({ id: 9, status: "active", project_id: 3, created_at: "2026-10-02T10:00:00" }),
   ];
 
-  it("«Сегодня» включает просроченное и сделанное сегодня, открытое выше сделанного", () => {
-    expect(ids(listFor("today", tasks))).toEqual([2, 3, 6]);
+  it("«Сегодня» включает просроченное, но не сделанное: оно сразу уходит в «Завершённые»", () => {
+    expect(ids(listFor("today", tasks))).toEqual([2, 3]);
+  });
+
+  it("«Просроченные»: срок раньше сегодня, не сделана и не отменена", () => {
+    const xs = [...tasks, task({ id: 10, status: "inbox", due_date: "2026-10-05" }), task({ id: 11, status: "done", due_date: "2026-10-05", done_at: "2026-10-06T09:00:00" })];
+    expect(ids(listFor("overdue", xs))).toEqual([10, 2]);
+    expect(countFor("overdue", xs)).toBe(2);
   });
 
   it("«Скоро» — будущие даты по дням, потом без даты, с заголовками групп", () => {
@@ -125,9 +131,25 @@ describe("списки", () => {
     expect(ids(listFor("inbox", tasks))).toEqual([1]);
   });
 
-  it("архив: свежее сверху, сделанное вчера не попадает в «Сегодня»", () => {
-    expect(ids(listFor("archive", tasks))).toEqual([8]);
-    expect(ids(listFor("today", tasks))).not.toContain(7);
+  it("архив: сделанные и отменённые сразу, свежие сверху", () => {
+    expect(ids(listFor("archive", tasks))).toEqual([6, 8, 7]);
+    expect(ids(listFor("archive", tasks, "date", true))).toEqual([7, 8, 6]);
+    expect(ids(listFor("today", tasks))).not.toContain(6);
+  });
+
+  it("архив по статусу: группы «Сделано» и «Отменено»", () => {
+    const xs = [task({ id: 1, status: "done", done_at: "2026-10-01T09:00:00" }), task({ id: 2, status: "done", cancelled: 1, done_at: "2026-10-09T09:00:00" }), task({ id: 3, status: "done", done_at: "2026-10-05T09:00:00" })];
+    const items = listFor("archive", xs, "status");
+    expect(items.map((i) => [i.task.id, i.group])).toEqual([[3, "Сделано"], [1, undefined], [2, "Отменено"]]);
+    expect(ids(listFor("archive", xs, "status", true))).toEqual([2, 3, 1]);
+  });
+
+  it("канбан «Завершённых»: только закрытые, столбцы «Готово» и «Отменено»", () => {
+    const xs = [...tasks, task({ id: 12, status: "done", cancelled: 1, done_at: "2026-10-03T09:00:00" })];
+    const cols = boardFor("archive", xs, "date");
+    expect(cols.map((c) => c.key)).toEqual(["done", "cancelled"]);
+    expect(ids(cols[0].items)).toEqual([6, 8, 7]);
+    expect(ids(cols[1].items)).toEqual([12]);
   });
 
   it("список пространства показывает его активные задачи", () => {
@@ -207,5 +229,22 @@ describe("страница «Теги»", () => {
   it("не список задач: пусто и без счётчика", () => {
     expect(listFor("tags", [task({ id: 1 })])).toEqual([]);
     expect(countFor("tags", [task({ id: 1 })])).toBe(0);
+  });
+});
+
+describe("меню", () => {
+  it("спрятать можно любой умный список, кроме самих «Задач»", () => {
+    expect(ALWAYS).toEqual(["tasks"]);
+    expect(SMART.map((s) => s.id)).toEqual(["inbox", "today", "overdue", "soon", "waiting"]);
+  });
+
+  it("«Просроченные» без сочетания клавиш: ⌘1…⌘6 не сдвигаются", () => {
+    expect(HOTKEY_VIEWS.map((v) => v.id)).toEqual(["tasks", "inbox", "today", "soon", "archive", "calendar"]);
+  });
+
+  it("сортировка по статусу есть только у «Завершённых»", () => {
+    expect(sortsFor("archive").map((s) => s.id)).toContain("status");
+    expect(sortsFor("tasks").map((s) => s.id)).not.toContain("status");
+    expect(directionOf("date", false, "archive").text).toBe("недавние сверху");
   });
 });

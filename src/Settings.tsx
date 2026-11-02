@@ -459,8 +459,7 @@ function MenuItems(p: SettingsProps) {
             <div className="set-text">
               <div className="set-name">{v.name}</div>
               {v.id === "tasks" && <div className="hint">Все задачи с фильтрами, поэтому этот пункт всегда виден</div>}
-              {v.id === "inbox" && <div className="hint">Умный список. Сюда падают все новые задачи, поэтому он всегда виден</div>}
-              {isSmart(v.id) && v.id !== "inbox" && <div className="hint">Умный список: «Задачи» с готовым фильтром</div>}
+              {isSmart(v.id) && <div className="hint">Умный список: «Задачи» с готовым фильтром. Можно убрать из меню</div>}
               <div className="set-def">
                 По умолчанию: <b>виден, иконка</b> <Icon name={v.icon} size={13} />
                 {menuChanged(v.id) && <button type="button" className="link" onClick={() => resetMenu(v.id)}>Сбросить</button>}

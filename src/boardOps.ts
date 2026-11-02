@@ -1,7 +1,7 @@
 import * as db from "./db";
 import { isCancelled, isClosed, type Task } from "./db";
 import { addDays, nowStamp, stampDay, today } from "./dates";
-import { compareBy, isSmart, listFor, scopeOf, VIEWS, type ListItem, type SortBy, type ViewId } from "./views";
+import { compareBy, compareClosed, isSmart, listFor, scopeOf, VIEWS, type ListItem, type SortBy, type ViewId } from "./views";
 import { remindPatch } from "./remind";
 import { CLEAR_WAITING, isWaiting } from "./waiting";
 
@@ -28,9 +28,9 @@ export interface BoardColumn {
 /** «Готово» на канбане показывает сделанное за неделю, старое живёт в архиве */
 const DONE_DAYS = 7;
 
-/** В проекте, теге и умном списке канбан показывает только их задачи, во «Всех задачах» все */
+/** В проекте, теге, умном списке и «Завершённых» канбан показывает только их задачи, во «Всех задачах» все */
 function scoped(view: ViewId, tasks: Task[]): Task[] {
-  if (isSmart(view)) {
+  if (isSmart(view) || view === "archive") {
     const ids = new Set(listFor(view, tasks).map((i) => i.task.id));
     return tasks.filter((x) => ids.has(x.id));
   }
@@ -64,6 +64,14 @@ export function stageOf(x: Task): Stage {
 export const canMove = (x: Task, key: Stage) => !(key === "cancelled" && stageOf(x) === "done");
 
 export function boardFor(view: ViewId, tasks: Task[], sort: SortBy, rev = false): BoardColumn[] {
+  // «Завершённые»: только закрытые задачи, поэтому только «Готово» и «Отменено», без недельного ограничения
+  if (view === "archive") {
+    const closed = scoped(view, tasks);
+    const cmp = compareClosed(sort, rev);
+    return STAGES.filter((c) => CLOSING.includes(c.key)).map((c) => ({
+      ...c, items: closed.filter((x) => stageOf(x) === c.key).sort(cmp).map((task) => ({ task })),
+    }));
+  }
   const since = addDays(today(), -DONE_DAYS);
   // Канбан про текущую работу: сделанное видно только за последнюю неделю
   const mine = scoped(view, tasks).filter((x) => isOpen(x) || (!!x.done_at && stampDay(x.done_at) > since));
@@ -97,7 +105,7 @@ function targetOf(x: Task): Target {
   const t = today();
   if (x.status === "inbox") return "inbox";
   if (x.status === "archived") return "archive";
-  if (x.status === "done") return !!x.done_at && stampDay(x.done_at) === t ? "today" : "archive";
+  if (x.status === "done") return "archive";
   return x.due_date && x.due_date <= t ? "today" : "soon";
 }
 
@@ -112,8 +120,8 @@ export async function moveTo(x: Task, col: Target): Promise<void> {
   if (wasWaiting) await db.updateTask(x.id, CLEAR_WAITING);
   const t = today();
   if (col === "archive") {
+    // Закрытая задача сразу лежит в «Завершённых»: достаточно отметить сделанной
     if (x.status === "inbox" || x.status === "active") await db.completeTask(x);
-    await db.updateTask(x.id, { status: "archived" });
     return;
   }
   if (isClosed(x)) await db.reopenTask(x);
