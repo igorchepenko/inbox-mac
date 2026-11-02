@@ -28,6 +28,8 @@ import { SummaryDialog, type Closing } from "./Summary";
 import { BoardView, BulkPanel, LayoutSwitch, SortSwitch, type Pick } from "./Board";
 import { ensurePermission, fireDueReminders, maybeSendDigest, syncPlan } from "./reminders";
 import { Settings } from "./Settings";
+import { Releases, RELEASES_EVENT } from "./Releases";
+import { markReleasesSeen, readReleasesSeen, shouldShowReleases } from "./releases";
 import { labelFromAccel, pref, quickKeyLabel, setQuickKeyLabel } from "./prefs";
 import Home from "./home/Home";
 import { KEY_HIDDEN, KEY_ORDER } from "./home/data";
@@ -72,6 +74,15 @@ export default function App() {
   // Завершение заблокированной задачи: блокировка мягкая, но сначала спрашиваем
   const [blockedAsk, setBlockedAsk] = useState<Task[] | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  // Окно истории версий: открывается кнопкой в Настройках → О приложении и само при первом запуске новой версии
+  const [releasesOpen, setReleasesOpen] = useState(false);
+  useEffect(() => {
+    // Версию запоминаем сразу при показе: закрыл или перезапустил приложение, окно само больше не откроется
+    if (shouldShowReleases(readReleasesSeen(), __APP_VERSION__) && markReleasesSeen(__APP_VERSION__)) setReleasesOpen(true);
+    const open = () => setReleasesOpen(true);
+    window.addEventListener(RELEASES_EVENT, open);
+    return () => window.removeEventListener(RELEASES_EVENT, open);
+  }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Раздел настроек, открытый сразу: кнопка «Поля» в шапке открывает «Поля задач»
   const [settingsTab, setSettingsTab] = useState<string | undefined>();
@@ -414,7 +425,7 @@ export default function App() {
   const [dropOnDetails, setDropOnDetails] = useState(false);
   const live = useRef({ sel, tasks, busy: false });
   const lastRow = useRef<number | null>(null);
-  live.current = { sel, tasks, busy: newOpen || !!projectDlg || helpOpen || !!closing || !!blockedAsk };
+  live.current = { sel, tasks, busy: newOpen || !!projectDlg || helpOpen || releasesOpen || !!closing || !!blockedAsk };
   useEffect(() => {
     // Над панелью задачи зона горит всё время, пока там курсор: решает панель целиком, а не то, что под курсором внутри неё.
     // Между строками списка остаётся последняя строка, иначе подсветка моргала бы на каждом зазоре.
@@ -455,6 +466,7 @@ export default function App() {
       if (e.metaKey && e.code === "Comma") return e.preventDefault(), setSettingsOpen(true);
       // Формы сами ловят Enter и Esc, пока фокус в них. Если фокус выпал из окна (клик по пустому месту),
       // Esc закрывает его отсюда; настройки и итоги закрываются сами
+      if (releasesOpen) return;
       if (newOpen || projectDlg || settingsOpen || closing || blockedAsk) {
         if (e.key === "Escape" && !settingsOpen && !closing) (setNewOpen(false), setProjectDlg(null));
         return;
@@ -690,6 +702,7 @@ export default function App() {
           onSave={(p) => saveTag(tag.id, p)} onDelete={() => (setTagEdit(null), run(() => db.deleteTag(tag.id)))} />
       )}
       {helpOpen && <Help onClose={() => setHelpOpen(false)} />}
+      {releasesOpen && <Releases onClose={() => setReleasesOpen(false)} />}
       {blockedAsk && (
         <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && setBlockedAsk(null)}>
           <div className="sum-dlg" role="dialog" aria-label="Задача заблокирована"
