@@ -28,7 +28,7 @@ import { SummaryDialog, type Closing } from "./Summary";
 import { BoardView, BulkPanel, LayoutSwitch, SortSwitch, type Pick } from "./Board";
 import { ensurePermission, fireDueReminders, maybeSendDigest, syncPlan } from "./reminders";
 import { Settings } from "./Settings";
-import { Releases, RELEASES_EVENT } from "./Releases";
+import { Releases, RELEASES_EVENT } from "./ReleasesDialog";
 import { markReleasesSeen, readReleasesSeen, shouldShowReleases } from "./releases";
 import { labelFromAccel, pref, quickKeyLabel, setQuickKeyLabel } from "./prefs";
 import Home from "./home/Home";

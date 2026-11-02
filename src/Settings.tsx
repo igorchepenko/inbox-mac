@@ -15,7 +15,7 @@ import { QuickKeyTest } from "./QuickKeyCheck";
 import { activeProfile, createProfile, deleteProfile, renameProfile, reorderProfiles, switchProfile, useProfiles } from "./profile";
 import { notify, permission } from "./reminders";
 import { fmtDate } from "./buildInfo";
-import { RELEASES_EVENT } from "./Releases";
+import { RELEASES_EVENT } from "./ReleasesDialog";
 import {
   accelFromEvent, DEFAULT_APPEARANCE, DEFAULTS, FONTS, labelFromAccel, pref, savedAppearance, setAppearance, SIZES, SOUNDS, type Appearance,
 } from "./prefs";
