@@ -5,7 +5,7 @@ import * as db from "./db";
 import type { Person, PersonFields, Tag, Task } from "./db";
 import {
   activeCount, assignedCount, birthdayInYear, distinctValues, EMPTY_PEOPLE_FILTER, filterPeople, fmtBirthday, formatBirthday, hiddenPeopleFields, NEW_PERSON_EVENT,
-  normalizeTelegram, PEOPLE_FIELDS, PEOPLE_FIELDS_KEY, PEOPLE_SORTS, peopleColumns, peopleDirection, peopleFilterCount, parseBirthday, searchPeople, sortPeople,
+  normalizeTelegram, personName, PEOPLE_FIELDS, PEOPLE_FIELDS_KEY, PEOPLE_SORTS, peopleColumns, peopleDirection, peopleFilterCount, parseBirthday, searchPeople, sortPeople,
   taskCount, togglePeopleField, waitingCount, type PeopleFilter, type PeopleSort,
 } from "./people";
 import { MONTHS_SHORT, today } from "./dates";
@@ -435,7 +435,7 @@ function PersonDialog(props: {
   const p = props.person;
   const b = parseBirthday(p?.birthday);
   const [f, setF] = useState<PersonFields>({
-    name: p?.name ?? "", phone: p?.phone ?? "", telegram: p?.telegram ? `@${p.telegram}` : "", comment: p?.comment ?? "", birthday: p?.birthday ?? null,
+    first_name: p?.first_name ?? "", last_name: p?.last_name ?? "", middle_name: p?.middle_name ?? "", phone: p?.phone ?? "", telegram: p?.telegram ? `@${p.telegram}` : "", comment: p?.comment ?? "", birthday: p?.birthday ?? null,
     company: p?.company ?? "", job_title: p?.job_title ?? "", tags: p?.tags.map((t) => t.name) ?? [],
   });
   const [day, setDay] = useState(b ? String(b.day) : "");
@@ -456,7 +456,7 @@ function PersonDialog(props: {
 
   const save = async () => {
     if (busy) return;
-    if (!f.name.trim()) return nameRef.current?.focus();
+    if (!f.first_name.trim()) return nameRef.current?.focus();
     if (bdayBad) return;
     setBusy(true);
     try {
@@ -490,8 +490,15 @@ function PersonDialog(props: {
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
       <form className="qi person-qi" onSubmit={(e) => (e.preventDefault(), save())} onKeyDown={onKey}>
         <CloseX onClick={props.onClose} />
-        <input ref={nameRef} className="field qi-title" placeholder="Имя" data-tip={p ? "Если изменить имя, оно изменится и во всех его задачах" : undefined} value={f.name} maxLength={60} autoComplete="off" spellCheck={false}
-          onChange={(e) => set({ name: e.target.value })} />
+        <input ref={nameRef} className="field qi-title" placeholder="Имя" data-tip={p ? "Если изменить ФИО, оно изменится и во всех его задачах" : undefined} value={f.first_name} maxLength={60} autoComplete="off" spellCheck={false}
+          onChange={(e) => set({ first_name: e.target.value })} />
+        <div className="pd-fio">
+          <input className="field" placeholder="Фамилия" aria-label="Фамилия" value={f.last_name} maxLength={60} autoComplete="off" spellCheck={false}
+            onChange={(e) => set({ last_name: e.target.value })} />
+          <input className="field" placeholder="Отчество" aria-label="Отчество" value={f.middle_name} maxLength={60} autoComplete="off" spellCheck={false}
+            onChange={(e) => set({ middle_name: e.target.value })} />
+        </div>
+        <div className="hint pd-fio-hint">{f.first_name.trim() ? `Покажем так: ${personName(f)}` : "Имя обязательно, фамилия и отчество по желанию"}</div>
         <textarea ref={note} rows={2} className="field qi-note" placeholder="Комментарий, если нужен: что важно помнить об этом человеке" value={f.comment}
           onChange={(e) => set({ comment: e.target.value })} />
         <div className="qi-more lines">

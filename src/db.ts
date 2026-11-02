@@ -6,6 +6,7 @@ import { nextOccurrence, parseRule } from "./recurrence";
 import { activeProfile } from "./profile";
 import { normalizeTag, pickColor, sameName, TAG_MAX, byName } from "./tags";
 import { remindPatch } from "./remind";
+import { personName } from "./personName";
 
 export type Status = "inbox" | "active" | "done" | "archived";
 /** Тип задачи: обычная или встреча (звонок с клиентом, с командой) */
@@ -66,7 +67,10 @@ export interface Tag {
 /** Человек из раздела «Люди» (миграция 014). Задачи привязаны к нему по имени */
 export interface Person {
   id: number;
-  name: string;
+  name: string; // как показываем (Имя Фамилия / Фамилия Имя Отчество), по нему задачи привязаны к человеку; собирается из трёх полей ниже
+  first_name: string;
+  last_name: string;
+  middle_name: string;
   phone: string;
   telegram: string; // ник без @
   comment: string;
@@ -76,7 +80,7 @@ export interface Person {
   tags: Tag[]; // те же теги, что у задач
 }
 
-export type PersonFields = Omit<Person, "id" | "tags"> & { tags: string[] };
+export type PersonFields = Omit<Person, "id" | "tags" | "name"> & { tags: string[] };
 
 export interface Subtask {
   id: number;
@@ -309,15 +313,15 @@ export async function loadPeople(): Promise<string[]> {
 export async function loadPeopleList(): Promise<Person[]> {
   const d = await db();
   const names = (await d.select<{ name: string }[]>(`SELECT DISTINCT name FROM (${PEOPLE_SQL})`)).map((r) => r.name.replace(/\s+/g, " ").trim()).filter(Boolean);
-  let rows = await d.select<Omit<Person, "tags">[]>("SELECT id, name, phone, telegram, comment, birthday, company, job_title FROM people ORDER BY id");
+  let rows = await d.select<Omit<Person, "tags">[]>("SELECT id, name, first_name, last_name, middle_name, phone, telegram, comment, birthday, company, job_title FROM people ORDER BY id");
   let added = false;
   for (const n of names) {
     if (rows.some((r) => sameName(r.name, n))) continue;
-    await d.execute("INSERT INTO people (name, created_at) SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM people WHERE name = $3)", [n, nowStamp(), n]);
-    rows = [...rows, { id: -1, name: n, phone: "", telegram: "", comment: "", birthday: null, company: "", job_title: "" }];
+    await d.execute("INSERT INTO people (name, first_name, created_at) SELECT $1, $1, $2 WHERE NOT EXISTS (SELECT 1 FROM people WHERE name = $3)", [n, nowStamp(), n]);
+    rows = [...rows, { id: -1, name: n, first_name: n, last_name: "", middle_name: "", phone: "", telegram: "", comment: "", birthday: null, company: "", job_title: "" }];
     added = true;
   }
-  if (added) rows = await d.select<Omit<Person, "tags">[]>("SELECT id, name, phone, telegram, comment, birthday, company, job_title FROM people ORDER BY id");
+  if (added) rows = await d.select<Omit<Person, "tags">[]>("SELECT id, name, first_name, last_name, middle_name, phone, telegram, comment, birthday, company, job_title FROM people ORDER BY id");
   const tagRows = await d.select<(Tag & { person_id: number })[]>(
     "SELECT pt.person_id, t.id, t.name, t.color FROM person_tags pt JOIN tags t ON t.id = pt.tag_id ORDER BY pt.position, t.id",
   );
@@ -356,16 +360,17 @@ async function setPersonTags(personId: number, names: string[]): Promise<void> {
   for (const [i, id] of ids.entries()) await d.execute("INSERT INTO person_tags (person_id, tag_id, position) VALUES ($1, $2, $3)", [personId, id, i]);
 }
 
-const personCols = (f: PersonFields) => [cleanName(f.name), f.phone.trim(), f.telegram.trim(), f.comment.trim(), f.birthday, f.company.trim(), f.job_title.trim()];
+/** Колонки человека для записи: отображаемое имя собирается из частей */
+const personCols = (f: PersonFields) => [personName(f), cleanName(f.first_name), cleanName(f.last_name), cleanName(f.middle_name), f.phone.trim(), f.telegram.trim(), f.comment.trim(), f.birthday, f.company.trim(), f.job_title.trim()];
 
 /** Новый человек. Имя, которое уже есть (без учёта регистра), не принимается */
 export async function addPerson(f: PersonFields): Promise<number> {
   const d = await db();
-  const name = cleanName(f.name);
-  if (!name) throw new Error("У человека должно быть имя");
+  const name = personName(f);
+  if (!cleanName(f.first_name)) throw new Error("У человека должно быть имя");
   if ((await loadPeopleList()).some((p) => sameName(p.name, name))) throw new Error(`«${name}» уже есть в списке`);
   const r = await d.execute(
-    "INSERT INTO people (name, phone, telegram, comment, birthday, company, job_title, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+    "INSERT INTO people (name, first_name, last_name, middle_name, phone, telegram, comment, birthday, company, job_title, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
     [...personCols(f), nowStamp()],
   );
   const id = r.lastInsertId ?? 0;
@@ -376,8 +381,8 @@ export async function addPerson(f: PersonFields): Promise<number> {
 /** Сохранить человека. Если имя изменилось, оно меняется и во всех его задачах */
 export async function updatePerson(id: number, f: PersonFields): Promise<void> {
   const d = await db();
-  const name = cleanName(f.name);
-  if (!name) throw new Error("У человека должно быть имя");
+  const name = personName(f);
+  if (!cleanName(f.first_name)) throw new Error("У человека должно быть имя");
   const all = await loadPeopleList();
   const old = all.find((p) => p.id === id);
   if (!old) throw new Error("Человека уже нет в списке");
@@ -386,7 +391,7 @@ export async function updatePerson(id: number, f: PersonFields): Promise<void> {
   }
   if (old.name !== name) await renamePerson(old.name, name);
   await d.execute(
-    "UPDATE people SET name = $1, phone = $2, telegram = $3, comment = $4, birthday = $5, company = $6, job_title = $7 WHERE id = $8",
+    "UPDATE people SET name = $1, first_name = $2, last_name = $3, middle_name = $4, phone = $5, telegram = $6, comment = $7, birthday = $8, company = $9, job_title = $10 WHERE id = $11",
     [...personCols(f), id],
   );
   await setPersonTags(id, f.tags);
