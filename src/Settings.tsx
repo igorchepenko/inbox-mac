@@ -15,6 +15,7 @@ import { QuickKeyTest } from "./QuickKeyCheck";
 import { activeProfile, createProfile, deleteProfile, renameProfile, reorderProfiles, switchProfile, useProfiles } from "./profile";
 import { notify, permission } from "./reminders";
 import { fmtDate } from "./buildInfo";
+import { RELEASES_EVENT } from "./ReleasesDialog";
 import {
   accelFromEvent, DEFAULT_APPEARANCE, DEFAULTS, FONTS, labelFromAccel, pref, savedAppearance, setAppearance, SIZES, SOUNDS, type Appearance,
 } from "./prefs";
@@ -274,6 +275,9 @@ function About() {
     <div className="set-group">
       <Row name="Версия"><b>{__APP_VERSION__}</b></Row>
       <Row name="Дата выпуска" hint="Дата сборки этой версии"><b>{fmtDate(__BUILD_DATE__)}</b></Row>
+      <Row name="История версий" hint="Что менялось в каждой версии, от новых к старым">
+        <button type="button" className="btn" onClick={() => window.dispatchEvent(new Event(RELEASES_EVENT))}>Открыть</button>
+      </Row>
     </div>
   );
 }

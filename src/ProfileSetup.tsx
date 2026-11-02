@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { markReleasesSeen } from "./releases";
 import { activeProfile, createProfile, useProfiles } from "./profile";
 
 /** Пока нет ни одного профиля, вместо приложения экран создания. Базу до этого никто не открывает */
@@ -13,6 +14,8 @@ export function ProfileGate({ quick, children }: { quick: boolean; children: Rea
 }
 
 export function ProfileSetup() {
+  // Первая установка: окно новинок новичку не нужно, запоминаем текущую версию как показанную
+  useEffect(() => void markReleasesSeen(__APP_VERSION__), []);
   const [name, setName] = useState("");
   const [user, setUser] = useState("");
   const [err, setErr] = useState<string | null>(null);
