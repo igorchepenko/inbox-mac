@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { spaceVars } from "./palette";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Bell, CalendarDays, CalendarPlus, Check, CircleCheckBig, Clock, X, Columns3, Folder, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound, Users } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Bell, CalendarDays, CalendarPlus, Check, CircleCheckBig, Clock, X, Columns3, Folder, Grid2x2, Link2, List, Paperclip, Repeat, Tag, UserRound, Users } from "lucide-react";
 import { TagChip } from "./TagsUI";
 import { Assignee } from "./PersonCard";
 import { ChecklistBadge, CreatedMeta, DueFlag, MeetingMark, RelationBadges, WaitingBadge } from "./TaskBits";

@@ -8,7 +8,7 @@ import type { Project, ProjectFields, Tag, Task } from "./db";
 import { takePendingName } from "./profile";
 import { fmtDay, fmtRange, nowStamp, stampTime, today, toHHMM } from "./dates";
 import { isWaiting, pingDue } from "./waiting";
-import { ALWAYS, HOTKEY_VIEWS, inTasks, isSmart, listFor, plural, progressFor, revKey, revOf, scopeOf, setSpaceNames, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
+import { ALWAYS, HOTKEY_VIEWS, inTasks, isSmart, listFor, plural, progressFor, revKey, revOf, scopeOf, setSpaceNames, SMART, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
 import { marks } from "./search";
 import "./search.css";
 import { Details, Help, PickBox, QuickForm, Ring, type TaskPatch } from "./components";
