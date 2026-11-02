@@ -63,7 +63,7 @@ export const SORTS: { id: SortBy; name: string; hint: string }[] = [
 /** Сортировки, которые есть у списка: статус только у «Завершённых», там все задачи закрыты и «по дате» значит дату завершения */
 export const sortsFor = (view: ViewId) => SORTS.filter((s) => s.id !== "status" || view === "archive");
 export const sortHint = (s: (typeof SORTS)[number], view: ViewId) =>
-  view === "archive" && s.id === "date" ? "По дате завершения: недавние сверху" : s.hint;
+  view === "archive" && s.id === "date" ? "По дате задачи: свежие сверху" : s.hint;
 export const sortOf = (view: ViewId, settings: Record<string, string>): SortBy =>
   SORTS.find((s) => s.id === settings[`sort:${scopeOf(view)}`])?.id ?? "date";
 
@@ -83,7 +83,7 @@ export const DIRECTIONS: Record<SortBy, { asc: boolean; names: [string, string] 
   status: { asc: true, names: ["сначала сделанные", "сначала отменённые"] },
   space: { asc: true, names: ["пространства от А до Я", "пространства от Я до А"] },
 };
-/** В «Завершённых» «по дате» идёт по дате завершения, и обычный порядок там по убыванию */
+/** В «Завершённых» «по дате» идёт по дате задачи, и обычный порядок там по убыванию */
 const ARCHIVE_DATE = { asc: false, names: ["недавние сверху", "давние сверху"] } as const;
 /** По возрастанию или по убыванию идёт список сейчас, и словами, что сверху */
 export function directionOf(sort: SortBy, rev: boolean, view?: ViewId): { asc: boolean; text: string } {
@@ -136,7 +136,7 @@ const closedRank = (x: Task) => (isCancelled(x) ? 1 : 0);
 /** Недавно завершённые сверху; rev: давние сверху */
 const byDoneAt = (a: Task, b: Task, rev = false) => ((a.done_at ?? "") < (b.done_at ?? "") ? 1 : -1) * (rev ? -1 : 1);
 
-/** Порядок закрытых задач в «Завершённых» и в столбцах её канбана: по умолчанию по дате завершения */
+/** Порядок закрытых задач в столбцах канбана «Завершённых»: по умолчанию по дате завершения */
 export function compareClosed(sort: SortBy, rev = false): (a: Task, b: Task) => number {
   if (sort === "date") return (a, b) => byDoneAt(a, b, rev);
   return compareBy(sort, rev);
@@ -144,6 +144,7 @@ export function compareClosed(sort: SortBy, rev = false): (a: Task, b: Task) => 
 
 export const NO_TAG_GROUP = "Без тегов";
 export const NO_PERSON_GROUP = "Сам себе";
+export const NO_DATE_GROUP = "Без даты";
 export const NO_SPACE_GROUP = "Без пространства";
 
 /** Заголовок группы при сортировке не по дате: видно, где кончается один уровень и начинается другой.
@@ -160,12 +161,21 @@ function groupName(x: Task, sort: SortBy, split: boolean): string {
 
 /** Открытые выше сделанных и отменённых, внутри по выбранной сортировке; при важности и матрице с заголовками групп */
 function arrange(xs: Task[], sort: SortBy, rev: boolean, split = true): ListItem[] {
-  const cmp = split ? compareBy(sort, rev) : compareClosed(sort, rev);
+  // В списке «Завершённых» по дате идёт дата задачи, свежие сверху, без даты в конце (в канбане столбцы по дате завершения)
+  const cmp = split ? compareBy(sort, rev) : sort === "date" ? (a: Task, b: Task) => byDate(a, b, !rev) : compareClosed(sort, rev);
   // Открытые, затем сделанные, в самом низу отменённые. В «Завершённых» все закрыты, там порядок целиком по сортировке
   const rank = (x: Task) => (split && x.status === "done" ? (x.cancelled ? 2 : 1) : 0);
   const sorted = [...xs].sort((a, b) => rank(a) - rank(b) || cmp(a, b));
-  if (sort === "date" || (split && sort === "status")) return sorted.map((task) => ({ task }));
+  if (split && sort === "status") return sorted.map((task) => ({ task }));
+  // По дате: заголовок на каждый день, задачи без даты в своей группе
   let last = "";
+  if (sort === "date")
+    return sorted.map((task) => {
+      const g = task.due_date ? fmtDay(task.due_date) : NO_DATE_GROUP;
+      const item = g !== last ? { task, group: g } : { task };
+      last = g;
+      return item;
+    });
   return sorted.map((task) => {
     const g = groupName(task, sort, split);
     const item = g !== last ? { task, group: g } : { task };
@@ -210,7 +220,7 @@ export function listFor(view: ViewId, tasks: Task[], sort: SortBy = "date", rev 
     const out: ListItem[] = [];
     let last = "";
     for (const task of active.sort(compareBy("date", rev))) {
-      const g = task.due_date ? fmtDay(task.due_date) : "Без даты";
+      const g = task.due_date ? fmtDay(task.due_date) : NO_DATE_GROUP;
       out.push(g !== last ? { task, group: g } : { task });
       last = g;
     }

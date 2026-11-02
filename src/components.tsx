@@ -252,7 +252,6 @@ export function Details(props: {
   onTriage: () => void;
   onToggleDone: () => void;
   onStage: (stage: Stage) => void; // переключатель статуса; «Готово» и «Отменено» спрашивают итоги
-  onArchive: () => void;
   onRestore: () => void;
   onDelete: () => void;
 }) {
@@ -421,10 +420,7 @@ export function Details(props: {
           </div>
         )}
         {x.status === "done" && (
-          <div className="row-btns">
-            <button className="btn" onClick={props.onToggleDone}>Вернуть</button>
-            <button className="cta go" onClick={props.onArchive}>В завершённые</button>
-          </div>
+          <button className="btn" onClick={props.onToggleDone}>Вернуть</button>
         )}
         {locked && <button className="cta stand" onClick={props.onRestore}>Вернуть в работу</button>}
         <div className="hint">

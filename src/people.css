@@ -88,6 +88,6 @@
 .qi.person-qi > .hint { margin: 0; }
 
 /* ФИО в карточке человека: имя крупно, под ним фамилия и отчество в ряд */
-.pd-fio { display: flex; gap: 8px; margin-top: 6px; }
-.pd-fio .field { flex: 1; min-width: 0; }
+.pd-fio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.pd-fio .field { width: 100%; min-width: 0; height: 40px; padding: 0 12px; font-size: 15px; font-weight: 500; box-sizing: border-box; }
 .pd-fio-hint { margin: 4px 2px 0; }

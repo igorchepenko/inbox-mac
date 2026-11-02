@@ -322,8 +322,8 @@ export default function App() {
       for (const x of moved) await dropTo(x, stage);
     }, fromPanel && moved.length === 1 ? follow(moved[0].id) : undefined);
   };
-  const toggleDone = (x: Task, fromPanel = false) => void (x.status === "done" ? run(() => db.reopenTask(x), fromPanel ? follow(x.id) : undefined) : toStage([x], "done", false, fromPanel));
-  const archive = (x: Task) => run(() => db.updateTask(x.id, { status: "archived", done_at: x.done_at ?? nowStamp() }), follow(x.id));
+  // Из панели, списка, канбана и по пробелу центр идёт за задачей: сделанная уходит в «Завершённые», возвращённая в свой список
+  const toggleDone = (x: Task) => void (x.status === "done" ? run(() => db.reopenTask(x), follow(x.id)) : toStage([x], "done", false, true));
   const restore = (x: Task) => run(() => db.updateTask(x.id, { status: "active", done_at: null, cancelled: 0 }), follow(x.id));
 
   // С главной: отметка учитывает повторы, перенос просроченного сохраняет время напоминания
@@ -406,7 +406,7 @@ export default function App() {
     }
   };
 
-  // Уходим от новой задачи из календаря (Esc, клик в другое место): нетронутая исчезает молча, тронутая спрашивает
+  // Уходим от новой задачи из календаря (Esc, повторный клик по пустому месту, клик по другой задаче): нетронутая исчезает молча, тронутая спрашивает
   const dropFresh = () => {
     if (!fresh) return;
     const id = fresh.id;
@@ -614,7 +614,7 @@ export default function App() {
             if (p.remind_at) ensurePermission();
             run(() => db.updateTask(id, p));
           }}
-          onCreate={(d, a, b) => guardFresh(() => void createAt(d, a, b))} show={shownFields(settings, "calendar")}
+          onCreate={(d, a, b) => (fresh ? guardFresh(() => {}) : void createAt(d, a, b))} show={shownFields(settings, "calendar")}
           birthdays={roster} onOpenPerson={(name) => (setPersonFocus(name), openView("people"))}
           jump={calJump} onJumped={() => setCalJump(null)} />
       ) : (
@@ -715,8 +715,8 @@ export default function App() {
         <Details key={task.id} task={task} projects={projects} tags={tags} people={people} allTasks={tasks} onOpenTask={(id) => { const t = tasks.find((y) => y.id === id); if (t) openTask(t); }} remindBefore={defaultBefore(settings)}
           onPatch={(p) => patch(task.id, p, true)} onCreateProject={createProject} run={(fn) => void run(fn, follow(task.id))} onError={setError}
           dropping={dropTarget === task.id && dropOnDetails}
-          onTriage={() => triage(task, true)} onToggleDone={() => toggleDone(task, true)} onStage={(st) => toStage([task], st, false, true)}
-          onArchive={() => archive(task)} onRestore={() => restore(task)}
+          onTriage={() => triage(task, true)} onToggleDone={() => toggleDone(task)} onStage={(st) => toStage([task], st, false, true)}
+          onRestore={() => restore(task)}
           onDelete={() => run(() => db.deleteTask(task.id))} />
       ) : (
         <aside className="det"><div className="hint">Выбери задачу, чтобы увидеть детали.</div></aside>

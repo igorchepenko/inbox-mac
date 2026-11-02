@@ -490,9 +490,9 @@ function PersonDialog(props: {
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
       <form className="qi person-qi" onSubmit={(e) => (e.preventDefault(), save())} onKeyDown={onKey}>
         <CloseX onClick={props.onClose} />
-        <input ref={nameRef} className="field qi-title" placeholder="Имя" data-tip={p ? "Если изменить ФИО, оно изменится и во всех его задачах" : undefined} value={f.first_name} maxLength={60} autoComplete="off" spellCheck={false}
-          onChange={(e) => set({ first_name: e.target.value })} />
         <div className="pd-fio">
+          <input ref={nameRef} className="field" placeholder="Имя" data-tip={p ? "Если изменить ФИО, оно изменится и во всех его задачах" : undefined} value={f.first_name} maxLength={60} autoComplete="off" spellCheck={false}
+            onChange={(e) => set({ first_name: e.target.value })} />
           <input className="field" placeholder="Фамилия" aria-label="Фамилия" value={f.last_name} maxLength={60} autoComplete="off" spellCheck={false}
             onChange={(e) => set({ last_name: e.target.value })} />
           <input className="field" placeholder="Отчество" aria-label="Отчество" value={f.middle_name} maxLength={60} autoComplete="off" spellCheck={false}

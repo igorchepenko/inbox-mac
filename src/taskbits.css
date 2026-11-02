@@ -90,3 +90,6 @@
 .cl-item.done .cl-box { background: var(--accent, var(--fg)); border-color: var(--accent, var(--fg)); color: var(--on-acc, var(--bg)); }
 .cl-item.done .cl-t { color: var(--muted); text-decoration: line-through; }
 .cl-t { min-width: 0; overflow-wrap: anywhere; line-height: 1.35; }
+
+/* «Весь день» и подсказка рядом не сливаются в одно предложение */
+.allday-chk + .hint { margin-left: 12px; padding-left: 12px; border-left: 1px solid var(--line); }

@@ -131,9 +131,11 @@ describe("списки", () => {
     expect(ids(listFor("inbox", tasks))).toEqual([1]);
   });
 
-  it("архив: сделанные и отменённые сразу, свежие сверху", () => {
-    expect(ids(listFor("archive", tasks))).toEqual([6, 8, 7]);
-    expect(ids(listFor("archive", tasks, "date", true))).toEqual([7, 8, 6]);
+  it("архив: сделанные и отменённые сразу, по дате задачи свежие сверху, без даты в конце", () => {
+    expect(ids(listFor("archive", tasks))).toEqual([6, 7, 8]);
+    expect(ids(listFor("archive", tasks, "date", true))).toEqual([7, 6, 8]);
+    expect(listFor("archive", tasks).filter((i) => i.group).map((i) => i.group)).toHaveLength(3);
+    expect(listFor("archive", tasks)[2].group).toBe("Без даты");
     expect(ids(listFor("today", tasks))).not.toContain(6);
   });
 
