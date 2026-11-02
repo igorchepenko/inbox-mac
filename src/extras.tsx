@@ -74,8 +74,12 @@ const DURATIONS = [15, 30, 60, 90, 120];
  * Если сдвинуть начало, конец едет следом и длительность сохраняется, как в календаре.
  * Убрать время: стереть часы начала и конца
  */
-export function TimeRange(props: { start: string | null; end: string | null; disabled?: boolean; onChange: (start: string | null, end: string | null) => void }) {
+export function TimeRange(props: { start: string | null; end: string | null; dated: boolean; disabled?: boolean; onChange: (start: string | null, end: string | null) => void; onAllDay: () => void }) {
   const { start, end } = props;
+  // «Весь день»: у задачи есть дата, а времени нет. Галочка ставится сама только у уже такой задачи при открытии;
+  // у новой с датой без времени остаётся пустой, чтобы время вводилось сразу, без лишнего клика
+  const [allDayOn, setAllDayOn] = useState(props.dated && !props.start && !props.end);
+  const allDay = allDayOn && props.dated && !start && !end;
   const [bump, setBump] = useState(0); // пересоздать поле, если введённое значение отклонено
   const dur = start && end ? toMin(end) - toMin(start) : 0;
   const setStart = (v: string) => {
@@ -89,14 +93,21 @@ export function TimeRange(props: { start: string | null; end: string | null; dis
     if (start && toMin(v) <= toMin(start)) return setBump((n) => n + 1);
     props.onChange(start, v);
   };
+  const toggleAllDay = (on: boolean) => {
+    setAllDayOn(on);
+    if (on) props.onAllDay();
+  };
   return (
     <>
-      <TimeInput value={start ?? ""} disabled={props.disabled} onCommit={setStart} />
+      <TimeInput value={start ?? ""} disabled={props.disabled || allDay} onCommit={setStart} />
       <span className="dash">–</span>
-      <TimeInput key={bump} value={end ?? ""} disabled={props.disabled} onCommit={setEnd} />
+      <TimeInput key={bump} value={end ?? ""} disabled={props.disabled || allDay} onCommit={setEnd} />
+      <label className={`allday-chk ${props.disabled ? "off" : ""}`}>
+        <input type="checkbox" checked={allDay} disabled={props.disabled} onChange={(e) => toggleAllDay(e.target.checked)} /> Весь день
+      </label>
       {start && end && <span className="hint">{fmtDuration(dur)}</span>}
       {!start && end && <span className="hint">срок, до {end}</span>}
-      {!start && !end && !props.disabled && <span className="hint">только конец — это срок</span>}
+      {!start && !end && !allDay && !props.disabled && <span className="hint">только конец — это срок</span>}
       {start && !props.disabled && (
         <div className="seg durations">
           {DURATIONS.map((d) => (

@@ -49,7 +49,7 @@ export interface ListItem {
 export const doneToday = (x: Task, t: string) => x.status === "done" && !!x.done_at && stampDay(x.done_at) === t;
 
 /** Порядок строк в списке и в столбцах канбана. Хранится отдельно для каждого списка: settings sort:<вид> */
-export type SortBy = "date" | "created" | "priority" | "matrix" | "tag" | "assignee" | "status";
+export type SortBy = "date" | "created" | "priority" | "matrix" | "tag" | "assignee" | "status" | "space";
 export const SORTS: { id: SortBy; name: string; hint: string }[] = [
   { id: "date", name: "По дате", hint: "По дате и времени: ближайшие сверху" },
   { id: "created", name: "По дате создания", hint: "По дате создания: новые сверху" },
@@ -58,9 +58,10 @@ export const SORTS: { id: SortBy; name: string; hint: string }[] = [
   { id: "tag", name: "По тегам", hint: "По тегам: группы по алфавиту, без тегов в конце" },
   { id: "assignee", name: "По тому, кто назначил", hint: "По тому, кто назначил: группы по именам, свои задачи в конце" },
   { id: "status", name: "По статусу", hint: "По статусу: группы «Сделано» и «Отменено»" },
+  { id: "space", name: "По пространствам", hint: "По пространствам: группы по алфавиту, без пространства в конце" },
 ];
 /** Сортировки, которые есть у списка: статус только у «Завершённых», там все задачи закрыты и «по дате» значит дату завершения */
-export const sortsFor = (view: ViewId) => SORTS.filter((s) => (s.id === "status") === (view === "archive"));
+export const sortsFor = (view: ViewId) => SORTS.filter((s) => s.id !== "status" || view === "archive");
 export const sortHint = (s: (typeof SORTS)[number], view: ViewId) =>
   view === "archive" && s.id === "date" ? "По дате завершения: недавние сверху" : s.hint;
 export const sortOf = (view: ViewId, settings: Record<string, string>): SortBy =>
@@ -80,6 +81,7 @@ export const DIRECTIONS: Record<SortBy, { asc: boolean; names: [string, string] 
   tag: { asc: true, names: ["теги от А до Я", "теги от Я до А"] },
   assignee: { asc: true, names: ["имена от А до Я", "имена от Я до А"] },
   status: { asc: true, names: ["сначала сделанные", "сначала отменённые"] },
+  space: { asc: true, names: ["пространства от А до Я", "пространства от Я до А"] },
 };
 /** В «Завершённых» «по дате» идёт по дате завершения, и обычный порядок там по убыванию */
 const ARCHIVE_DATE = { asc: false, names: ["недавние сверху", "давние сверху"] } as const;
@@ -101,6 +103,10 @@ function lastEmpty<T>(a: T | null, b: T | null, cmp: (a: T, b: T) => number, rev
   if (a == null || b == null) return (a == null ? 1 : 0) - (b == null ? 1 : 0);
   return rev ? cmp(b, a) : cmp(a, b);
 }
+/** Названия пространств по id для сортировки «По пространствам»: у задачи только project_id. Список App кладёт сюда при каждой отрисовке */
+let spaceNames = new Map<number, string>();
+export const setSpaceNames = (projects: { id: number; name: string }[]) => void (spaceNames = new Map(projects.map((p) => [p.id, p.name])));
+const spaceOf = (x: Task) => (x.project_id != null ? spaceNames.get(x.project_id) ?? null : null);
 const str = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 /** Ближайшие сверху: дата (без даты в конце), время, затем важнее и свежее. rev: дальние сверху, без даты всё так же в конце */
@@ -122,6 +128,7 @@ export function compareBy(sort: SortBy, rev = false): (a: Task, b: Task) => numb
   if (sort === "tag") return (a, b) => lastEmpty(firstTag(a), firstTag(b), compareNames, rev) || byDate(a, b);
   if (sort === "assignee") return (a, b) => lastEmpty(a.assigned_by, b.assigned_by, compareNames, rev) || byDate(a, b);
   if (sort === "status") return (a, b) => (closedRank(a) - closedRank(b)) * (rev ? -1 : 1) || byDoneAt(a, b);
+  if (sort === "space") return (a, b) => lastEmpty(spaceOf(a), spaceOf(b), compareNames, rev) || byDate(a, b);
   return (a, b) => byDate(a, b, rev);
 }
 
@@ -137,6 +144,7 @@ export function compareClosed(sort: SortBy, rev = false): (a: Task, b: Task) => 
 
 export const NO_TAG_GROUP = "Без тегов";
 export const NO_PERSON_GROUP = "Сам себе";
+export const NO_SPACE_GROUP = "Без пространства";
 
 /** Заголовок группы при сортировке не по дате: видно, где кончается один уровень и начинается другой.
  * Задача с несколькими тегами стоит в группе первого по алфавиту */
@@ -145,6 +153,7 @@ function groupName(x: Task, sort: SortBy, split: boolean): string {
   if (sort === "created") return `Создано ${fmtDay(stampDay(x.created_at)).toLowerCase()}`;
   if (sort === "tag") return firstTag(x) ?? NO_TAG_GROUP;
   if (sort === "assignee") return x.assigned_by ?? NO_PERSON_GROUP;
+  if (sort === "space") return spaceOf(x) ?? NO_SPACE_GROUP;
   if (sort === "priority") return PRIORITY.find((p) => p.value === x.priority)?.name ?? "Важность не задана";
   return x.quadrant ? QUAD_NAMES[x.quadrant] : "Вне матрицы";
 }
