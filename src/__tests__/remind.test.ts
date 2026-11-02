@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defaultBefore, minusMinutes, REMIND_OFF, remindAtFor, remindPatch, remindText, setBefore, setCustom } from "../remind";
+import { beforeName, defaultBefore, minusMinutes, REMIND_OFF, remindAtFor, remindPatch, remindText, setBefore, setCustom, splitMinutes, toMinutes } from "../remind";
 import { digestBody, dueReminders, msOf, planDigest, planReminders, reminderText } from "../notifyPlan";
 import { listFor } from "../views";
 import { freezeToday, task } from "./helpers";
@@ -100,5 +100,54 @@ describe("сортировка по дате создания", () => {
     const list = listFor("soon", tasks, "created");
     expect(list.map((i) => i.task.id)).toEqual([3, 2, 1]);
     expect(list.map((i) => i.group)).toEqual(["Создано сегодня", undefined, "Создано чт, 8 окт"]);
+  });
+});
+
+describe("напоминание в момент события и свой интервал", () => {
+  it("«в момент события» — за 0 минут, момент совпадает с началом", () => {
+    const x = { due_date: "2026-10-12", start_time: "14:00", remind_at: null, remind_before: null };
+    expect(setBefore(x, 0)).toEqual({ remind_before: 0, remind_at: "2026-10-12T14:00", reminded: 0 });
+    expect(beforeName(0)).toBe("в момент события");
+    expect(defaultBefore({ "remind.before": "0" })).toBe(0);
+  });
+
+  it("переводит число с единицей в минуты, запятая и точка равны", () => {
+    expect(toMinutes("20", "min")).toBe(20);
+    expect(toMinutes("1,5", "hour")).toBe(90);
+    expect(toMinutes("1.5", "hour")).toBe(90);
+    expect(toMinutes("2", "day")).toBe(2880);
+    expect(toMinutes("0", "min")).toBe(0);
+  });
+
+  it("не принимает пустое, мусор, минус и больше года", () => {
+    for (const bad of ["", "  ", "abc", "-5", "400"]) expect(toMinutes(bad, bad === "400" ? "day" : "min")).toBeNull();
+  });
+
+  it("показывает минуты в самой крупной удобной единице", () => {
+    expect(splitMinutes(90)).toEqual({ amount: "1,5", unit: "hour" });
+    expect(splitMinutes(40)).toEqual({ amount: "40", unit: "min" });
+    expect(splitMinutes(2880)).toEqual({ amount: "2", unit: "day" });
+    expect(splitMinutes(0)).toEqual({ amount: "0", unit: "min" });
+  });
+
+  it("называет свой интервал по-русски", () => {
+    expect(beforeName(20)).toBe("за 20 минут");
+    expect(beforeName(21)).toBe("за 21 минуту");
+    expect(beforeName(90)).toBe("за 1,5 часа");
+    expect(beforeName(120)).toBe("за 2 часа");
+    expect(beforeName(2880)).toBe("за 2 дня");
+    expect(beforeName(15)).toBe("за 15 минут");
+  });
+
+  it("свой интервал пересчитывается при переносе задачи, как готовый", () => {
+    const x = { due_date: "2026-10-12", start_time: "14:00", remind_at: "2026-10-12T12:30", remind_before: 90 };
+    expect(remindPatch(x, { start_time: "16:00" })).toEqual({ remind_at: "2026-10-12T14:30", reminded: 0 });
+    expect(remindPatch(x, { due_date: "2026-10-14" })).toEqual({ remind_at: "2026-10-14T12:30", reminded: 0 });
+  });
+
+  it("уведомление «в момент события» говорит «Сейчас»", () => {
+    const x = task({ title: "Созвон", start_time: "14:00", remind_before: 0, remind_at: "2026-10-12T14:00" });
+    expect(reminderText(x).body).toBe("Сейчас, в 14:00");
+    expect(reminderText({ ...x, remind_before: 90 }).body).toBe("Через 1,5 часа, в 14:00");
   });
 });

@@ -1,13 +1,14 @@
 // Напоминание, тип задачи и дата создания в интерфейсе: поле в панели задачи и в форме записи, значки в строке и на карточке
-import { useState } from "react";
-import { BellRing, CalendarPlus, CheckSquare, FlagTriangleRight, Hourglass, Lock, Network, Users, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { BellRing, CalendarPlus, Check, CheckSquare, ListChecks, FlagTriangleRight, Hourglass, Lock, Network, Users, X } from "lucide-react";
 import * as db from "./db";
 import { blockingCount, candidates, isBlocked, openBlockers, relatedCount, RELATION_HINTS, RELATION_NAMES, type RelationKind } from "./relations";
 import { isWaiting, pingDue, presetDate, WAIT_PRESETS, CLEAR_WAITING } from "./waiting";
 import { PersonInput } from "./TagsUI";
 import type { Task, TaskKind } from "./db";
 import { fmtDay, fmtStamp, stampDay, stampTime } from "./dates";
-import { anchorOf, REMIND_BEFORE, REMIND_OFF, setBefore, setCustom, type When } from "./remind";
+import { anchorOf, isPresetBefore, REMIND_BEFORE, REMIND_OFF, setBefore, setCustom, splitMinutes, toMinutes, UNITS, type Unit, type When } from "./remind";
 import { dueState, hasDue, type DueTask } from "./due";
 import { TimeInput, Toggle } from "./widgets";
 import { Chip, DateField, type RunDb } from "./extras";
@@ -26,17 +27,26 @@ export function RemindField(props: {
   const x = props.value;
   const on = !!x.remind_at;
   const custom = on && x.remind_before == null;
+  // «Свой интервал»: выбран явно или у задачи уже лежит значение вне готовых вариантов
+  const [ivl, setIvl] = useState(on && x.remind_before != null && !isPresetBefore(x.remind_before));
+  const showIvl = on && x.remind_before != null && (ivl || !isPresetBefore(x.remind_before));
+  const selected = custom ? "custom" : showIvl ? "interval" : String(x.remind_before);
+  const pick = (v: string) => {
+    setIvl(v === "interval");
+    props.onChange(v === "custom" ? setCustom(x) : v === "interval" ? setBefore(x, x.remind_before ?? 30) : setBefore(x, Number(v)));
+  };
   return (
     <>
       <Toggle label="Напоминание" on={on} disabled={props.disabled}
-        onChange={(v) => props.onChange(v ? setBefore(x, props.defaultBefore) : REMIND_OFF)} />
+        onChange={(v) => (setIvl(false), props.onChange(v ? setBefore(x, props.defaultBefore) : REMIND_OFF))} />
       {on && (
         <>
-          <select className="field remind-sel" aria-label="Когда напомнить" disabled={props.disabled} value={custom ? "custom" : String(x.remind_before)}
-            onChange={(e) => props.onChange(e.target.value === "custom" ? setCustom(x) : setBefore(x, Number(e.target.value)))}>
+          <select className="field remind-sel" aria-label="Когда напомнить" disabled={props.disabled} value={selected} onChange={(e) => pick(e.target.value)}>
             {REMIND_BEFORE.map((o) => <option key={o.value} value={o.value}>{o.name}</option>)}
+            <option value="interval">свой интервал</option>
             <option value="custom">свой день и время</option>
           </select>
+          {showIvl && <IntervalInput key={x.remind_before} minutes={x.remind_before!} disabled={props.disabled} onCommit={(m) => props.onChange(setBefore(x, m))} />}
           {custom && (
             <TimeInput value={stampTime(x.remind_at!)} disabled={props.disabled}
               onCommit={(t) => props.onChange(t ? setCustom(x, t) : REMIND_OFF)} />
@@ -54,6 +64,79 @@ export function RemindField(props: {
         </>
       )}
     </>
+  );
+}
+
+/** «За» + число + единица: свой интервал напоминания. Применяется, когда поле потеряло фокус или нажат Enter */
+function IntervalInput(props: { minutes: number; disabled?: boolean; onCommit: (m: number) => void }) {
+  const init = splitMinutes(props.minutes);
+  const [amount, setAmount] = useState(init.amount);
+  const [unit, setUnit] = useState<Unit>(init.unit);
+  const [bad, setBad] = useState(false);
+  const commit = (a = amount, u = unit) => {
+    const m = toMinutes(a, u);
+    setBad(m == null);
+    if (m != null && m !== props.minutes) props.onCommit(m);
+  };
+  return (
+    <span className="remind-ivl">
+      <span className="dash">за</span>
+      <input className={`field remind-num ${bad ? "bad" : ""}`} inputMode="decimal" aria-label="Сколько" disabled={props.disabled} value={amount} size={4}
+        onChange={(e) => setAmount(e.target.value)} onBlur={() => commit()}
+        onKeyDown={(e) => { if (e.key === "Enter") (e.preventDefault(), e.stopPropagation(), commit()); }} />
+      <select className="field remind-unit" aria-label="Единица" disabled={props.disabled} value={unit}
+        onChange={(e) => { setUnit(e.target.value as Unit); commit(amount, e.target.value as Unit); }}>
+        {UNITS.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+      </select>
+    </span>
+  );
+}
+
+/**
+ * Значок чеклиста «2/5» в строке и на карточке. При наведении над ним всплывает окно с пунктами, в нём можно ставить и снимать галочки.
+ * Окно не пропадает, пока курсор над значком или над самим окном: между ними небольшая пауза на переход
+ */
+export function ChecklistBadge({ task: x, size = 12, className = "meta badge", onToggle }: { task: Task; size?: number; className?: string; onToggle: (subId: number, done: boolean) => void }) {
+  const [at, setAt] = useState<{ x: number; y: number; below: boolean } | null>(null);
+  const timer = useRef(0);
+  const box = useRef<HTMLDivElement>(null);
+  const done = x.subtasks.filter((s) => s.done).length;
+  const open = (el: HTMLElement) => {
+    clearTimeout(timer.current);
+    const r = el.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom > Math.min(220, r.top);
+    setAt({ x: r.left, y: below ? r.bottom + 4 : r.top - 4, below });
+  };
+  const later = () => {
+    clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setAt(null), 180);
+  };
+  useEffect(() => () => clearTimeout(timer.current), []);
+  // Не даём окну уйти за правый край
+  useEffect(() => {
+    const el = box.current;
+    if (el && at) el.style.left = `${Math.max(8, Math.min(at.x, window.innerWidth - el.offsetWidth - 8))}px`;
+  }, [at, x.subtasks]);
+  if (!x.subtasks.length) return null;
+  return (
+    <span className={`${className} cl-badge`} onPointerEnter={(e) => open(e.currentTarget)} onPointerLeave={later}>
+      <ListChecks size={size} /> {done}/{x.subtasks.length}
+      {at && createPortal(
+        <div ref={box} className={`cl-pop ${at.below ? "below" : "above"}`} role="group" aria-label="Чеклист" style={{ top: at.y, left: at.x }}
+          onPointerEnter={() => clearTimeout(timer.current)} onPointerLeave={later}
+          onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+          <div className="cl-head">Чеклист: выполнено {done} из {x.subtasks.length}</div>
+          {x.subtasks.map((s) => (
+            <button type="button" key={s.id} className={`cl-item ${s.done ? "done" : ""}`} role="checkbox" aria-checked={!!s.done}
+              onClick={() => onToggle(s.id, !s.done)}>
+              <span className="cl-box">{s.done ? <Check size={10} strokeWidth={3.4} /> : null}</span>
+              <span className="cl-t">{s.title}</span>
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
+    </span>
   );
 }
 

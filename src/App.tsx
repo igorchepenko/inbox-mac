@@ -7,7 +7,7 @@ import * as db from "./db";
 import type { Project, ProjectFields, Tag, Task } from "./db";
 import { fmtDay, fmtRange, nowStamp, stampTime, today, toHHMM } from "./dates";
 import { isWaiting, pingDue } from "./waiting";
-import { ALWAYS, HOTKEY_VIEWS, inTasks, isSmart, listFor, plural, progressFor, revKey, revOf, scopeOf, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
+import { ALWAYS, HOTKEY_VIEWS, inTasks, isSmart, listFor, plural, progressFor, revKey, revOf, scopeOf, setSpaceNames, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
 import { marks } from "./search";
 import "./search.css";
 import { Details, Help, PickBox, QuickForm, Ring, type TaskPatch } from "./components";
@@ -16,11 +16,11 @@ import { ProjectDialog } from "./widgets";
 import PeoplePage from "./PeoplePage";
 import { NEW_PERSON_EVENT } from "./people";
 import { Assignee, PeopleCtx } from "./PersonCard";
-import { Check, Keyboard, Link2, ListChecks, Paperclip, Pencil, Repeat, Rows3, Tag as TagIcon, Users } from "lucide-react";
+import { Check, Keyboard, Link2, Paperclip, Pencil, Repeat, Rows3, Tag as TagIcon, Users } from "lucide-react";
 import { applyFilter, EMPTY_FILTER, filterOn, NO_SPACE, peopleOf, type TaskFilter } from "./tags";
 import { FilterBar, FilterButton, FIND_EVENT, SearchField, TagChips, TagEditor, type SmartFilter } from "./TagsUI";
 import { QuadrantGlyph } from "./extras";
-import { CreatedMeta, DueFlag, MeetingMark, RelationBadges, WaitingBadge } from "./TaskBits";
+import { ChecklistBadge, CreatedMeta, DueFlag, MeetingMark, RelationBadges, WaitingBadge } from "./TaskBits";
 import { isBlocked, openBlockers } from "./relations";
 import { defaultBefore, remindPatch } from "./remind";
 import { boardFor, canMove, CLOSING, dropTo, layoutOf, STAGES, stageOf, type Layout, type Stage } from "./boardOps";
@@ -70,6 +70,10 @@ export default function App() {
   const [closing, setClosing] = useState<Closing | null>(null);
   // Завершение заблокированной задачи: блокировка мягкая, но сначала спрашиваем
   const [blockedAsk, setBlockedAsk] = useState<Task[] | null>(null);
+  // Задача, только что созданная кликом в календаре: пока её не тронули, Esc или клик в другое место календаря убирают её молча,
+  // если что-то ввели, сначала спрашиваем. snap — задача на момент создания
+  const [fresh, setFresh] = useState<{ id: number; snap: string } | null>(null);
+  const [cancelAsk, setCancelAsk] = useState<{ next: () => void } | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Раздел настроек, открытый сразу: кнопка «Поля» в шапке открывает «Поля задач»
@@ -155,8 +159,9 @@ export default function App() {
     const ids = new Set(multi.flatMap((v) => listFor(v, shown).map((i) => i.task.id)));
     return shown.filter((x) => ids.has(x.id));
   }, [view, multi, shown]);
-  const list = useMemo(() => listFor(view, inSmarts, sort, rev), [view, inSmarts, sort, rev]);
-  const columns = useMemo(() => (layout === "board" ? boardFor(view, inSmarts, sort, rev) : null), [layout, view, inSmarts, sort, rev]);
+  setSpaceNames(projects); // для сортировки «По пространствам»
+  const list = useMemo(() => listFor(view, inSmarts, sort, rev), [view, inSmarts, sort, rev, projects]);
+  const columns = useMemo(() => (layout === "board" ? boardFor(view, inSmarts, sort, rev) : null), [layout, view, inSmarts, sort, rev, projects]);
   const ids = columns ? columns.flatMap((c) => c.items.map((i) => i.task.id)) : list.map((i) => i.task.id);
   const pickedTasks = tasks.filter((x) => picked.includes(x.id) && ids.includes(x.id));
   const bulk = pickedTasks.length > 0;
@@ -336,6 +341,8 @@ export default function App() {
     setSettings((st) => ({ ...st, [key]: value }));
     run(() => db.setSetting(key, value));
   };
+  // Галочка пункта чеклиста из всплывающего окна в списке и на карточке
+  const toggleSub = (subId: number, done: boolean) => run(() => db.updateSubtask(subId, { done: done ? 1 : 0 }));
   const moveCards = (moved: number[], col: Stage) => toStage(tasks.filter((x) => moved.includes(x.id)), col);
 
   // Клик по пустому месту календаря: задача на этот день и время, название сразу выделено для правки.
@@ -345,8 +352,10 @@ export default function App() {
       const id = await db.addTask("Новая задача", "", {
         project_id: oneSpace, due_date: day, start_time: start == null ? null : toHHMM(start), end_time: end == null ? null : toHHMM(end),
       });
-      await reload();
+      const list = await reload();
       select(id);
+      const made = list.find((x) => x.id === id);
+      if (made) setFresh({ id, snap: JSON.stringify(made) });
       setTimeout(() => {
         const el = document.querySelector<HTMLTextAreaElement>(".det-title");
         el?.focus();
@@ -356,6 +365,24 @@ export default function App() {
       setError(String(e));
     }
   };
+
+  // Уходим от новой задачи из календаря (Esc, клик в другое место): нетронутая исчезает молча, тронутая спрашивает
+  const dropFresh = () => {
+    if (!fresh) return;
+    const id = fresh.id;
+    setFresh(null);
+    setSel((s) => (s === id ? null : s));
+    run(() => db.deleteTask(id));
+  };
+  const guardFresh = (next: () => void) => {
+    const x = fresh && tasks.find((t) => t.id === fresh.id);
+    if (!fresh || !x) return next();
+    if (JSON.stringify(x) === fresh.snap) (dropFresh(), next());
+    else setCancelAsk({ next });
+  };
+  useEffect(() => {
+    if (fresh && (sel !== fresh.id || view !== "calendar")) setFresh(null);
+  }, [sel, view]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Пространство прямо из задачи: только название, цвет первый свободный, иконку и остальное можно поменять потом
   const createProject = async (name: string) => {
@@ -387,7 +414,7 @@ export default function App() {
   const [dropOnDetails, setDropOnDetails] = useState(false);
   const live = useRef({ sel, tasks, busy: false });
   const lastRow = useRef<number | null>(null);
-  live.current = { sel, tasks, busy: newOpen || !!projectDlg || helpOpen || !!closing || !!blockedAsk };
+  live.current = { sel, tasks, busy: newOpen || !!projectDlg || helpOpen || !!closing || !!blockedAsk || !!cancelAsk };
   useEffect(() => {
     // Над панелью задачи зона горит всё время, пока там курсор: решает панель целиком, а не то, что под курсором внутри неё.
     // Между строками списка остаётся последняя строка, иначе подсветка моргала бы на каждом зазоре.
@@ -428,7 +455,7 @@ export default function App() {
       if (e.metaKey && e.code === "Comma") return e.preventDefault(), setSettingsOpen(true);
       // Формы сами ловят Enter и Esc, пока фокус в них. Если фокус выпал из окна (клик по пустому месту),
       // Esc закрывает его отсюда; настройки и итоги закрываются сами
-      if (newOpen || projectDlg || settingsOpen || closing || blockedAsk) {
+      if (newOpen || projectDlg || settingsOpen || closing || blockedAsk || cancelAsk) {
         if (e.key === "Escape" && !settingsOpen && !closing) (setNewOpen(false), setProjectDlg(null));
         return;
       }
@@ -450,6 +477,8 @@ export default function App() {
         if (!hidden(v)) openView(v);
         return;
       }
+      // Новая задача из календаря: Esc отменяет создание даже из поля названия
+      if (e.key === "Escape" && !e.defaultPrevented && fresh && view === "calendar") return e.preventDefault(), guardFresh(() => {});
       const el = document.activeElement as HTMLElement | null;
       if (el && /INPUT|TEXTAREA|SELECT/.test(el.tagName)) {
         if (e.key === "Escape") el.blur();
@@ -532,7 +561,7 @@ export default function App() {
         onViewIcon={(id, icon) => run(() => db.setSetting(`icon:${id}`, icon))} />
 
       {view === "calendar" ? (
-        <CalendarView tasks={shown} projects={projects} selected={sel} onSelect={select}
+        <CalendarView tasks={shown} projects={projects} selected={sel} onSelect={(id) => (id === fresh?.id ? select(id) : guardFresh(() => select(id)))}
           filterButton={<>
             <SearchField value={filter.text} onChange={setText} placeholder="Найти в календаре" tip="Поиск по задачам в календаре" />
             <FilterButton filter={filt} projects={projects} tags={tags} people={people} onChange={setFilter} />
@@ -544,7 +573,7 @@ export default function App() {
             if (p.remind_at) ensurePermission();
             run(() => db.updateTask(id, p));
           }}
-          onCreate={createAt} show={shownFields(settings, "calendar")}
+          onCreate={(d, a, b) => guardFresh(() => void createAt(d, a, b))} show={shownFields(settings, "calendar")}
           birthdays={roster} onOpenPerson={(name) => (setPersonFocus(name), openView("people"))}
           jump={calJump} onJumped={() => setCalJump(null)} />
       ) : (
@@ -619,14 +648,14 @@ export default function App() {
           {columns ? (
             <BoardView columns={columns} projects={projects} sel={sel} picked={picked}
               fileDrop={dropOnDetails ? null : dropTarget} query={filt.text}
-              onPick={pick} onToggle={toggleDone} onMove={moveCards} show={shownFields(settings, "board")} />
+              onPick={pick} onToggle={toggleDone} onSub={toggleSub} onMove={moveCards} show={shownFields(settings, "board")} />
           ) : (
             <div className="list" role="listbox">
               {list.map(({ task: x, group }) => (
                 <div key={x.id}>
                   {group && <div className="group">{group}</div>}
                   <TaskRow task={x} project={projects.find((p) => p.id === x.project_id)} selected={x.id === sel} query={filt.text}
-                    picked={picked.includes(x.id)} dropping={dropTarget === x.id && !dropOnDetails} onSelect={(m) => pick(x.id, m)} onBox={() => pick(x.id, { meta: false, shift: false, box: true })} onToggle={() => toggleDone(x)}
+                    picked={picked.includes(x.id)} dropping={dropTarget === x.id && !dropOnDetails} onSelect={(m) => pick(x.id, m)} onBox={() => pick(x.id, { meta: false, shift: false, box: true })} onToggle={() => toggleDone(x)} onSub={toggleSub}
                     show={listFields} />
                 </div>
               ))}
@@ -677,6 +706,20 @@ export default function App() {
               <span className="grow" />
               <button type="button" className="btn" autoFocus onClick={() => setBlockedAsk(null)}>Отмена <kbd>Esc</kbd></button>
               <button type="button" className="cta narrow go" onClick={() => { const xs = blockedAsk; setBlockedAsk(null); void toStage(xs, "done", true); }}>Всё равно завершить</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cancelAsk && (
+        <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && setCancelAsk(null)}>
+          <div className="sum-dlg" role="dialog" aria-label="Отменить создание задачи"
+            onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") setCancelAsk(null); }}>
+            <p className="rel-ask">Отменить создание задачи? Всё, что ты в ней поменял, пропадёт.</p>
+            <div className="sum-foot">
+              <span className="grow" />
+              <button type="button" className="btn" autoFocus onClick={() => setCancelAsk(null)}>Нет</button>
+              <button type="button" className="cta narrow go" onClick={() => { const n = cancelAsk.next; setCancelAsk(null); dropFresh(); n(); }}>Да</button>
             </div>
           </div>
         </div>
@@ -754,6 +797,7 @@ function TaskRow(props: {
   onSelect: (mods: { meta: boolean; shift: boolean }) => void;
   onBox: () => void;
   onToggle: () => void;
+  onSub: (subId: number, done: boolean) => void; // галочка пункта чеклиста из всплывающего окна
   query?: string; // подсветить найденное поиском в названии
   show?: Shown; // какие поля видны, Настройки → «Поля задач»
 }) {
@@ -788,9 +832,7 @@ function TaskRow(props: {
       {show("participants") && x.participants.length > 0 && (
         <span className="meta badge" data-tip={tips.participants(x.participants)}><Users size={12} /> {x.participants.length}</span>
       )}
-      {show("checklist") && x.subtasks.length > 0 && (
-        <span className="meta badge" data-tip={tips.checklist(x)}><ListChecks size={12} /> {x.subtasks.filter((s) => s.done).length}/{x.subtasks.length}</span>
-      )}
+      {show("checklist") && <ChecklistBadge task={x} onToggle={props.onSub} />}
       {show("links") && x.links.length > 0 && <span className="meta badge" data-tip={tips.links(x)}><Link2 size={12} />{x.links.length > 1 ? ` ${x.links.length}` : ""}</span>}
       {show("files") && x.files.length > 0 && <span className="meta badge" data-tip={tips.files(x)}><Paperclip size={12} />{x.files.length > 1 ? ` ${x.files.length}` : ""}</span>}
       {show("repeat") && x.recurrence && !done && <span className="meta badge" data-tip={tips.repeat(x)}><Repeat size={12} /></span>}

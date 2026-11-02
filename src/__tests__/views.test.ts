@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { compareBy, countFor, directionOf, listFor, plural, revOf, sortOf } from "../views";
+import { compareBy, countFor, directionOf, listFor, plural, revOf, setSpaceNames, sortOf } from "../views";
 import { boardFor, layoutOf, stageOf } from "../boardOps";
 import { freezeToday, task } from "./helpers";
 
@@ -207,5 +207,23 @@ describe("страница «Теги»", () => {
   it("не список задач: пусто и без счётчика", () => {
     expect(listFor("tags", [task({ id: 1 })])).toEqual([]);
     expect(countFor("tags", [task({ id: 1 })])).toBe(0);
+  });
+});
+
+describe("сортировка по пространствам", () => {
+  const xs = () => {
+    setSpaceNames([{ id: 1, name: "Работа" }, { id: 2, name: "Дом" }, { id: 3, name: "Блог" }]);
+    return [task({ id: 1, project_id: 1 }), task({ id: 2, project_id: null }), task({ id: 3, project_id: 2 }), task({ id: 4, project_id: 3 })];
+  };
+  it("группы по алфавиту, без пространства в конце", () => {
+    expect(xs().sort(compareBy("space")).map((x) => x.id)).toEqual([4, 3, 1, 2]);
+  });
+  it("обратный порядок разворачивает группы, но без пространства остаётся в конце", () => {
+    expect(xs().sort(compareBy("space", true)).map((x) => x.id)).toEqual([1, 3, 4, 2]);
+  });
+  it("в списке у каждой группы заголовок", () => {
+    const items = listFor("tasks", xs(), "space");
+    expect(items.filter((i) => i.group).map((i) => i.group)).toEqual(["Блог", "Дом", "Работа", "Без пространства"]);
+    expect(directionOf("space", false).text).toBe("пространства от А до Я");
   });
 });
