@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { Person } from "../db";
 import {
   ageOn, assignedCount, birthdayInYear, birthdayOn, birthdaysOn, birthdayTitle, fmtBirthday, formatBirthday, normalizeTelegram, parseBirthday, searchPeople, sortPeople, taskCount, waitingCount,
-  activeCount, distinctValues, filterPeople, EMPTY_PEOPLE_FILTER, hiddenPeopleFields, togglePeopleField, peopleColumns, peopleDirection,
+  personName, activeCount, distinctValues, filterPeople, EMPTY_PEOPLE_FILTER, hiddenPeopleFields, togglePeopleField, peopleColumns, peopleDirection,
 } from "../people";
 import { task } from "./helpers";
 
 let seq = 0;
 const person = (p: Partial<Person> = {}): Person => ({
-  id: ++seq, name: `Человек ${seq}`, phone: "", telegram: "", comment: "", birthday: null, company: "", job_title: "", tags: [], ...p,
+  id: ++seq, name: `Человек ${seq}`, first_name: "", last_name: "", middle_name: "", phone: "", telegram: "", comment: "", birthday: null, company: "", job_title: "", tags: [], ...p,
 });
 const tag = (name: string) => ({ id: name.length, name, color: "teal" });
 
@@ -215,5 +215,32 @@ describe("переходы из списка людей", () => {
     ];
     expect(assignedCount("Андрей", xs)).toBe(1);
     expect(waitingCount("Андрей", xs)).toBe(1);
+  });
+});
+
+describe("ФИО: отображение, сортировка, поиск", () => {
+  const parts = (first_name: string, last_name = "", middle_name = "") => ({ first_name, last_name, middle_name });
+
+  it("имя и фамилия — «Имя Фамилия»; с отчеством — «Фамилия Имя Отчество»; только имя — «Имя»", () => {
+    expect(personName(parts("Иван", "Петров"))).toBe("Иван Петров");
+    expect(personName(parts("Иван", "Петров", "Сергеевич"))).toBe("Петров Иван Сергеевич");
+    expect(personName(parts("Иван"))).toBe("Иван");
+    expect(personName(parts("Иван", "", "Сергеевич"))).toBe("Иван Сергеевич");
+    expect(personName(parts("  Иван ", " Петров  "))).toBe("Иван Петров");
+  });
+
+  it("сортировка по первому слову отображения: «Иван Петров» на «И», «Петров Иван Сергеевич» на «П»", () => {
+    const a = person({ name: personName(parts("Иван", "Петров")) });
+    const b = person({ name: personName(parts("Иван", "Петров", "Сергеевич")) });
+    const c = person({ name: personName(parts("Борис")) });
+    expect(sortPeople([b, a, c], "name").map((p) => p.name)).toEqual(["Борис", "Иван Петров", "Петров Иван Сергеевич"]);
+  });
+
+  it("поиск не зависит от порядка слов", () => {
+    const a = person({ name: "Иван Петров" });
+    const b = person({ name: "Петров Иван Сергеевич" });
+    const c = person({ name: "Пётр Сидоров" });
+    expect(searchPeople("петров иван", [a, b, c])).toEqual([a, b]);
+    expect(searchPeople("сергеевич", [a, b, c])).toEqual([b]);
   });
 });
