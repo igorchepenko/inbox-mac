@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronsUpDown, Keyboard, LayoutGrid, Plus, Search, Settings as Gear, Users, X } from "lucide-react";
-import type { Project, Tag, TagPatch, Task } from "./db";
+import { Check, ChevronDown, ChevronsUpDown, Keyboard, LayoutGrid, MessageSquare, Plus, Search, Settings as Gear, Users, X } from "lucide-react";
+import { openUrl, type Project, type Tag, type TagPatch, type Task } from "./db";
 import { NewTag, TagEditor } from "./TagsUI";
 import { searchNames } from "./search";
 import { ALWAYS, countFor, HOTKEY_VIEWS, isSmart, VIEWS, type ViewId } from "./views";
@@ -8,6 +8,7 @@ import { Icon } from "./icons";
 import { IconGrid, Popover, ThemeSwitch } from "./widgets";
 import { HomeIcon } from "./home/Home";
 import { spaceVars } from "./palette";
+import { FEEDBACK_URL } from "./feedback";
 import { activeProfile, profileName, switchProfile, useProfiles } from "./profile";
 
 export const KEY_PROJECTS_COLLAPSED = "side.projects.collapsed";
@@ -287,6 +288,7 @@ export function Sidebar(props: {
       <div className="side-foot">
         <ThemeSwitch />
         <span className="side-foot-r">
+          <button className="gear" data-tip="Обратная связь" aria-label="Обратная связь" onClick={() => openUrl(FEEDBACK_URL).catch(() => {})}><MessageSquare size={15} /></button>
           <button className="gear" data-tip="Сочетания клавиш" data-key="⌘/" aria-label="Сочетания клавиш" onClick={props.onShortcuts}><Keyboard size={16} /></button>
           <button className="gear" data-tip="Настройки" data-key="⌘," aria-label="Настройки" onClick={props.onSettings}><Gear size={15} /></button>
         </span>

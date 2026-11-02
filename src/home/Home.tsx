@@ -47,7 +47,7 @@ export default function Home(props: HomeProps) {
 
   const render = (k: BlockId): ReactNode => {
     switch (k) {
-      case "summary": return <SummaryBlock tasks={tasks} cfg={cfg} name={settings["home:name"] ?? "Игорь"} onInbox={props.onOpenInbox} onToday={props.onOpenToday} />;
+      case "summary": return <SummaryBlock tasks={tasks} cfg={cfg} name={settings["home:name"] ?? ""} onInbox={props.onOpenInbox} onToday={props.onOpenToday} />;
       case "today": return <TodayBlock tasks={tasks} cfg={cfg} row={row} onMoveToToday={props.onMoveToToday} />;
       case "inbox": return <InboxBlock tasks={tasks} onOpen={props.onOpenInbox} onOpenTask={props.onOpenTask} />;
       case "week": return <WeekBlock tasks={tasks} cfg={cfg} row={row} />;
@@ -520,7 +520,7 @@ function Customize(props: { order: BlockId[]; hidden: BlockId[]; onSave: (o: Blo
     };
   }, [props]);
 
-  // Стрелки переставляют с анимацией соседей, перетаскивание за ⋮⋮ сохраняет порядок, когда строку отпустили
+  // Соседи сдвигаются с анимацией, перетаскивание за ⋮⋮ сохраняет порядок, когда строку отпустили
   const sort = useSortable({
     onDrop: (from, to) => {
       const next = moveItem(order, from, to);
@@ -529,14 +529,6 @@ function Customize(props: { order: BlockId[]; hidden: BlockId[]; onSave: (o: Blo
     },
   });
   useFlip(sort.listRef, order.join(), { attr: "k", duration: 180 });
-
-  const move = (k: BlockId, dir: -1 | 1) => {
-    const i = order.indexOf(k), j = i + dir;
-    if (j < 0 || j >= order.length) return;
-    const next = moveItem(order, i, j);
-    setOrder(next);
-    props.onSave(next, hidden);
-  };
 
   return (
     <div className="h-cust" ref={boxRef}>
@@ -555,8 +547,6 @@ function Customize(props: { order: BlockId[]; hidden: BlockId[]; onSave: (o: Blo
                 {b.name}
                 {b.hint && <small>{b.hint}</small>}
               </label>
-              <button className="mv" aria-label={`«${b.name}» выше`} onClick={() => move(k, -1)}>↑</button>
-              <button className="mv" aria-label={`«${b.name}» ниже`} onClick={() => move(k, 1)}>↓</button>
             </div>
           );
         })}

@@ -55,3 +55,19 @@ describe("профили", () => {
     expect(m.activeProfile()).toBe("");
   });
 });
+
+describe("имя для приветствия", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("ждёт в localStorage профиля и забирается один раз", async () => {
+    const store: Record<string, string> = { "inbox.profile-list": LIST, "inbox.profile": "p1", "p1:pending-user-name": "Аня" };
+    const m = await load(store);
+    expect(m.takePendingName()).toBe("Аня");
+    expect(m.takePendingName()).toBe("");
+  });
+
+  it("без имени профиль не создаётся", async () => {
+    const m = await load({});
+    expect(await m.createProfile("Работа", "  ")).toMatch(/обращаться/);
+  });
+});

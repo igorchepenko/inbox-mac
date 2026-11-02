@@ -5,6 +5,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { invoke } from "@tauri-apps/api/core";
 import * as db from "./db";
 import type { Project, ProjectFields, Tag, Task } from "./db";
+import { takePendingName } from "./profile";
 import { fmtDay, fmtRange, nowStamp, stampTime, today, toHHMM } from "./dates";
 import { isWaiting, pingDue } from "./waiting";
 import { ALWAYS, HOTKEY_VIEWS, inTasks, isSmart, listFor, plural, progressFor, revKey, revOf, scopeOf, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
@@ -91,6 +92,8 @@ export default function App() {
       setRoster(r);
       setProjects(p);
       setTags(g);
+      const pending = takePendingName();
+      if (pending && !st["home:name"]) (st["home:name"] = pending, db.setSetting("home:name", pending).catch(() => {}));
       setSettings(st);
       settingsRef.current = st;
       setError(null);
