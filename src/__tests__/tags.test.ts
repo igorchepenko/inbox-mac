@@ -141,10 +141,10 @@ describe("сортировка по тегам и по тому, кто назн
     expect([x1, x2, x3].sort(compareBy("assignee")).map((x) => x.id)).toEqual([3, 1, 2]);
   });
 
-  it("в списке заголовки групп: тег, «Без тегов», сделанные внизу", () => {
+  it("в списке заголовки групп: тег и «Без тегов», сделанных в списке нет", () => {
     const xs = [task({ id: 1, tags: [work] }), task({ id: 2 }), task({ id: 3, tags: [call] }), task({ id: 4, tags: [work], status: "done", done_at: "2026-10-10T09:00:00", due_date: "2026-10-10" })];
     const items = listFor("today", xs.map((x) => ({ ...x, due_date: "2026-10-10" })), "tag");
-    expect(items.map((i) => [i.task.id, i.group])).toEqual([[1, "работа"], [3, "Созвон"], [2, NO_TAG_GROUP], [4, "Сделано"]]);
+    expect(items.map((i) => [i.task.id, i.group])).toEqual([[1, "работа"], [3, "Созвон"], [2, NO_TAG_GROUP]]);
   });
 
   it("в списке группы по людям", () => {
@@ -163,8 +163,8 @@ describe("список тега", () => {
     task({ id: 6, tags: [call] }),
   ];
 
-  it("все задачи тега в работе, включая неразобранные, и сделанные сегодня", () => {
-    expect(ids(listFor("t:1", xs)).sort()).toEqual([1, 2, 3]);
+  it("все задачи тега в работе, включая неразобранные; сделанные сразу уходят в «Завершённые»", () => {
+    expect(ids(listFor("t:1", xs)).sort()).toEqual([1, 2]);
   });
 
   it("в меню считаются только несделанные", () => expect(countFor("t:1", xs)).toBe(2));

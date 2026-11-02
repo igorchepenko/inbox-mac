@@ -1,7 +1,7 @@
 import { relationsByTask, rowFor, wouldCycle, type Relation, type RelationKind, type RelationRow } from "./relations";
 import Database from "@tauri-apps/plugin-sql";
 import { invoke } from "@tauri-apps/api/core";
-import { nowStamp, stampDay, today } from "./dates";
+import { nowStamp, stampDay } from "./dates";
 import { nextOccurrence, parseRule } from "./recurrence";
 import { activeProfile } from "./profile";
 import { normalizeTag, pickColor, sameName, TAG_MAX, byName } from "./tags";
@@ -619,11 +619,6 @@ export async function deleteProject(id: number, fate: ProjectTasksFate = "keep")
     await d.execute("UPDATE tasks SET project_id = $1 WHERE project_id = $2", [fate === "keep" ? null : fate.move, id]);
   }
   await d.execute("DELETE FROM projects WHERE id = $1", [id]);
-}
-
-/** Сделанные до сегодняшнего дня задачи сами уходят в архив: сегодняшние ещё видны и считаются в кольце */
-export async function archiveOldDone(): Promise<void> {
-  await (await db()).execute("UPDATE tasks SET status = 'archived' WHERE status = 'done' AND done_at < $1", [today()]);
 }
 
 /**

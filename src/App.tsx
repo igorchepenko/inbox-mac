@@ -8,7 +8,7 @@ import type { Project, ProjectFields, Tag, Task } from "./db";
 import { takePendingName } from "./profile";
 import { fmtDay, fmtRange, nowStamp, stampTime, today, toHHMM } from "./dates";
 import { isWaiting, pingDue } from "./waiting";
-import { ALWAYS, HOTKEY_VIEWS, inTasks, isSmart, listFor, plural, progressFor, revKey, revOf, scopeOf, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
+import { ALWAYS, HOTKEY_VIEWS, inTasks, isSmart, listFor, plural, progressFor, revKey, revOf, scopeOf, SMART, sortOf, VIEWS, type SortBy, type ViewId } from "./views";
 import { marks } from "./search";
 import "./search.css";
 import { Details, Help, PickBox, QuickForm, Ring, type TaskPatch } from "./components";
@@ -96,7 +96,6 @@ export default function App() {
   // after вызывается с свежими задачами в том же проходе, что и setTasks: переход за задачей не успевает мигнуть выбором соседа
   const reload = useCallback(async (after?: (t: Task[]) => void) => {
     try {
-      await db.archiveOldDone();
       const [t, p, st, g, r] = await Promise.all([db.loadTasks(), db.loadProjects(), db.loadSettings(), db.loadTags(), db.loadPeopleList()]);
       if (typeof after === "function") after(t);
       setTasks(t);
@@ -243,7 +242,7 @@ export default function App() {
     db.setSetting("last.view", v).catch(() => {});
   };
   const smart: SmartFilter | undefined = inTasks(view)
-    ? { value: smartOn, onToggle: (v) => setSmarts(smartOn.includes(v) ? smartOn.filter((x) => x !== v) : [...smartOn, v]), onClear: () => setSmarts([]) }
+    ? { lists: SMART.filter((x) => !hidden(x.id)), value: smartOn, onToggle: (v) => setSmarts(smartOn.includes(v) ? smartOn.filter((x) => x !== v) : [...smartOn, v]), onClear: () => setSmarts([]) }
     : undefined;
   const setSettingValue = (key: string, value: string) => {
     setSettings((st) => ({ ...st, [key]: value }));
@@ -331,8 +330,8 @@ export default function App() {
   // Задача с главной открывается в своём списке
   const homeOf = (x: Task): ViewId => {
     const t = today();
-    return x.status === "inbox" ? "inbox" : x.status === "archived" ? "archive" : pingDue(x, t) ? "today" : isWaiting(x) ? "waiting"
-      : x.due_date && x.due_date <= t ? "today" : x.status === "done" ? "today" : "soon";
+    return x.status === "inbox" ? "inbox" : x.status === "archived" || x.status === "done" ? "archive" : pingDue(x, t) ? "today" : isWaiting(x) ? "waiting"
+      : x.due_date && x.due_date <= t ? "today" : "soon";
   };
   const openTask = (x: Task) => {
     setView(homeOf(x));
@@ -415,7 +414,7 @@ export default function App() {
         // Записанная сразу в «К выполнению» или «Готово» открывается там, где теперь лежит
         const x = all.find((t) => t.id === id);
         // Во «Всех задачах» новая и так видна, оттуда не уводим
-        setView(x && draft.stage ? homeOf(x) : view === "tasks" ? "tasks" : "inbox");
+        setView(x && draft.stage ? homeOf(x) : view === "tasks" || hidden("inbox") ? "tasks" : "inbox");
         select(id);
       } catch (e) {
         setError(String(e));
@@ -554,7 +553,7 @@ export default function App() {
   const tag = view.startsWith("t:") ? tags.find((g) => `t:${g.id}` === view) : undefined;
   // Удалённый тег тоже уводит в «Новые». Пока база не прочитана, тегов ещё нет, поэтому ждём первой загрузки
   const lostTag = view.startsWith("t:") && !tag && started.current;
-  if (!wide && ((!current && !project && !tag && (projects.length || lostTag)) || hidden(view))) queueMicrotask(() => openView("inbox"));
+  if (!wide && ((!current && !project && !tag && (projects.length || lostTag)) || hidden(view))) queueMicrotask(() => openView(hidden("inbox") ? "tasks" : "inbox"));
   const progress = progressFor(view, tasks);
 
   return (
@@ -639,7 +638,7 @@ export default function App() {
             )}
             <SearchField value={filter.text} onChange={setText} onArrow={stepSel} placeholder="Найти задачу"
               tip="Поиск по задачам на этом экране: название, заметка, чеклист, теги, люди, ссылки" />
-            {view !== "archive" && <SortSwitch value={sort} rev={rev} onChange={setSort} onReverse={reverseSort} />}
+            <SortSwitch view={view} value={sort} rev={rev} onChange={setSort} onReverse={reverseSort} />
             <FilterButton filter={filt} projects={projects} tags={tags} people={people} lockTag={tag?.id} noSpaces={!!project} onChange={setFilter} smart={smart} />
             <LayoutSwitch value={layout} onChange={setLayout} />
             {fieldsButton}
@@ -783,7 +782,7 @@ function emptyText(view: ViewId): string {
   if (view === "inbox") return `Здесь пусто. Нажми ${quickKeyLabel()} в любом приложении, чтобы записать задачу.`;
   if (view === "waiting") return "Никого не ждёшь. В панели задачи поле «Жду» ставит задачу сюда.";
   if (view === "today") return "На сегодня ничего. Поставь дату «Сегодня» при разборе.";
-  if (view === "archive") return "Сделанные и отменённые задачи попадают сюда на следующий день.";
+  if (view === "archive") return "Сделанные и отменённые задачи попадают сюда сразу.";
   if (view === "tasks") return `Задач пока нет. Нажми ${quickKeyLabel()} в любом приложении, чтобы записать задачу.`;
   return "Здесь пока ничего нет.";
 }

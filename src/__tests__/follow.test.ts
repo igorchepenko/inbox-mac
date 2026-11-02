@@ -43,11 +43,11 @@ describe("задача остаётся выбранной после правк
     expect(go(at("inbox"), task({ id: 1 }))?.view).toBe("soon");
     expect(go(at("inbox"), task({ id: 1, waiting_for: "Петя" }))?.view).toBe("waiting");
   });
-  it("9: сделанная уходит в «Сегодня», в пространстве остаётся", () => {
+  it("9: сделанная уходит в «Завершённые» откуда бы ни отметили", () => {
     const done = { status: "done" as const, done_at: `${TODAY}T11:00:00` };
-    expect(go(at("soon"), task({ id: 1, ...done }))?.view).toBe("today");
-    expect(go(at("tasks"), task({ id: 1, ...done }))?.view).toBe("today");
-    expect(go(at("p:1"), task({ id: 1, project_id: 1, ...done }))).toBeNull();
+    expect(go(at("soon"), task({ id: 1, ...done }))?.view).toBe("archive");
+    expect(go(at("tasks"), task({ id: 1, ...done }))?.view).toBe("archive");
+    expect(go(at("p:1"), task({ id: 1, project_id: 1, ...done }))?.view).toBe("archive");
   });
   it("10 и 11: из архива и в архив", () => {
     expect(go(at("archive"), task({ id: 1, due_date: TODAY }))?.view).toBe("today");

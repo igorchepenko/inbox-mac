@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { spaceVars } from "./palette";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Bell, CalendarDays, CalendarPlus, Check, Clock, X, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound, Users } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, Bell, CalendarDays, CalendarPlus, Check, CircleCheckBig, Clock, X, Columns3, Grid2x2, Link2, List, ListChecks, Paperclip, Repeat, Tag, UserRound, Users } from "lucide-react";
 import { TagChip } from "./TagsUI";
 import { Assignee } from "./PersonCard";
 import { CreatedMeta, DueFlag, MeetingMark, RelationBadges, WaitingBadge } from "./TaskBits";
@@ -8,7 +8,7 @@ import { isCancelled, type Project, type Task } from "./db";
 import { addDays, fmtDay, fmtRange, nextMonday, stampTime, today } from "./dates";
 import { TARGETS, type BoardColumn, type Layout, type Stage } from "./boardOps";
 import * as board from "./boardOps";
-import { directionOf, plural, SORTS, type SortBy } from "./views";
+import { directionOf, plural, sortHint, sortsFor, type SortBy, type ViewId } from "./views";
 import { PickBox, PRIORITY } from "./components";
 import { Icon } from "./icons";
 import { Calendar, Popover } from "./widgets";
@@ -37,7 +37,7 @@ export function LayoutSwitch({ value, onChange }: { value: Layout; onChange: (l:
 
 /** Сортировка списка и столбцов канбана: по дате, по важности, по матрице.
  * Повторный клик по выбранной или кнопка со стрелкой разворачивают порядок */
-export function SortSwitch({ value, rev, onChange, onReverse }: { value: SortBy; rev: boolean; onChange: (s: SortBy) => void; onReverse: () => void }) {
+export function SortSwitch({ view, value, rev, onChange, onReverse }: { view: ViewId; value: SortBy; rev: boolean; onChange: (s: SortBy) => void; onReverse: () => void }) {
   const icons: Record<SortBy, ReactNode> = {
     date: <CalendarDays size={14} />,
     priority: <PriorityIcon p={5} size={14} color="currentColor" />,
@@ -45,17 +45,18 @@ export function SortSwitch({ value, rev, onChange, onReverse }: { value: SortBy;
     created: <CalendarPlus size={14} />,
     tag: <Tag size={14} />,
     assignee: <UserRound size={14} />,
+    status: <CircleCheckBig size={14} />,
   };
-  const dir = directionOf(value, rev);
-  const other = directionOf(value, !rev);
-  const tip = (s: (typeof SORTS)[number]) => {
-    if (s.id !== value) return s.hint;
+  const dir = directionOf(value, rev, view);
+  const other = directionOf(value, !rev, view);
+  const tip = (s: ReturnType<typeof sortsFor>[number]) => {
+    if (s.id !== value) return sortHint(s, view);
     return `${s.name}, ${dir.asc ? "по возрастанию" : "по убыванию"}: ${dir.text}. Нажми ещё раз: ${other.text}`;
   };
   return (
     <div className="sort-switch">
       <div className="theme-switch layout-switch" role="radiogroup" aria-label="Сортировка">
-        {SORTS.map((s) => (
+        {sortsFor(view).map((s) => (
           <button key={s.id} role="radio" aria-checked={value === s.id} aria-label={s.name} data-tip={tip(s)}
             className={value === s.id ? "on" : ""} onClick={() => (value === s.id ? onReverse() : onChange(s.id))}>{icons[s.id]}</button>
         ))}
