@@ -30,7 +30,7 @@ describe("статус «Отменено»", () => {
   });
 
   it("канбан: четвёртый столбец «Отменено»", () => {
-    const cols = boardFor("today", [task({ id: 1 }), done({ id: 2 }), cancelled({ id: 3 })], "date");
+    const cols = boardFor("tasks", [task({ id: 1 }), done({ id: 2 }), cancelled({ id: 3 })], "date");
     expect(cols.map((c) => c.key)).toEqual(["new", "todo", "done", "cancelled"]);
     expect(cols[3].items.map((i) => i.task.id)).toEqual([3]);
     expect(cols[2].items.map((i) => i.task.id)).toEqual([2]);
@@ -38,9 +38,12 @@ describe("статус «Отменено»", () => {
 
   it("в списке отменённые ниже сделанных, с отдельной группой", () => {
     const xs = [cancelled({ id: 1, priority: 5 }), done({ id: 2 }), task({ id: 3, due_date: TODAY, priority: 1 })];
-    const items = listFor("today", xs, "priority");
-    expect(items.map((i) => i.task.id)).toEqual([3, 2, 1]);
-    expect(items.map((i) => i.group)).toEqual(["Минимальная", "Сделано", "Отменено"]);
+    const items = listFor("tasks", xs, "priority");
+    expect(items.map((i) => i.task.id)).toEqual([3]);
+    // Закрытые лежат только в «Завершённых», там порядок целиком по выбранной сортировке
+    const closed = listFor("archive", xs, "priority");
+    expect(closed.map((i) => i.task.id)).toEqual([1, 2]);
+    expect(closed.map((i) => i.group)).toEqual(["Максимальная", "Важность не задана"]);
   });
 
   it("прогресс дня: отменённые не в счёт", () => {

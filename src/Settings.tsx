@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { moveItem, useSortable } from "./drag";
-import { BellRing, Check, ChevronDown, ChevronUp, FolderOpen, GripVertical, Pencil, Trash2, Info, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, Rows3, SlidersHorizontal, Type, UserRound, type LucideIcon } from "lucide-react";
+import { BellRing, Check, FolderOpen, GripVertical, Pencil, Trash2, Info, Keyboard, LayoutDashboard, PanelLeft, RotateCcw, Rows3, SlidersHorizontal, Type, UserRound, type LucideIcon } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { disable as disableAutostart, enable as enableAutostart, isEnabled as autostartEnabled } from "@tauri-apps/plugin-autostart";
 import { Icon } from "./icons";
@@ -15,6 +15,7 @@ import { QuickKeyTest } from "./QuickKeyCheck";
 import { activeProfile, createProfile, deleteProfile, renameProfile, reorderProfiles, switchProfile, useProfiles } from "./profile";
 import { notify, permission } from "./reminders";
 import { fmtDate } from "./buildInfo";
+import { RELEASES_EVENT } from "./ReleasesDialog";
 import {
   accelFromEvent, DEFAULT_APPEARANCE, DEFAULTS, FONTS, labelFromAccel, pref, savedAppearance, setAppearance, SIZES, SOUNDS, type Appearance,
 } from "./prefs";
@@ -187,8 +188,11 @@ function Profiles(p: SettingsProps) {
   const [draft, setDraft] = useState("");
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
   const [fresh, setFresh] = useState("");
+  const [freshUser, setFreshUser] = useState("");
+  const canCreate = !!fresh.trim() && !!freshUser.trim();
+  const create = () => createProfile(fresh, freshUser).then(setErr);
   const [err, setErr] = useState<string | null>(null);
-  const [name, setName] = useState(p.settings["home:name"] ?? "Игорь");
+  const [name, setName] = useState(p.settings["home:name"] ?? "");
   // Порядок держим локально, чтобы перетаскивание шло без задержки на запись
   const [order, setOrder] = useState(all.map((x) => x.id));
   const key = all.map((x) => x.id).join(",");
@@ -199,9 +203,9 @@ function Profiles(p: SettingsProps) {
   return (
     <div className="set-group">
       <Row name="Твоё имя" hint="Так приложение обращается к тебе в приветствии на дашборде. Своё у каждого профиля">
-        <input className="field" style={{ padding: "7px 10px", width: 200 }} value={name} placeholder="Игорь" spellCheck={false}
+        <input className="field" style={{ padding: "7px 10px", width: 200 }} value={name} placeholder="Имя" spellCheck={false}
           onChange={(e) => setName(e.target.value)}
-          onBlur={() => name.trim() ? p.onSet("home:name", name.trim()) : setName(p.settings["home:name"] ?? "Игорь")}
+          onBlur={() => name.trim() ? p.onSet("home:name", name.trim()) : setName(p.settings["home:name"] ?? "")}
           onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()} />
       </Row>
       <Row name="Профили"
@@ -232,8 +236,6 @@ function Profiles(p: SettingsProps) {
                 <>
                   <button type="button" className={`chip ${cur === x.id ? "on" : ""}`} style={cur === x.id ? { background: "var(--profile)" } : undefined}
                     onClick={() => switchProfile(x.id)}>{cur === x.id ? <><Check size={13} /> Активный</> : "Выбрать"}</button>
-                  <button type="button" className="cal-nav" disabled={i === 0} aria-label="Выше" onClick={() => saveOrder(moveItem(order, i, i - 1))}><ChevronUp size={14} /></button>
-                  <button type="button" className="cal-nav" disabled={i === shown.length - 1} aria-label="Ниже" onClick={() => saveOrder(moveItem(order, i, i + 1))}><ChevronDown size={14} /></button>
                   <button type="button" className="gear" aria-label="Переименовать" data-tip="Переименовать"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => (setEditing(x.id), setDraft(x.name), setErr(null))}><Pencil size={14} /></button>
@@ -246,8 +248,11 @@ function Profiles(p: SettingsProps) {
           <div className="profile-row">
             <input className="field" maxLength={40} value={fresh} placeholder="Название нового профиля" spellCheck={false}
               onChange={(e) => (setFresh(e.target.value), setErr(null))}
-              onKeyDown={(e) => e.key === "Enter" && fresh.trim() && createProfile(fresh).then(setErr)} />
-            <button type="button" className="btn small" disabled={!fresh.trim()} onClick={() => createProfile(fresh).then(setErr)}>Создать</button>
+              onKeyDown={(e) => e.key === "Enter" && canCreate && create()} />
+            <input className="field" maxLength={40} value={freshUser} placeholder="Как к тебе обращаться" spellCheck={false} aria-label="Имя для приветствия"
+              onChange={(e) => (setFreshUser(e.target.value), setErr(null))}
+              onKeyDown={(e) => e.key === "Enter" && canCreate && create()} />
+            <button type="button" className="btn small" disabled={!canCreate} onClick={create}>Создать</button>
           </div>
         </div>
       </Row>
@@ -270,6 +275,9 @@ function About() {
     <div className="set-group">
       <Row name="Версия"><b>{__APP_VERSION__}</b></Row>
       <Row name="Дата выпуска" hint="Дата сборки этой версии"><b>{fmtDate(__BUILD_DATE__)}</b></Row>
+      <Row name="История версий" hint="Что менялось в каждой версии, от новых к старым">
+        <button type="button" className="btn" onClick={() => window.dispatchEvent(new Event(RELEASES_EVENT))}>Открыть</button>
+      </Row>
     </div>
   );
 }
@@ -459,8 +467,7 @@ function MenuItems(p: SettingsProps) {
             <div className="set-text">
               <div className="set-name">{v.name}</div>
               {v.id === "tasks" && <div className="hint">Все задачи с фильтрами, поэтому этот пункт всегда виден</div>}
-              {v.id === "inbox" && <div className="hint">Умный список. Сюда падают все новые задачи, поэтому он всегда виден</div>}
-              {isSmart(v.id) && v.id !== "inbox" && <div className="hint">Умный список: «Задачи» с готовым фильтром</div>}
+              {isSmart(v.id) && <div className="hint">Умный список: «Задачи» с готовым фильтром. Можно убрать из меню</div>}
               <div className="set-def">
                 По умолчанию: <b>виден, иконка</b> <Icon name={v.icon} size={13} />
                 {menuChanged(v.id) && <button type="button" className="link" onClick={() => resetMenu(v.id)}>Сбросить</button>}

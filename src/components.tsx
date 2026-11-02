@@ -92,6 +92,22 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
     }
     props.onSave(t, note.trim(), draft);
   };
+  // Enter, когда фокус никуда не попал (кликнули по пустому месту формы или фокус потерялся): создаёт задачу.
+  // Если фокус на каком-то элементе, Enter работает как у этого элемента
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+  useEffect(() => {
+    const onDoc = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" || e.defaultPrevented || e.isComposing) return;
+      const a = document.activeElement;
+      if (a && a !== document.body && a !== document.documentElement) return;
+      e.preventDefault();
+      e.stopPropagation();
+      submitRef.current();
+    };
+    window.addEventListener("keydown", onDoc, true);
+    return () => window.removeEventListener("keydown", onDoc, true);
+  }, []);
   const onKey = (e: React.KeyboardEvent) => {
     // Клавиши формы не должны доходить до списка: иначе тот же Enter сразу «разберёт» выбранную задачу
     if (e.key === "Escape" || e.key === "Enter") e.stopPropagation();
@@ -141,8 +157,9 @@ export function QuickForm(props: { projects: Project[]; tags: Tag[]; people: str
           )}
           <Line label="Дата"><DateField inline value={d.due_date ?? null} onChange={(v) => set({ due_date: v, ...moveRemind({ due_date: v }) })} /></Line>
           <Line label="Время">
-            <TimeRange start={d.start_time ?? null} end={d.end_time ?? null}
-              onChange={(a, b) => set({ start_time: a, end_time: b, ...moveRemind({ start_time: a, end_time: b }) })} />
+            <TimeRange start={d.start_time ?? null} end={d.end_time ?? null} dated={!!d.due_date}
+              onChange={(a, b) => set({ start_time: a, end_time: b, ...moveRemind({ start_time: a, end_time: b }) })}
+              onAllDay={() => set({ start_time: null, end_time: null, due_date: d.due_date ?? today(), ...moveRemind({ due_date: d.due_date ?? today(), start_time: null, end_time: null }) })} />
           </Line>
           <Line label="Напомнить">
             <RemindField defaultBefore={props.remindBefore} inline value={when}
@@ -235,7 +252,6 @@ export function Details(props: {
   onTriage: () => void;
   onToggleDone: () => void;
   onStage: (stage: Stage) => void; // переключатель статуса; «Готово» и «Отменено» спрашивают итоги
-  onArchive: () => void;
   onRestore: () => void;
   onDelete: () => void;
 }) {
@@ -339,7 +355,8 @@ export function Details(props: {
         <div className="lbl">Когда</div>
         <div className="seg"><DateField value={x.due_date} onChange={setDate} /></div>
         <Line label="Время">
-          <TimeRange start={x.start_time} end={x.end_time} disabled={locked} onChange={setTimes} />
+          <TimeRange start={x.start_time} end={x.end_time} dated={!!x.due_date} disabled={locked} onChange={setTimes}
+            onAllDay={() => { const p: TaskPatch = { start_time: null, end_time: null, due_date: x.due_date ?? t }; onPatch({ ...p, ...remindPatch(x, p) }); }} />
         </Line>
         <Line label="Напомнить">
           <RemindField value={x} reminded={!!x.reminded} defaultBefore={props.remindBefore} disabled={locked} onChange={onPatch} />
@@ -403,10 +420,7 @@ export function Details(props: {
           </div>
         )}
         {x.status === "done" && (
-          <div className="row-btns">
-            <button className="btn" onClick={props.onToggleDone}>Вернуть</button>
-            <button className="cta go" onClick={props.onArchive}>В завершённые</button>
-          </div>
+          <button className="btn" onClick={props.onToggleDone}>Вернуть</button>
         )}
         {locked && <button className="cta stand" onClick={props.onRestore}>Вернуть в работу</button>}
         <div className="hint">

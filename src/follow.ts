@@ -1,5 +1,5 @@
 import type { Task } from "./db";
-import { stampDay, today } from "./dates";
+import { today } from "./dates";
 import { boardFor } from "./boardOps";
 import { applyFilter, NO_PERSON, NO_SPACE, type TaskFilter } from "./tags";
 import { listFor, type ViewId } from "./views";
@@ -47,7 +47,7 @@ function adapt(f: TaskFilter, x: Task, view: ViewId): TaskFilter {
 export function homeOf(x: Task, t = today()): ViewId {
   if (x.status === "inbox") return "inbox";
   if (x.status === "archived") return "archive";
-  if (x.status === "done") return !!x.done_at && stampDay(x.done_at) === t ? "today" : "archive";
+  if (x.status === "done") return "archive";
   if (isWaiting(x)) return "waiting";
   return x.due_date && x.due_date <= t ? "today" : "soon";
 }

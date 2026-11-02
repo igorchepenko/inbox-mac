@@ -3,6 +3,8 @@ import { MONTHS_GEN } from "./dates";
 import { fold } from "./search";
 import { byName, sameName } from "./tags";
 
+export { personName } from "./personName";
+
 /*
  * Люди: чистая логика без базы и React, под тесты.
  * День рождения хранится строкой «ММ-ДД» (год неизвестен) или «ГГГГ-ММ-ДД».
@@ -114,11 +116,14 @@ export function sortPeople(people: Person[], sort: PeopleSort, rev = false, acti
   });
 }
 
-/** Поиск по имени: запрос целиком, без регистра, ё = е */
+/** Поиск по ФИО: без регистра, ё = е, порядок слов не важен («петров иван» найдёт и «Иван Петров»), каждое слово ищется как часть имени */
 export function searchPeople(query: string, people: Person[]): Person[] {
-  const q = fold(query).replace(/\s+/g, " ").trim();
-  if (!q) return people;
-  return people.filter((p) => fold(p.name).replace(/\s+/g, " ").includes(q));
+  const words = fold(query).split(/\s+/).filter(Boolean);
+  if (!words.length) return people;
+  return people.filter((p) => {
+    const full = fold(p.name).replace(/\s+/g, " ");
+    return words.every((w) => full.includes(w));
+  });
 }
 
 /** Фильтры страницы «Люди»: внутри группы «любой из выбранных», группы складываются через «и» */

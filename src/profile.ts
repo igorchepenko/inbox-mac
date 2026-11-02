@@ -91,12 +91,20 @@ export async function switchProfile(p: ProfileId) {
   location.reload();
 }
 
-/** Создать профиль и сразу перейти в него. Возвращает текст ошибки */
-export async function createProfile(name: string): Promise<string | null> {
+/** Ключ, под которым имя для приветствия ждёт первого открытия базы нового профиля */
+export const pendingNameKey = (p: ProfileId = activeProfile()) => profileKey("pending-user-name", p);
+
+/**
+ * Создать профиль и сразу перейти в него. Возвращает текст ошибки.
+ * userName — как приложению обращаться к человеку: обязательно, при первом открытии записывается в настройки профиля
+ */
+export async function createProfile(name: string, userName: string): Promise<string | null> {
+  if (!userName.trim()) return "Укажи, как к тебе обращаться";
   try {
     const e = await invoke<ProfileInfo>("create_profile", { name });
     await loadProfiles();
     try {
+      localStorage.setItem(pendingNameKey(e.id), userName.trim());
       localStorage.setItem(KEY, e.id);
     } catch {
       // без localStorage откроется первый в списке
@@ -106,6 +114,18 @@ export async function createProfile(name: string): Promise<string | null> {
     return null;
   } catch (e) {
     return String(e);
+  }
+}
+
+/** Имя, введённое при создании профиля: достаём один раз и стираем */
+export function takePendingName(): string {
+  try {
+    const k = pendingNameKey();
+    const v = localStorage.getItem(k) ?? "";
+    if (v) localStorage.removeItem(k);
+    return v;
+  } catch {
+    return "";
   }
 }
 

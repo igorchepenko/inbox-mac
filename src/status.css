@@ -59,3 +59,10 @@
 .det-head .det-created { margin-top: 0; }
 .det-head .det-title { max-height: 5.4em; overflow-y: auto; }
 .det-body { padding-top: 14px; }
+
+/* Сделанные и отменённые серее открытых, но текст остаётся читаемым на фоне строки и в светлой, и в тёмной теме */
+:root { --closed: color-mix(in srgb, var(--muted) 78%, var(--surface)); }
+.row.done .t, .row.cancelled .t, .kcard.done .t, .kcard.cancelled .t { color: var(--closed); }
+.row.done .meta, .row.cancelled .meta, .kcard.done .meta, .kcard.cancelled .meta,
+.row.done .stage, .row.cancelled .stage, .kcard.done .stage, .kcard.cancelled .stage { color: var(--closed); }
+.row.done .tag, .row.cancelled .tag, .row.done .tchips, .row.cancelled .tchips, .kcard.done .tag, .kcard.cancelled .tag { opacity: .62; }

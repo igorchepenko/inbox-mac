@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
+import { GripVertical } from "lucide-react";
 import { ResetSection, Row, Toggle } from "./Settings";
 import { moveItem, useSortable } from "./drag";
 import { BLOCKS, blockOrder, DEFAULT_ORDER, hiddenBlocks, KEY_HIDDEN, KEY_ORDER, type BlockId } from "./home/data";
@@ -30,7 +30,7 @@ export function HomeSettings(props: { settings: Record<string, string>; onSet: (
   const start = num(s, "home:day_start", 9);
   const end = num(s, "home:day_end", 20);
   const capacity = num(s, "home:capacity", 6);
-  const [name, setName] = useState(s["home:name"] ?? "Игорь");
+  const [name, setName] = useState(s["home:name"] ?? "");
   const [goal, setGoal] = useState(String(num(s, "home:goal", 5)));
   const commitGoal = () => {
     const n = Math.round(Number(goal));
@@ -43,7 +43,7 @@ export function HomeSettings(props: { settings: Record<string, string>; onSet: (
       <div className="set-row">
         <div className="set-text">
           <div className="set-name">Блоки и их порядок</div>
-          <div className="hint">Перетащи строку за ручку или двигай стрелками. Выключенные блоки на дашборде не показываются</div>
+          <div className="hint">Перетащи строку за ручку. Выключенные блоки на дашборде не показываются</div>
           <div className="set-def">По умолчанию: <b>все блоки включены, стандартный порядок</b></div>
         </div>
         {blocksChanged && <button type="button" className="link" onClick={resetBlocks}>Сбросить</button>}
@@ -56,8 +56,6 @@ export function HomeSettings(props: { settings: Record<string, string>; onSet: (
             <div key={id} className={`block-row sort-row ${off ? "off" : ""} ${sort.dragging === i ? "lifted" : ""}`} style={sort.rowStyle(i)}>
               <span className="grip" title="Перетащи, чтобы поменять порядок" {...sort.grip(i)}><GripVertical size={14} /></span>
               <span className="block-name">{b.name}</span>
-              <button type="button" className="cal-nav" disabled={i === 0} aria-label="Выше" onClick={() => saveOrder(moveItem(order, i, i - 1))}><ChevronUp size={14} /></button>
-              <button type="button" className="cal-nav" disabled={i === order.length - 1} aria-label="Ниже" onClick={() => saveOrder(moveItem(order, i, i + 1))}><ChevronDown size={14} /></button>
               <Toggle label={`Показывать «${b.name}»`} on={!off}
                 onChange={(on) => props.onSet(KEY_HIDDEN, JSON.stringify(on ? hidden.filter((k) => k !== id) : [...hidden, id]))} />
             </div>
@@ -97,20 +95,18 @@ export function HomeSettings(props: { settings: Record<string, string>; onSet: (
           onChange={(e) => setGoal(e.target.value.replace(/\D/g, "").slice(0, 3))}
           onBlur={commitGoal} onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLElement).blur()} />
       </Row>
-      <Row name="Как к тебе обращаться" hint="Имя в приветствии на дашборде"
-        def={{ text: "Игорь", changed: (s["home:name"] ?? "Игорь") !== "Игорь", reset: () => (setName("Игорь"), props.onSet("home:name", "Игорь")) }}>
-        <input className="field set-input wide" value={name} aria-label="Имя"
+      <Row name="Как к тебе обращаться" hint="Имя в приветствии на дашборде. Своё у каждого профиля, пустым оставить нельзя">
+        <input className="field set-input wide" value={name} aria-label="Имя" placeholder="Имя"
           onChange={(e) => setName(e.target.value)}
-          onBlur={() => props.onSet("home:name", name.trim())}
+          onBlur={() => name.trim() ? props.onSet("home:name", name.trim()) : setName(s["home:name"] ?? "")}
           onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLElement).blur()} />
       </Row>
-      <ResetSection name="Дашборд" changed={blocksChanged || start !== 9 || end !== 20 || capacity !== 6 || num(s, "home:goal", 5) !== 5 || (s["home:name"] ?? "Игорь") !== "Игорь"}
+      <ResetSection name="Дашборд" changed={blocksChanged || start !== 9 || end !== 20 || capacity !== 6 || num(s, "home:goal", 5) !== 5}
         onReset={() => {
           resetBlocks();
           setGoal("5");
-          setName("Игорь");
           props.onSet("home:day_start", "9"); props.onSet("home:day_end", "20"); props.onSet("home:capacity", "6");
-          props.onSet("home:goal", "5"); props.onSet("home:name", "Игорь");
+          props.onSet("home:goal", "5");
         }} />
     </div>
   );

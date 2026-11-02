@@ -5,13 +5,14 @@ import { PRIORITY } from "./priority";
 import { compareNames, firstTag, sameName } from "./tags";
 import { isWaiting, pingDue } from "./waiting";
 
-export type ViewId = "home" | "projects" | "tags" | "people" | "tasks" | "inbox" | "today" | "soon" | "waiting" | "archive" | "calendar" | `p:${number}` | `t:${number}`;
+export type ViewId = "home" | "projects" | "tags" | "people" | "tasks" | "inbox" | "today" | "overdue" | "soon" | "waiting" | "archive" | "calendar" | `p:${number}` | `t:${number}`;
 
 /** Пункты меню по порядку. «Новые», «Сегодня», «Скоро» и «Жду» стоят в меню под «Задачами» */
 export const VIEWS: { id: ViewId; name: string; accent: string; icon: string }[] = [
   { id: "tasks", name: "Задачи", accent: "stand", icon: "tasks" },
   { id: "inbox", name: "Новые", accent: "move", icon: "inbox" },
   { id: "today", name: "Сегодня", accent: "exercise", icon: "sun" },
+  { id: "overdue", name: "Просроченные", accent: "move", icon: "alarm" },
   { id: "soon", name: "Скоро", accent: "stand", icon: "calendar" },
   { id: "waiting", name: "Жду", accent: "move", icon: "hourglass" },
   { id: "archive", name: "Завершённые", accent: "muted", icon: "finished" },
@@ -25,13 +26,14 @@ export const VIEWS: { id: ViewId; name: string; accent: string; icon: string }[]
 export const SMART: { id: ViewId; name: string }[] = [
   { id: "inbox", name: "Новые" },
   { id: "today", name: "Сегодня" },
+  { id: "overdue", name: "Просроченные" },
   { id: "soon", name: "Скоро" },
   { id: "waiting", name: "Жду" },
 ];
-/** Пункты с сочетанием ⌘1 … ⌘6; «Жду» без сочетания: ⌘7 занят пространствами */
-export const HOTKEY_VIEWS = VIEWS.filter((v) => v.id !== "waiting");
-/** Эти пункты меню нельзя спрятать */
-export const ALWAYS: ViewId[] = ["tasks", "inbox"];
+/** Пункты с сочетанием ⌘1 … ⌘6; «Жду» и «Просроченные» без сочетания: ⌘7 занят пространствами */
+export const HOTKEY_VIEWS = VIEWS.filter((v) => v.id !== "waiting" && v.id !== "overdue");
+/** Этот пункт меню нельзя спрятать: любой умный список спрятать можно, «Задачи» остаются */
+export const ALWAYS: ViewId[] = ["tasks"];
 export const isSmart = (v: ViewId) => SMART.some((s) => s.id === v);
 /** Раздел «Задачи»: все задачи или умный список */
 export const inTasks = (v: ViewId) => v === "tasks" || isSmart(v);
@@ -43,10 +45,11 @@ export interface ListItem {
   group?: string; // заголовок группы перед строкой
 }
 
-const doneToday = (x: Task, t: string) => x.status === "done" && !!x.done_at && stampDay(x.done_at) === t;
+/** Сделана или отменена сегодня: в списки она уже не попадает, но считается в кольце «Сегодня» */
+export const doneToday = (x: Task, t: string) => x.status === "done" && !!x.done_at && stampDay(x.done_at) === t;
 
 /** Порядок строк в списке и в столбцах канбана. Хранится отдельно для каждого списка: settings sort:<вид> */
-export type SortBy = "date" | "created" | "priority" | "matrix" | "tag" | "assignee";
+export type SortBy = "date" | "created" | "priority" | "matrix" | "tag" | "assignee" | "status" | "space";
 export const SORTS: { id: SortBy; name: string; hint: string }[] = [
   { id: "date", name: "По дате", hint: "По дате и времени: ближайшие сверху" },
   { id: "created", name: "По дате создания", hint: "По дате создания: новые сверху" },
@@ -54,7 +57,13 @@ export const SORTS: { id: SortBy; name: string; hint: string }[] = [
   { id: "matrix", name: "По матрице", hint: "По матрице Эйзенхауэра: срочно и важно сверху" },
   { id: "tag", name: "По тегам", hint: "По тегам: группы по алфавиту, без тегов в конце" },
   { id: "assignee", name: "По тому, кто назначил", hint: "По тому, кто назначил: группы по именам, свои задачи в конце" },
+  { id: "status", name: "По статусу", hint: "По статусу: группы «Сделано» и «Отменено»" },
+  { id: "space", name: "По пространствам", hint: "По пространствам: группы по алфавиту, без пространства в конце" },
 ];
+/** Сортировки, которые есть у списка: статус только у «Завершённых», там все задачи закрыты и «по дате» значит дату завершения */
+export const sortsFor = (view: ViewId) => SORTS.filter((s) => s.id !== "status" || view === "archive");
+export const sortHint = (s: (typeof SORTS)[number], view: ViewId) =>
+  view === "archive" && s.id === "date" ? "По дате задачи: свежие сверху" : s.hint;
 export const sortOf = (view: ViewId, settings: Record<string, string>): SortBy =>
   SORTS.find((s) => s.id === settings[`sort:${scopeOf(view)}`])?.id ?? "date";
 
@@ -71,10 +80,14 @@ export const DIRECTIONS: Record<SortBy, { asc: boolean; names: [string, string] 
   matrix: { asc: true, names: ["срочно и важно сверху", "не срочно и не важно сверху"] },
   tag: { asc: true, names: ["теги от А до Я", "теги от Я до А"] },
   assignee: { asc: true, names: ["имена от А до Я", "имена от Я до А"] },
+  status: { asc: true, names: ["сначала сделанные", "сначала отменённые"] },
+  space: { asc: true, names: ["пространства от А до Я", "пространства от Я до А"] },
 };
+/** В «Завершённых» «по дате» идёт по дате задачи, и обычный порядок там по убыванию */
+const ARCHIVE_DATE = { asc: false, names: ["недавние сверху", "давние сверху"] } as const;
 /** По возрастанию или по убыванию идёт список сейчас, и словами, что сверху */
-export function directionOf(sort: SortBy, rev: boolean): { asc: boolean; text: string } {
-  const d = DIRECTIONS[sort];
+export function directionOf(sort: SortBy, rev: boolean, view?: ViewId): { asc: boolean; text: string } {
+  const d = view === "archive" && sort === "date" ? ARCHIVE_DATE : DIRECTIONS[sort];
   return { asc: d.asc !== rev, text: d.names[rev ? 1 : 0] };
 }
 
@@ -90,6 +103,10 @@ function lastEmpty<T>(a: T | null, b: T | null, cmp: (a: T, b: T) => number, rev
   if (a == null || b == null) return (a == null ? 1 : 0) - (b == null ? 1 : 0);
   return rev ? cmp(b, a) : cmp(a, b);
 }
+/** Названия пространств по id для сортировки «По пространствам»: у задачи только project_id. Список App кладёт сюда при каждой отрисовке */
+let spaceNames = new Map<number, string>();
+export const setSpaceNames = (projects: { id: number; name: string }[]) => void (spaceNames = new Map(projects.map((p) => [p.id, p.name])));
+const spaceOf = (x: Task) => (x.project_id != null ? spaceNames.get(x.project_id) ?? null : null);
 const str = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 /** Ближайшие сверху: дата (без даты в конце), время, затем важнее и свежее. rev: дальние сверху, без даты всё так же в конце */
@@ -110,33 +127,57 @@ export function compareBy(sort: SortBy, rev = false): (a: Task, b: Task) => numb
   if (sort === "matrix") return (a, b) => lastEmpty(a.quadrant && quadRank(a), b.quadrant && quadRank(b), (x, y) => x - y, rev) || byDate(a, b);
   if (sort === "tag") return (a, b) => lastEmpty(firstTag(a), firstTag(b), compareNames, rev) || byDate(a, b);
   if (sort === "assignee") return (a, b) => lastEmpty(a.assigned_by, b.assigned_by, compareNames, rev) || byDate(a, b);
+  if (sort === "status") return (a, b) => (closedRank(a) - closedRank(b)) * (rev ? -1 : 1) || byDoneAt(a, b);
+  if (sort === "space") return (a, b) => lastEmpty(spaceOf(a), spaceOf(b), compareNames, rev) || byDate(a, b);
   return (a, b) => byDate(a, b, rev);
+}
+
+const closedRank = (x: Task) => (isCancelled(x) ? 1 : 0);
+/** Недавно завершённые сверху; rev: давние сверху */
+const byDoneAt = (a: Task, b: Task, rev = false) => ((a.done_at ?? "") < (b.done_at ?? "") ? 1 : -1) * (rev ? -1 : 1);
+
+/** Порядок закрытых задач в столбцах канбана «Завершённых»: по умолчанию по дате завершения */
+export function compareClosed(sort: SortBy, rev = false): (a: Task, b: Task) => number {
+  if (sort === "date") return (a, b) => byDoneAt(a, b, rev);
+  return compareBy(sort, rev);
 }
 
 export const NO_TAG_GROUP = "Без тегов";
 export const NO_PERSON_GROUP = "Сам себе";
+export const NO_DATE_GROUP = "Без даты";
+export const NO_SPACE_GROUP = "Без пространства";
 
 /** Заголовок группы при сортировке не по дате: видно, где кончается один уровень и начинается другой.
  * Задача с несколькими тегами стоит в группе первого по алфавиту */
-function groupName(x: Task, sort: SortBy): string {
-  if (x.status === "done") return x.cancelled ? "Отменено" : "Сделано";
+function groupName(x: Task, sort: SortBy, split: boolean): string {
+  if (sort === "status" || (split && x.status === "done")) return x.cancelled ? "Отменено" : "Сделано";
   if (sort === "created") return `Создано ${fmtDay(stampDay(x.created_at)).toLowerCase()}`;
   if (sort === "tag") return firstTag(x) ?? NO_TAG_GROUP;
   if (sort === "assignee") return x.assigned_by ?? NO_PERSON_GROUP;
+  if (sort === "space") return spaceOf(x) ?? NO_SPACE_GROUP;
   if (sort === "priority") return PRIORITY.find((p) => p.value === x.priority)?.name ?? "Важность не задана";
   return x.quadrant ? QUAD_NAMES[x.quadrant] : "Вне матрицы";
 }
 
 /** Открытые выше сделанных и отменённых, внутри по выбранной сортировке; при важности и матрице с заголовками групп */
-function arrange(xs: Task[], sort: SortBy, rev: boolean): ListItem[] {
-  const cmp = compareBy(sort, rev);
-  // Открытые, затем сделанные, в самом низу отменённые
-  const rank = (x: Task) => (x.status === "done" ? (x.cancelled ? 2 : 1) : 0);
+function arrange(xs: Task[], sort: SortBy, rev: boolean, split = true): ListItem[] {
+  // В списке «Завершённых» по дате идёт дата задачи, свежие сверху, без даты в конце (в канбане столбцы по дате завершения)
+  const cmp = split ? compareBy(sort, rev) : sort === "date" ? (a: Task, b: Task) => byDate(a, b, !rev) : compareClosed(sort, rev);
+  // Открытые, затем сделанные, в самом низу отменённые. В «Завершённых» все закрыты, там порядок целиком по сортировке
+  const rank = (x: Task) => (split && x.status === "done" ? (x.cancelled ? 2 : 1) : 0);
   const sorted = [...xs].sort((a, b) => rank(a) - rank(b) || cmp(a, b));
-  if (sort === "date") return sorted.map((task) => ({ task }));
+  if (split && sort === "status") return sorted.map((task) => ({ task }));
+  // По дате: заголовок на каждый день, задачи без даты в своей группе
   let last = "";
+  if (sort === "date")
+    return sorted.map((task) => {
+      const g = task.due_date ? fmtDay(task.due_date) : NO_DATE_GROUP;
+      const item = g !== last ? { task, group: g } : { task };
+      last = g;
+      return item;
+    });
   return sorted.map((task) => {
-    const g = groupName(task, sort);
+    const g = groupName(task, sort, split);
     const item = g !== last ? { task, group: g } : { task };
     last = g;
     return item;
@@ -166,13 +207,12 @@ export function listFor(view: ViewId, tasks: Task[], sort: SortBy = "date", rev 
   if (view === "inbox") return arrange(tasks.filter((x) => x.status === "inbox"), sort, rev);
   // Ждущая задача уходит из «Сегодня», пока не пора напомнить; в день напоминания возвращается, даже без срока
   if (view === "today")
-    return arrange(tasks.filter((x) => (x.status === "active" && (pingDue(x, t) || (!isWaiting(x) && !!x.due_date && x.due_date <= t))) || doneToday(x, t)), sort, rev);
+    return arrange(tasks.filter((x) => x.status === "active" && (pingDue(x, t) || (!isWaiting(x) && !!x.due_date && x.due_date <= t))), sort, rev);
+  // Срок прошёл, задача не сделана и не отменена; неразобранные тоже
+  if (view === "overdue") return arrange(tasks.filter((x) => !isClosed(x) && !!x.due_date && x.due_date < t), sort, rev);
   if (view === "waiting") return waitingList(tasks, sort, rev);
-  if (view === "archive")
-    return tasks
-      .filter((x) => x.status === "archived")
-      .sort((a, b) => ((a.done_at ?? "") < (b.done_at ?? "") ? 1 : -1))
-      .map((task) => ({ task }));
+  // Сделанная и отменённая уходят сюда сразу, из своего списка пропадают
+  if (view === "archive") return arrange(tasks.filter(isClosed), sort, rev, false);
   if (view === "soon") {
     const active = tasks.filter((x) => x.status === "active" && !isWaiting(x) && (!x.due_date || x.due_date > t));
     if (sort !== "date") return arrange(active, sort, rev);
@@ -180,7 +220,7 @@ export function listFor(view: ViewId, tasks: Task[], sort: SortBy = "date", rev 
     const out: ListItem[] = [];
     let last = "";
     for (const task of active.sort(compareBy("date", rev))) {
-      const g = task.due_date ? fmtDay(task.due_date) : "Без даты";
+      const g = task.due_date ? fmtDay(task.due_date) : NO_DATE_GROUP;
       out.push(g !== last ? { task, group: g } : { task });
       last = g;
     }
@@ -190,10 +230,10 @@ export function listFor(view: ViewId, tasks: Task[], sort: SortBy = "date", rev 
   if (view.startsWith("t:")) {
     // Тег: все его задачи в работе, включая неразобранные, и сделанные сегодня
     const tid = Number(view.slice(2));
-    return arrange(tasks.filter((x) => x.tags.some((g) => g.id === tid) && (x.status === "inbox" || x.status === "active" || doneToday(x, t))), sort, rev);
+    return arrange(tasks.filter((x) => x.tags.some((g) => g.id === tid) && (x.status === "inbox" || x.status === "active")), sort, rev);
   }
   const pid = Number(view.slice(2));
-  return arrange(tasks.filter((x) => x.project_id === pid && (x.status === "active" || doneToday(x, t))), sort, rev);
+  return arrange(tasks.filter((x) => x.project_id === pid && x.status === "active"), sort, rev);
 }
 
 export function countFor(view: ViewId, tasks: Task[]): number {
@@ -219,8 +259,8 @@ export function progressFor(view: ViewId, tasks: Task[]): Progress | null {
     return { fraction: left + sorted ? sorted / (left + sorted) : 0, count: left, accent: "move", subtitle };
   }
   if (view === "today") {
-    // Отменённые не в счёт: ни в план, ни в сделанное
-    const all = listFor("today", tasks);
+    // Сегодняшние закрытые в списке уже не лежат, но кольцо их считает. Отменённые не в счёт: ни в план, ни в сделанное
+    const all = [...listFor("today", tasks), ...tasks.filter((x) => doneToday(x, t)).map((task) => ({ task }))];
     const cancelled = all.filter((i) => isCancelled(i.task)).length;
     const items = all.filter((i) => !isCancelled(i.task));
     const done = items.filter((i) => i.task.status === "done").length;

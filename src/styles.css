@@ -250,7 +250,7 @@ html.quick, html.quick body { background: transparent; }
 .subs.dragging, .subs.dragging *, .sorting, .sorting * { cursor: grabbing !important; user-select: none; }
 /* Строки сортируемых списков (useSortable в drag.ts): соседи плавно расступаются, строка в руке приподнята */
 .sort-row { position: relative; transition: transform .18s cubic-bezier(.2, .8, .2, 1), box-shadow .18s; }
-.sort-row.lifted { box-shadow: 0 10px 22px -12px rgba(0, 0, 0, .5), 0 0 0 1px var(--border); }
+.sort-row.lifted { z-index: 2; background: linear-gradient(var(--surface), var(--surface)), var(--bg); border-radius: 10px; box-shadow: 0 10px 22px -12px rgba(0, 0, 0, .5), 0 0 0 1px var(--border); }
 @media (prefers-reduced-motion: reduce) { .sort-row { transition: none; } }
 .grip { display: grid; place-items: center; color: var(--muted); opacity: 0; cursor: grab; padding: 2px 0; touch-action: none; }
 .sub:hover .grip, .sub.lifted .grip { opacity: .8; }

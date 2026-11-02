@@ -86,3 +86,8 @@
 .cal-bday-i { color: var(--c); flex: none; }
 .bulk-h { margin: 0; font-size: 17px; font-weight: 700; padding-right: 36px; }
 .qi.person-qi > .hint { margin: 0; }
+
+/* ФИО в карточке человека: имя крупно, под ним фамилия и отчество в ряд */
+.pd-fio { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.pd-fio .field { width: 100%; min-width: 0; height: 40px; padding: 0 12px; font-size: 15px; font-weight: 500; box-sizing: border-box; }
+.pd-fio-hint { margin: 4px 2px 0; }
