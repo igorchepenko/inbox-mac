@@ -118,18 +118,19 @@ export default function CompactApp() {
   };
 
   const items = compactItems(view, tasks, settings);
+  const tabs = compactTabs(settings, tasks, view);
   const openTask = (t: Task) => invoke("compact_open_task", { id: t.id }).catch(() => {});
 
   // Клавиатура: обработчик один, свежие список и курсор берёт из ref
-  const kb = useRef({ items, cur, view });
-  kb.current = { items, cur: clampRow(cur, items.length), view };
+  const kb = useRef({ items, cur, view, tabs });
+  kb.current = { items, cur: clampRow(cur, items.length), view, tabs };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       const inInput = document.activeElement === input.current;
       const act = keyAction(e, inInput);
       if (!act) return;
-      const { items: xs, cur: c, view: v } = kb.current;
+      const { items: xs, cur: c, view: v, tabs: ts } = kb.current;
       // Без курсора Enter остаётся кнопке в фокусе
       if (act === "enter" && (c == null || !xs[c])) return;
       e.preventDefault();
@@ -139,7 +140,7 @@ export default function CompactApp() {
         if (inInput) input.current?.blur();
         setCur(stepRow(c, act === "down" ? 1 : -1, xs.length));
       } else if (act === "left" || act === "right") {
-        pick(stepList(v, act === "right" ? 1 : -1, COMPACT_LISTS));
+        pick(stepList(v, act === "right" ? 1 : -1, ts));
         setCur(0);
       } else if (c != null) {
         openTask(xs[c].task);
@@ -155,7 +156,6 @@ export default function CompactApp() {
     if (kbRow == null) return;
     list.current?.querySelector(`[data-row="${kbRow}"]`)?.scrollIntoView({ block: "nearest" });
   }, [kbRow, view]);
-  const tabs = compactTabs(settings, tasks, view);
   const show = rowShown(settings);
   const toggleSub = (id: number, done: boolean) => updateSubtask(id, { done: done ? 1 : 0 }).then(() => emit("tasks-changed"), (e) => setError(String(e)));
   const enter = (task: Task, el: HTMLElement) => {
