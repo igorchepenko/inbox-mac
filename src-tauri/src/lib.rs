@@ -1,3 +1,4 @@
+mod compact;
 mod notify;
 
 use tauri::{
@@ -157,6 +158,10 @@ struct QuickKey(Mutex<Shortcut>);
 
 /// Пункт «Записать задачу» в меню строки меню: в нём подписано текущее сочетание
 struct TrayQuickItem(MenuItem<Wry>);
+/// Галочка «Значок у края экрана»: меню переключает её само, а мы ставим по сохранённому
+struct TrayEdgeItem(CheckMenuItem<Wry>);
+/// Пункт «Компактный вид» в меню строки меню: в нём подписано его сочетание (compact.rs)
+struct TrayCompactItem(MenuItem<Wry>);
 
 fn migrations() -> Vec<Migration> {
     vec![
@@ -336,19 +341,21 @@ mod quick_panel {
         Bool::NO
     }
 
-    /// Подкласс NSPanel: окно без рамки по умолчанию не может стать ключевым, а нам нужен ввод с клавиатуры
-    fn class() -> &'static AnyClass {
-        if let Some(cls) = AnyClass::get(c"InboxQuickPanel") {
+    /// Подкласс NSPanel: окно без рамки по умолчанию не может стать ключевым, а нам нужен ввод с клавиатуры.
+    /// Значку у края экрана клавиатура не нужна: его панель ключевой не становится и фокус у твоей программы не забирает
+    fn class(key: bool) -> &'static AnyClass {
+        let name = if key { c"InboxQuickPanel" } else { c"InboxEdgePanel" };
+        if let Some(cls) = AnyClass::get(name) {
             return cls;
         }
         let panel = AnyClass::get(c"NSPanel").expect("NSPanel есть в AppKit");
-        let mut b = ClassBuilder::new(c"InboxQuickPanel", panel)
-            .expect("класс InboxQuickPanel ещё не создан");
+        let mut b = ClassBuilder::new(name, panel).expect("класс панели ещё не создан");
         unsafe {
-            b.add_method(
-                sel!(canBecomeKeyWindow),
-                yes as extern "C-unwind" fn(_, _) -> _,
-            );
+            if key {
+                b.add_method(sel!(canBecomeKeyWindow), yes as extern "C-unwind" fn(_, _) -> _);
+            } else {
+                b.add_method(sel!(canBecomeKeyWindow), no as extern "C-unwind" fn(_, _) -> _);
+            }
             b.add_method(
                 sel!(canBecomeMainWindow),
                 no as extern "C-unwind" fn(_, _) -> _,
@@ -362,11 +369,12 @@ mod quick_panel {
         unsafe { ptr.as_ref() }
     }
 
-    /// Превратить окно quick в панель. Один раз при запуске, на главном потоке (setup)
-    pub fn convert(w: &tauri::WebviewWindow) {
+    /// Превратить окно в панель. Один раз при запуске, на главном потоке (setup).
+    /// key: может ли панель принимать клавиатуру (быстрый ввод и компактный вид — да, значок у края — нет)
+    pub fn convert(w: &tauri::WebviewWindow, key: bool) {
         let Some(win) = ns_window(w) else { return };
         unsafe {
-            objc2::ffi::object_setClass(win as *const AnyObject as *mut AnyObject, class());
+            objc2::ffi::object_setClass(win as *const AnyObject as *mut AnyObject, class(key));
             let mask: usize = msg_send![win, styleMask];
             let _: () = msg_send![win, setStyleMask: mask | NONACTIVATING_PANEL];
             let behavior: usize = msg_send![win, collectionBehavior];
@@ -385,6 +393,21 @@ mod quick_panel {
             let _: () = msg_send![win, makeKeyAndOrderFront: None::<&AnyObject>];
             let _: () = msg_send![win, orderFrontRegardless];
         }
+    }
+
+    /// Показать поверх всех, не трогая клавиатуру: для значка у края экрана
+    pub fn show_passive(w: &tauri::WebviewWindow) {
+        let Some(win) = ns_window(w) else { return };
+        unsafe {
+            let _: () = msg_send![win, orderFrontRegardless];
+        }
+    }
+
+    /// Нажата ли сейчас левая кнопка мыши, где бы ни был курсор (NSEvent.pressedMouseButtons)
+    pub fn left_pressed() -> bool {
+        let Some(cls) = AnyClass::get(c"NSEvent") else { return false };
+        let b: usize = unsafe { msg_send![cls, pressedMouseButtons] };
+        b & 1 == 1
     }
 }
 
@@ -904,6 +927,9 @@ fn set_quick_shortcut(
     let next: Shortcut = accel
         .parse()
         .map_err(|e| format!("Не получилось разобрать сочетание: {e}"))?;
+    if compact::key(&app) == Some(next) {
+        return Err("Это сочетание уже открывает компактный вид".into());
+    }
     let mut cur = key.0.lock().map_err(|e| e.to_string())?;
     let gs = app.global_shortcut();
     if *cur != next || !gs.is_registered(next) {
@@ -955,10 +981,14 @@ pub fn run() {
             autostart_args,
         ))
         .plugin(
-            // Зарегистрировано всегда одно сочетание, быстрого ввода, поэтому сверять, какое нажато, не нужно
+            // Сочетаний два: компактного вида (compact.rs) и быстрого ввода, его можно сменить в настройках
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
+                .with_handler(|app, shortcut, event| {
                     if event.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    if compact::is_key(app, shortcut) {
+                        compact::toggle_from_key(app);
                         return;
                     }
                     if TESTING_QUICK.swap(false, Ordering::Relaxed) {
@@ -992,7 +1022,14 @@ pub fn run() {
             open_backups,
             notify::notify_status,
             notify::notify_send,
-            notify::notify_plan
+            notify::notify_plan,
+            compact::compact_hold,
+            compact::compact_hide,
+            compact::compact_resize,
+            compact::compact_open_task,
+            compact::compact_prefs,
+            compact::set_compact_place,
+            compact::set_compact_shortcut
         ])
         // «Настройки…» ⌘, в меню приложения
         .on_menu_event(|app, event| {
@@ -1003,7 +1040,15 @@ pub fn run() {
         .setup(move |app| {
             #[cfg(target_os = "macos")]
             if let Some(w) = app.get_webview_window("quick") {
-                quick_panel::convert(&w);
+                quick_panel::convert(&w, true);
+            }
+            #[cfg(target_os = "macos")]
+            if let Some(w) = app.get_webview_window("compact") {
+                quick_panel::convert(&w, true);
+            }
+            #[cfg(target_os = "macos")]
+            if let Some(w) = app.get_webview_window("edge") {
+                quick_panel::convert(&w, false);
             }
 
             // ⌥Space может не достаться: тогда работаем через иконку в строке меню, а главное окно
@@ -1027,6 +1072,23 @@ pub fn run() {
             let open_i = MenuItem::with_id(app, "open", "Открыть Inbox", true, None::<&str>)?;
             let settings_i =
                 MenuItem::with_id(app, "tray-settings", "Настройки…", true, None::<&str>)?;
+            // Значок у края экрана с компактным видом и его сочетание (compact.rs)
+            compact::setup(app.handle());
+            let compact_i = MenuItem::with_id(
+                app,
+                "compact",
+                compact::tray_text(&compact::current_label(app.handle())),
+                true,
+                None::<&str>,
+            )?;
+            let edge_i = CheckMenuItem::with_id(
+                app,
+                "edge",
+                "Значок у края экрана",
+                true,
+                compact::enabled(app.handle()),
+                None::<&str>,
+            )?;
             let sep = PredefinedMenuItem::separator(app)?;
             let quit_i =
                 MenuItem::with_id(app, "quit", "Выйти из Inbox", true, Some("CmdOrCtrl+Q"))?;
@@ -1037,9 +1099,11 @@ pub fn run() {
             let sep2 = PredefinedMenuItem::separator(app)?;
             let menu = Menu::with_items(
                 app,
-                &[&quick_i, &open_i, &settings_i, &sep2, &profile_sub, &sep, &quit_i],
+                &[&quick_i, &open_i, &settings_i, &compact_i, &edge_i, &sep2, &profile_sub, &sep, &quit_i],
             )?;
             app.manage(TrayQuickItem(quick_i.clone()));
+            app.manage(TrayEdgeItem(edge_i.clone()));
+            app.manage(TrayCompactItem(compact_i.clone()));
             app.manage(TrayProfiles {
                 sub: profile_sub.clone(),
                 items: Mutex::new(Vec::new()),
@@ -1073,7 +1137,15 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quick" => toggle_quick(app),
                     "open" => show_main(app),
+                    "compact" => compact::toggle_from_menu(app),
                     "tray-settings" => open_settings(app),
+                    "edge" => {
+                        let on = !compact::enabled(app);
+                        compact::set_enabled(app, on);
+                        if let Some(t) = app.try_state::<TrayEdgeItem>() {
+                            let _ = t.0.set_checked(on);
+                        }
+                    }
                     "quit" => app.exit(0),
                     id => {
                         if let Some(pid) = id.strip_prefix("profile:") {
@@ -1110,6 +1182,14 @@ pub fn run() {
             // Быстрый ввод прячется, как только фокус ушёл в другое приложение, и в следующий раз откроется чистым
             WindowEvent::Focused(false) if window.label() == "quick" && !QUICK_PICKING.load(Ordering::SeqCst) => {
                 hide_quick(window.app_handle().clone());
+            }
+            // Компактный вид: клик мимо прячет окно, новый размер запоминается
+            WindowEvent::Focused(false) if window.label() == "compact" => {
+                compact::blurred(window.app_handle());
+            }
+            WindowEvent::Resized(size) if window.label() == "compact" => {
+                let scale = window.scale_factor().unwrap_or(1.0);
+                compact::resized(window.app_handle(), *size, scale);
             }
             _ => {}
         })

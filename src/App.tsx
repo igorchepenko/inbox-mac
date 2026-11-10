@@ -342,6 +342,18 @@ export default function App() {
     setView(homeOf(x));
     select(x.id);
   };
+  // Клик по задаче в компактном виде у края экрана: открываем её здесь, в своём списке
+  const openTaskRef = useRef(openTask);
+  openTaskRef.current = openTask;
+  useEffect(() => {
+    const un = listen<number>("open-task", (e) =>
+      reload((t) => {
+        const x = t.find((y) => y.id === e.payload);
+        if (x) openTaskRef.current(x);
+      }),
+    );
+    return () => void un.then((f) => f());
+  }, [reload]);
   // Стрелки из поля поиска двигают выбор в списке
   const stepSel = (dir: 1 | -1) => {
     const i = ids.indexOf(sel ?? -1);
