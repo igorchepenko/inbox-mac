@@ -1,0 +1,78 @@
+/* Компактный вид (Compact.tsx) и значок у края экрана (Edge.tsx). Окна прозрачные: html.quick в styles.css */
+
+/* Значок: язычок, прижатый к правому краю экрана, скругление только слева */
+.edge { position: fixed; inset: 0 0 0 3px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-right: 0; border-radius: 12px 0 0 12px;
+  box-shadow: -2px 0 6px -3px rgba(0, 0, 0, .35); transition: background .15s, color .15s; }
+.edge.on { color: var(--stand); background: color-mix(in srgb, var(--stand) 16%, var(--surface)); }
+.edge-n { font-size: 10px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; color: var(--amber); }
+:root[data-look="glass"] .edge { background: var(--pane-strong); border-color: var(--edge); }
+:root[data-look="glass"] .edge.on { background: color-mix(in srgb, var(--stand) 20%, var(--pane-strong)); }
+
+/* Окно: карточка с прозрачным отступом 10px (под тень и ручки размера, PAD в compact.rs) */
+.cv-root { position: relative; height: 100vh; padding: 10px; }
+.cv-card { height: 100%; display: flex; flex-direction: column; overflow: hidden; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; box-shadow: 0 6px 18px -8px rgba(0, 0, 0, .45); }
+:root[data-look="glass"] .cv-card { background: var(--pane-strong); border-color: var(--edge); border-radius: 18px;
+  backdrop-filter: blur(34px) saturate(1.8); -webkit-backdrop-filter: blur(34px) saturate(1.8); box-shadow: inset 0 1px 0 var(--edge), 0 8px 22px -10px rgba(20, 30, 80, .5); }
+
+/* Ручки изменения размера: верх, низ, левый край и левые углы */
+.cv-grip { position: absolute; z-index: 5; }
+.cv-grip.g-n { top: 0; left: 18px; right: 0; height: 9px; cursor: ns-resize; }
+.cv-grip.g-s { bottom: 0; left: 18px; right: 0; height: 9px; cursor: ns-resize; }
+.cv-grip.g-w { left: 0; top: 18px; bottom: 18px; width: 9px; cursor: ew-resize; }
+.cv-grip.g-nw { left: 0; top: 0; width: 18px; height: 18px; cursor: nwse-resize; }
+.cv-grip.g-sw { left: 0; bottom: 0; width: 18px; height: 18px; cursor: nesw-resize; }
+
+/* Переключатель списков: иконки, выбранный список подсвечен своим цветом и обведён */
+.cv-tabs { display: flex; gap: 2px; padding: 8px 8px 2px; }
+.cv-tab { flex: 1; min-width: 0; position: relative; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--muted); }
+.cv-tab:hover { background: var(--field); color: var(--fg); }
+.cv-tab.on { color: var(--acc); background: color-mix(in srgb, var(--acc) 15%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--acc) 55%, transparent); }
+.cv-n { position: absolute; top: 2px; right: 3px; font-size: 9px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; color: var(--muted); }
+.cv-tab.on .cv-n { color: var(--acc); }
+
+.cv-head { display: flex; align-items: baseline; gap: 6px; padding: 6px 14px 4px; }
+.cv-title { font-size: 14px; font-weight: 650; }
+.cv-count { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Список: название и дата в одну строку */
+.cv-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0 6px 6px; }
+.cv-row { width: 100%; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; text-align: left; }
+.cv-row:hover, .cv-row.hot { background: var(--sel); }
+.cv-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-due { flex: none; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cv-due.overdue { color: var(--move); }
+.cv-due.today { color: var(--amber); }
+.cv-group { padding: 8px 8px 2px; font-size: 11px; font-weight: 600; color: var(--muted); }
+.cv-empty { padding: 28px 10px; text-align: center; color: var(--muted); }
+
+/* Строка ввода: без фокуса, пока по ней не кликнешь */
+.cv-add { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--line); }
+.cv-input { flex: 1; min-width: 0; padding: 7px 10px; }
+.cv-input:focus { border-color: var(--stand); }
+.cv-send { flex: none; width: 32px; border-radius: 10px; display: grid; place-items: center; background: var(--stand); color: var(--on-acc); }
+.cv-send:disabled { background: var(--field); color: var(--muted); }
+.cv-note { padding: 0 12px 8px; font-size: 11.5px; color: var(--exercise); }
+.cv-note.err { color: var(--move); }
+
+/* Карточка задачи при наведении: плотный фон, чтобы строки под ней не просвечивали */
+.cv-pop { position: fixed; left: 18px; right: 18px; z-index: 40; pointer-events: none; max-height: calc(100vh - 28px); overflow: hidden;
+  display: flex; flex-direction: column; gap: 7px; padding: 10px 12px; font-size: 12px;
+  background: color-mix(in srgb, var(--fg) 4%, var(--bg)); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 30px -12px rgba(0, 0, 0, .55); }
+.cv-pop-title { font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
+.cv-pop-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.cv-pop-chips:empty { display: none; }
+.cv-chip { padding: 1px 7px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--acc, var(--muted)) 45%, transparent); color: var(--acc, var(--muted)); font-size: 11px; }
+.cv-chip.tag { --acc: var(--muted); }
+.cv-pop-rows { margin: 0; display: flex; flex-direction: column; gap: 3px; }
+.cv-pop-rows > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px; }
+.cv-pop-rows dt { color: var(--muted); }
+.cv-pop-rows dd { margin: 0; overflow-wrap: anywhere; }
+.cv-pop-lbl { color: var(--muted); margin-bottom: 2px; }
+.cv-pop-item { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cv-pop-item.done { color: var(--muted); text-decoration: line-through; }
+.cv-pop-more { color: var(--muted); }
+.cv-pop-note { padding-top: 6px; border-top: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+.cv-pop-foot { color: var(--muted); font-size: 11px; }

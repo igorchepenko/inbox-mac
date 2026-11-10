@@ -1,8 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Права для основного окна и окна быстрого ввода",
-  "windows": ["main", "quick"],
+  "description": "Права для основного окна, быстрого ввода и компактного вида",
+  "windows": [
+    "main",
+    "quick",
+    "edge",
+    "compact"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-hide",
@@ -15,6 +20,7 @@
     "sql:allow-execute",
     "dialog:allow-open",
     "core:webview:allow-set-webview-zoom",
-    "autostart:default"
+    "autostart:default",
+    "core:window:allow-start-resize-dragging"
   ]
 }

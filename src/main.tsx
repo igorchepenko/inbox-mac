@@ -2,6 +2,8 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import QuickApp from "./Quick";
+import CompactApp from "./Compact";
+import EdgeApp from "./Edge";
 import "./styles.css";
 import "./task.css";
 import "./nav.css";
@@ -18,9 +20,18 @@ import { applyAppearance, followAppearanceChanges, savedAppearance } from "./pre
 import { followProfileChanges, loadProfiles } from "./profile";
 import { ProfileGate } from "./ProfileSetup";
 
-// Одна сборка на два окна: главное и быстрый ввод (index.html?window=quick)
-const isQuick = new URLSearchParams(location.search).get("window") === "quick";
+// Одна сборка на все окна: главное, быстрый ввод (index.html?window=quick),
+// значок у края экрана (window=edge) и компактный вид (window=compact). У трёх последних прозрачный фон (класс quick)
+const kind = new URLSearchParams(location.search).get("window");
+const isQuick = kind === "quick" || kind === "edge" || kind === "compact";
 document.documentElement.classList.toggle("quick", isQuick);
+if (kind === "edge" || kind === "compact") document.documentElement.classList.add(kind);
+
+function Root() {
+  if (kind === "edge") return <EdgeApp />;
+  if (kind === "compact") return <CompactApp />;
+  return isQuick ? <QuickApp /> : <App />;
+}
 
 // Сначала список профилей: тема, внешний вид и база зависят от активного
 loadProfiles().finally(() => {
@@ -35,7 +46,7 @@ loadProfiles().finally(() => {
 
   ReactDOM.createRoot(document.getElementById("root")!).render(
     <React.StrictMode>
-      <ProfileGate quick={isQuick}>{isQuick ? <QuickApp /> : <App />}</ProfileGate>
+      {kind === "edge" ? <Root /> : <ProfileGate quick={isQuick}><Root /></ProfileGate>}
     </React.StrictMode>,
   );
 });
