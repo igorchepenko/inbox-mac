@@ -148,3 +148,11 @@
 .cv-name mark { background: color-mix(in srgb, var(--amber) 35%, transparent); color: inherit; border-radius: 3px; }
 .cv-pop-item .cl-box { margin-top: 0; }
 .cv-pop-item.done .cl-box { background: var(--accent, var(--fg)); border-color: var(--accent, var(--fg)); color: var(--on-acc, var(--bg)); }
+
+/* Язычок и сочетание в настройках */
+.cv-opt { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding: 3px 0; font-size: 12.5px; }
+.cv-opt-name { width: 82px; flex: none; color: var(--muted); }
+.cv-seg { display: flex; gap: 4px; flex-wrap: wrap; }
+.cv-segb { padding: 3px 9px; border-radius: 8px; font-size: 12px; background: var(--surface); border: 1px solid var(--border); color: var(--fg); }
+.cv-segb.on { border-color: var(--stand); background: color-mix(in srgb, var(--stand) 14%, var(--surface)); font-weight: 600; }
+.cv-opt .key-rec { min-width: 90px; padding: 4px 10px; font-size: 12px; }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, ChevronLeft } from "lucide-react";
 import { setSetting } from "./db";
 import { Icon } from "./icons";
@@ -8,6 +8,8 @@ import {
   ROW_FIELDS, ROW_KEY, rowFields, cardHidden, sortKey, sortValue, toggleIn, ZOOM, ZOOM_KEY, zoomOf, type CardField,
 } from "./compactLists";
 import type { FieldId } from "./fields";
+import { accelFromEvent } from "./prefs";
+import { DEFAULT_COMPACT_KEY, DEFAULT_COMPACT_PREFS, EDGE_SCREENS, EDGE_SIDES, loadCompactPrefs, onCompactPrefs, setCompactKey, setCompactPlace, type CompactPrefs } from "./compactPrefs";
 
 /*
  * Настройки компактного вида: отдельная страница в самом окне. Всё хранится в settings под ключами compact:* (см. compactLists.ts)
@@ -22,6 +24,34 @@ export default function CompactSettings({ settings, onBack, onChanged }: { setti
   const hidden = cardHidden(settings);
   const zoom = zoomOf(settings);
   const [draftZoom, setDraftZoom] = useState<number | null>(null);
+
+  // Язычок и сочетание: хранятся в compact.json (compactPrefs.ts), не в settings
+  const [prefs, setPrefs] = useState<CompactPrefs>(DEFAULT_COMPACT_PREFS);
+  const [recording, setRecording] = useState(false);
+  const [keyErr, setKeyErr] = useState<string | null>(null);
+  useEffect(() => {
+    loadCompactPrefs().then(setPrefs);
+    const un = onCompactPrefs(setPrefs);
+    return () => void un.then((f) => f());
+  }, []);
+  const place = (side: CompactPrefs["side"], screen: CompactPrefs["screen"]) => setCompactPlace(side, screen).then(setPrefs, (e) => setErr(String(e)));
+  const applyKey = (accel: string) => setCompactKey(accel).then((p) => (setPrefs(p), setKeyErr(null)), (e) => setKeyErr(String(e).replace(/^Error: /, "")));
+  // Пока идёт запись, нажатия перехватываем, чтобы окно на них не реагировало
+  useEffect(() => {
+    if (!recording) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.key === "Escape" && !e.metaKey && !e.altKey && !e.ctrlKey) return setRecording(false);
+      const r = accelFromEvent(e);
+      if (r === null) return;
+      if (typeof r === "object") return setKeyErr(r.error);
+      setRecording(false);
+      applyKey(r);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="cv-set">
@@ -83,6 +113,34 @@ export default function CompactSettings({ settings, onBack, onChanged }: { setti
             </label>
           ))}
         </div>
+
+        <h3>Язычок и сочетание клавиш</h3>
+        <div className="cv-opt">
+          <span className="cv-opt-name">Край экрана</span>
+          <div className="cv-seg">
+            {EDGE_SIDES.map((o) => (
+              <button key={o.id} type="button" className={`cv-segb${prefs.side === o.id ? " on" : ""}`} aria-pressed={prefs.side === o.id} onClick={() => place(o.id, prefs.screen)}>{o.name}</button>
+            ))}
+          </div>
+        </div>
+        <div className="cv-opt">
+          <span className="cv-opt-name">Монитор</span>
+          <div className="cv-seg">
+            {EDGE_SCREENS.map((o) => (
+              <button key={o.id} type="button" className={`cv-segb${prefs.screen === o.id ? " on" : ""}`} aria-pressed={prefs.screen === o.id} data-tip={o.tip} onClick={() => place(prefs.side, o.id)}>{o.name}</button>
+            ))}
+          </div>
+        </div>
+        <div className="cv-opt">
+          <span className="cv-opt-name">Сочетание</span>
+          <button type="button" className={`key-rec${recording ? " rec" : ""}`} onClick={() => (setKeyErr(null), setRecording(!recording))}
+            data-tip="Открывает компактный вид без мыши: стрелки и Enter. Нажми и затем нужные клавиши">
+            {recording ? "Нажми сочетание…" : prefs.key ? prefs.label : "Не задано"}
+          </button>
+          <button type="button" className="btn small" disabled={prefs.key === DEFAULT_COMPACT_KEY} onClick={() => applyKey(DEFAULT_COMPACT_KEY)}>По умолчанию</button>
+          {prefs.key && <button type="button" className="btn small" onClick={() => applyKey("")}>Убрать</button>}
+        </div>
+        {(keyErr || (prefs.key && !prefs.key_ok && prefs.key_error)) && <div className="cv-note err">{keyErr ?? prefs.key_error}</div>}
 
         <h3>Масштаб</h3>
         <div className="cv-zoom">
