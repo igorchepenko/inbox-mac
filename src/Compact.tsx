@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ArrowUp } from "lucide-react";
 import { addTask, loadProjects, loadSettings, loadTasks, type Project, type Task } from "./db";
 import { Icon } from "./icons";
@@ -22,18 +21,10 @@ import "./compact.css";
  * что есть у задачи, внизу строка ввода: Enter записывает задачу в «Новые» с одним названием
  */
 
-type ResizeDirection = Parameters<ReturnType<typeof getCurrentWindow>["startResizeDragging"]>[0];
-
 const hold = (on: boolean) => invoke("compact_hold", { on }).catch(() => {});
 
 /** Ручки по краям окна: тянешь — окно меняет размер. Правый край прижат к значку, поэтому ручек справа нет */
-const HANDLES: { cls: string; dir: ResizeDirection }[] = [
-  { cls: "g-n", dir: "North" },
-  { cls: "g-s", dir: "South" },
-  { cls: "g-w", dir: "West" },
-  { cls: "g-nw", dir: "NorthWest" },
-  { cls: "g-sw", dir: "SouthWest" },
-];
+const HANDLES = ["n", "s", "w", "nw", "sw"];
 
 interface Hover {
   task: Task;
@@ -109,7 +100,7 @@ export default function CompactApp() {
   return (
     <div className="cv-root">
       {HANDLES.map((h) => (
-        <div key={h.cls} className={`cv-grip ${h.cls}`} onPointerDown={(e) => (e.preventDefault(), getCurrentWindow().startResizeDragging(h.dir).catch(() => {}))} />
+        <div key={h} className={`cv-grip g-${h}`} onPointerDown={(e) => (e.preventDefault(), invoke("compact_resize", { dir: h }).catch(() => {}))} />
       ))}
       <div className="cv-card">
         <nav className="cv-tabs" aria-label="Списки">
@@ -118,13 +109,14 @@ export default function CompactApp() {
             return (
               <button key={v} type="button" className={`cv-tab${v === view ? " on" : ""}`} style={{ ["--acc" as string]: `var(--${listAccent(v)})` }}
                 data-tip={listName(v)} aria-label={listName(v)} aria-pressed={v === view} onClick={() => pick(v)}>
-                <Icon name={listIcon(v, settings)} size={16} />
+                <span className="cv-ic"><Icon name={listIcon(v, settings)} size={15} /></span>
                 {n > 0 && <span className="cv-n">{n > 99 ? "99+" : n}</span>}
               </button>
             );
           })}
         </nav>
-        <div className="cv-head">
+        <div className="cv-head" style={{ ["--acc" as string]: `var(--${listAccent(view)})` }}>
+          <span className="cv-head-ic"><Icon name={listIcon(view, settings)} size={15} /></span>
           <span className="cv-title">{listName(view)}</span>
           <span className="cv-count">{countFor(view, tasks) || ""}</span>
         </div>

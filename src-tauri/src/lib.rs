@@ -1016,6 +1016,7 @@ pub fn run() {
             notify::notify_plan,
             compact::compact_hold,
             compact::compact_hide,
+            compact::compact_resize,
             compact::compact_open_task
         ])
         // «Настройки…» ⌘, в меню приложения

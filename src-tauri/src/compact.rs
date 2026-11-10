@@ -12,7 +12,7 @@
 //! - значок можно тащить вверх и вниз вдоль края, место и размер окна запоминаются в compact.json.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -62,6 +62,20 @@ enum Open {
     Pinned,
 }
 
+/// Растягивание окна за ручку: системное (startResizeDragging) на macOS не работает, двигаем окно сами
+struct Resize {
+    north: bool,
+    south: bool,
+    west: bool,
+    cursor: (f64, f64),
+    rect: Rect,
+}
+
+/// Пока тянут ручку, поток проверяет курсор чаще, чтобы окно шло за мышью плавно
+static RESIZING: AtomicBool = AtomicBool::new(false);
+const MIN_W: f64 = 240.0;
+const MIN_H: f64 = 220.0;
+
 struct Drag {
     cursor_y: f64,
     win_y: i32,
@@ -90,6 +104,7 @@ struct Inner {
     open: Open,
     hold: bool,
     drag: Option<Drag>,
+    resize: Option<Resize>,
     was_pressed: bool,
     hover_since: Option<Instant>,
     away_since: Option<Instant>,
@@ -148,6 +163,7 @@ pub fn setup(app: &AppHandle) {
         open: Open::No,
         hold: false,
         drag: None,
+        resize: None,
         was_pressed: false,
         hover_since: None,
         away_since: None,
@@ -161,7 +177,11 @@ pub fn setup(app: &AppHandle) {
     }
     let handle = app.clone();
     std::thread::spawn(move || loop {
-        std::thread::sleep(TICK);
+        std::thread::sleep(if RESIZING.load(Ordering::Relaxed) {
+            Duration::from_millis(16)
+        } else {
+            TICK
+        });
         tick(&handle);
     });
 }
@@ -328,6 +348,7 @@ pub fn set_enabled(app: &AppHandle, on: bool) {
 }
 
 enum Act {
+    Resize(Rect),
     None,
     Show(Open),
     Hide,
@@ -398,7 +419,29 @@ fn tick(app: &AppHandle) {
                 moved: false,
             });
         }
-        if let Some(mut d) = g.drag.take() {
+        if let Some(r) = g.resize.as_ref() {
+            if down {
+                let (dx, dy) = (cx - r.cursor.0, cy - r.cursor.1);
+                let (min_w, min_h) = (MIN_W * scale, MIN_H * scale);
+                let mut n = r.rect;
+                if r.west {
+                    n.w = (r.rect.w - dx).max(min_w);
+                    n.x = r.rect.x + r.rect.w - n.w;
+                }
+                if r.north {
+                    n.h = (r.rect.h - dy).max(min_h);
+                    n.y = r.rect.y + r.rect.h - n.h;
+                }
+                if r.south {
+                    n.h = (r.rect.h + dy).max(min_h);
+                }
+                Act::Resize(n)
+            } else {
+                g.resize = None;
+                RESIZING.store(false, Ordering::Relaxed);
+                Act::None
+            }
+        } else if let Some(mut d) = g.drag.take() {
             if down {
                 let dy = cy - d.cursor_y;
                 if !d.moved && dy.abs() > 4.0 * scale {
@@ -486,6 +529,15 @@ fn tick(app: &AppHandle) {
             }
             place_edge(app, Some(top));
         }
+        Act::Resize(r) => {
+            if let Some(w) = app.get_webview_window("compact") {
+                let _ = w.set_size(PhysicalSize::new(r.w.round() as u32, r.h.round() as u32));
+                let _ = w.set_position(PhysicalPosition::new(
+                    r.x.round() as i32,
+                    r.y.round() as i32,
+                ));
+            }
+        }
         Act::Save => {
             let s = st.0.lock().ok().map(|g| g.saved.clone());
             if let Some(s) = s {
@@ -504,6 +556,35 @@ pub fn compact_hold(app: AppHandle, on: bool) {
             g.away_since = None;
         }
     }
+}
+
+/// Нажали на ручку размера: dir — n, s, w, nw или sw. Дальше окно за мышью ведёт фоновый поток, пока кнопка зажата
+#[tauri::command]
+pub fn compact_resize(app: AppHandle, dir: String) {
+    let Some(w) = app.get_webview_window("compact") else {
+        return;
+    };
+    let (Ok(p), Ok(size), Ok(c)) = (w.outer_position(), w.outer_size(), app.cursor_position())
+    else {
+        return;
+    };
+    let Some(st) = state(&app) else { return };
+    if let Ok(mut g) = st.0.lock() {
+        g.resize = Some(Resize {
+            north: dir.contains('n'),
+            south: dir.contains('s'),
+            west: dir.contains('w'),
+            cursor: (c.x, c.y),
+            rect: Rect {
+                x: p.x as f64,
+                y: p.y as f64,
+                w: size.width as f64,
+                h: size.height as f64,
+            },
+        });
+        g.away_since = None;
+        RESIZING.store(true, Ordering::Relaxed);
+    };
 }
 
 /// Esc в окне

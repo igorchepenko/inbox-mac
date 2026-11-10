@@ -20,7 +20,6 @@
     "sql:allow-execute",
     "dialog:allow-open",
     "core:webview:allow-set-webview-zoom",
-    "autostart:default",
-    "core:window:allow-start-resize-dragging"
+    "autostart:default"
   ]
 }

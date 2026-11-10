@@ -14,11 +14,64 @@ export function savedTheme(): Theme {
   }
 }
 
+/*
+ * Тема «как в системе» в окнах у края экрана (значок и компактный вид). Это панели, которые не активируют Inbox,
+ * и macOS отдаёт им светлое оформление даже при тёмной системе. Поэтому главное окно сообщает, какая тема у него
+ * на самом деле получилась, а эти окна ставят её себе явно
+ */
+const EFFECTIVE = "inbox.effective-theme";
+type Shade = "light" | "dark";
+let borrowSystem = false;
+let current: Theme = "system";
+
+const storedShade = (): Shade | null => {
+  try {
+    const v = localStorage.getItem(EFFECTIVE);
+    return v === "light" || v === "dark" ? v : null;
+  } catch {
+    return null;
+  }
+};
+
 /** Ставит тему в этом окне: CSS-переменные через data-theme и системное оформление окна (заголовок, поля ввода) */
 export function applyTheme(t: Theme) {
-  if (t === "system") document.documentElement.removeAttribute("data-theme");
-  else document.documentElement.setAttribute("data-theme", t);
-  getCurrentWindow().setTheme(t === "system" ? null : t).catch(() => {});
+  current = t;
+  const shown: Theme = t === "system" && borrowSystem ? storedShade() ?? "system" : t;
+  if (shown === "system") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", shown);
+  getCurrentWindow().setTheme(shown === "system" ? null : shown).catch(() => {});
+}
+
+/** Главное окно: какая тема получилась на экране (с учётом системы), для окон у края экрана */
+export function shareShade() {
+  const send = () => {
+    const shade: Shade = current === "system" ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light") : current;
+    try {
+      localStorage.setItem(EFFECTIVE, shade);
+    } catch {
+      // окна у края возьмут тему из событий
+    }
+    emit("effective-theme", shade).catch(() => {});
+  };
+  send();
+  // Через setTimeout: сначала тему применит само окно (applyTheme), потом отправляем, что получилось
+  const later = () => void setTimeout(send, 0);
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", later);
+  addEventListener("inbox-theme", later);
+  listen("theme-changed", later).catch(() => {});
+}
+
+/** Значок и компактный вид: «как в системе» значит «как в главном окне» */
+export function borrowShade() {
+  borrowSystem = true;
+  listen<Shade>("effective-theme", (e) => {
+    try {
+      localStorage.setItem(EFFECTIVE, e.payload);
+    } catch {
+      // ниже применим и без памяти
+    }
+    applyTheme(current);
+  }).catch(() => {});
 }
 
 /** Выбор пользователя: запомнить и разослать второму окну */

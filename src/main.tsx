@@ -15,7 +15,7 @@ import "./status.css";
 import "./people.css";
 import "./glass.css";
 import { installPalette } from "./palette";
-import { applyLook, applyTheme, followLookChanges, followThemeChanges, savedLook, savedTheme } from "./theme";
+import { applyLook, applyTheme, borrowShade, followLookChanges, followThemeChanges, savedLook, savedTheme, shareShade } from "./theme";
 import { applyAppearance, followAppearanceChanges, savedAppearance } from "./prefs";
 import { followProfileChanges, loadProfiles } from "./profile";
 import { ProfileGate } from "./ProfileSetup";
@@ -37,7 +37,9 @@ function Root() {
 loadProfiles().finally(() => {
   followProfileChanges(!isQuick);
   installPalette();
+  if (kind === "edge" || kind === "compact") borrowShade();
   applyTheme(savedTheme());
+  if (!isQuick) shareShade();
   followThemeChanges();
   applyLook(savedLook());
   followLookChanges();
