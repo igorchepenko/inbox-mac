@@ -78,26 +78,34 @@
 .cv-note { padding: 0 12px 8px; font-size: 11.5px; color: var(--exercise); }
 .cv-note.err { color: var(--move); }
 
-/* Карточка задачи при наведении: плотный фон, чтобы строки под ней не просвечивали */
-.cv-pop { position: fixed; left: 18px; right: 18px; z-index: 40; pointer-events: none; max-height: calc(100vh - 28px); overflow: hidden;
-  display: flex; flex-direction: column; gap: 7px; padding: 10px 12px; font-size: 12px;
+/* Карточка задачи по клику: плотный фон, чтобы строки под ней не просвечивали; scrim ловит клик вне карточки */
+.cv-scrim { position: fixed; inset: 0; z-index: 37; }
+.cv-pop { position: fixed; left: 18px; right: 18px; z-index: 38; max-height: calc(100vh - 28px); overflow: hidden;
+  display: flex; flex-direction: column; font-size: 12px;
   background: color-mix(in srgb, var(--fg) 4%, var(--bg)); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 30px -12px rgba(0, 0, 0, .55); }
-.cv-pop-title { font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
-.cv-pop-chips { display: flex; flex-wrap: wrap; gap: 4px; }
-.cv-pop-chips:empty { display: none; }
-.cv-chip { padding: 1px 7px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--acc, var(--muted)) 45%, transparent); color: var(--acc, var(--muted)); font-size: 11px; }
-.cv-chip.tag { --acc: var(--muted); }
-.cv-pop-rows { margin: 0; display: flex; flex-direction: column; gap: 3px; }
-.cv-pop-rows > div { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px; }
-.cv-pop-rows dt { color: var(--muted); }
-.cv-pop-rows dd { margin: 0; overflow-wrap: anywhere; }
+.cv-pop-head { display: flex; align-items: flex-start; gap: 4px; padding: 10px 8px 4px 12px; }
+.cv-pop-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 650; overflow-wrap: anywhere; padding-top: 2px; }
+.cv-pop-body { display: flex; flex-direction: column; gap: 7px; padding: 4px 12px 10px; overflow-y: auto; min-height: 0; }
+.cv-pop-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.cv-pop-rows { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.cv-pop-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px; align-items: start; }
+.cv-pop-row dt { color: var(--muted); padding-top: 1px; }
+.cv-pop-row dd { margin: 0; overflow-wrap: anywhere; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.cv-pop-row dd .meta { white-space: normal; }
+.cv-val { display: inline-flex; align-items: center; gap: 5px; }
+.cv-people { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.cv-list-col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cv-rel.closed { color: var(--muted); text-decoration: line-through; }
+.cv-link { color: var(--acc, var(--stand)); text-decoration: none; overflow-wrap: anywhere; }
+.cv-link:hover { text-decoration: underline; }
+.cv-file { overflow-wrap: anywhere; }
+.cv-pop-sub { display: flex; flex-direction: column; gap: 2px; }
 .cv-pop-lbl { color: var(--muted); margin-bottom: 2px; }
-.cv-pop-item { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cv-pop-item.done { color: var(--muted); text-decoration: line-through; }
-.cv-pop-more { color: var(--muted); }
-.cv-pop-note { padding-top: 6px; border-top: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere;
-  display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
-.cv-pop-foot { color: var(--muted); font-size: 11px; }
+.cv-pop-item { display: flex; align-items: center; gap: 7px; text-align: left; padding: 2px 0; }
+.cv-pop-item.done .cv-pop-it { color: var(--muted); text-decoration: line-through; }
+.cv-pop-it { min-width: 0; overflow-wrap: anywhere; }
+.cv-pop-note { padding-top: 6px; border-top: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
+.cv-pop-foot { display: flex; flex-wrap: wrap; gap: 4px 10px; color: var(--muted); font-size: 11px; }
 
 /* Кнопка настроек справа от иконок списков */
 .cv-gear { flex: none; width: 32px; margin-left: 4px; color: var(--muted); }
@@ -138,3 +146,5 @@
 :root[data-look="glass"] .cv-find { border-color: var(--edge); }
 .cv-find-in { flex: 1; min-width: 0; background: none; border: 0; outline: none; color: var(--fg); }
 .cv-name mark { background: color-mix(in srgb, var(--amber) 35%, transparent); color: inherit; border-radius: 3px; }
+.cv-pop-item .cl-box { margin-top: 0; }
+.cv-pop-item.done .cl-box { background: var(--accent, var(--fg)); border-color: var(--accent, var(--fg)); color: var(--on-acc, var(--bg)); }

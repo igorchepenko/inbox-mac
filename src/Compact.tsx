@@ -1,33 +1,30 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { ArrowUp, Check, Search, Settings as Gear, X } from "lucide-react";
-import { addTask, completeTask, reopenTask, loadProjects, updateSubtask, loadSettings, loadTasks, type Project, type Task } from "./db";
+import { addTask, completeTask, reopenTask, loadProjects, updateSubtask, loadSettings, loadTasks, loadPeopleList, type Person, type Project, type Task } from "./db";
 import { Icon } from "./icons";
 import { Tooltips } from "./Tooltips";
-import { compactItems, compactSearch, compactTabs, rowShown, zoomOf, dueLabel, listAccent, listIcon, listName, savedList, saveList } from "./compactLists";
+import { compactItems, compactSearch, compactTabs, rowShown, zoomOf, listAccent, listIcon, listName, savedList, saveList } from "./compactLists";
 import { countFor, type ViewId } from "./views";
 import { isBlocked } from "./relations";
 import { marks } from "./search";
-import { stageOf, STAGES } from "./boardOps";
-import { priorityName } from "./priority";
-import { fmtDay, fmtStamp } from "./dates";
-import { fmtCreated } from "./TaskBits";
-import { describe, parseRule } from "./recurrence";
-import { RELATION_NAMES } from "./relations";
 import { clampRow, keyAction, stepList, stepRow } from "./compactKeys";
 import { loadCompactPrefs, onCompactPrefs, type EdgeSide } from "./compactPrefs";
 import { currentZoom } from "./prefs";
+import TaskCard, { type CardAnchor } from "./CompactCard";
 import CompactSettings from "./CompactSettings";
+import { PeopleCtx } from "./PersonCard";
 import { RowMark, RowMeta } from "./CompactRow";
 import "./compact.css";
 
 /*
  * Окно компактного вида: открывается от значка у правого края экрана (src-tauri/src/compact.rs).
- * Сверху переключатель списков иконками, в строке задачи название и дата, при наведении карточка со всем,
- * что есть у задачи, внизу строка ввода: Enter записывает задачу в «Новые» с одним названием.
- * С клавиатуры (окно открыли сочетанием): ↑ и ↓ по задачам, ← и → по спискам, Enter открывает задачу (compactKeys.ts)
+ * Сверху переключатель списков иконками, в строке задачи название и параметры; наведение подсвечивает строку,
+ * клик (или Enter на выбранной с клавиатуры) открывает карточку со всем, что есть у задачи (CompactCard.tsx),
+ * внизу строка ввода: Enter записывает задачу в «Новые» с одним названием.
+ * С клавиатуры (окно открыли сочетанием): ↑ и ↓ по задачам, ← и → по спискам (compactKeys.ts)
  */
 
 const hold = (on: boolean) => invoke("compact_hold", { on }).catch(() => {});
@@ -35,19 +32,14 @@ const hold = (on: boolean) => invoke("compact_hold", { on }).catch(() => {});
 /** Ручки по краям окна: тянешь — окно меняет размер. Край со стороны значка прижат к нему, там ручек нет */
 const HANDLES: Record<EdgeSide, string[]> = { right: ["n", "s", "w", "nw", "sw"], left: ["n", "s", "e", "ne", "se"] };
 
-interface Hover {
-  task: Task;
-  top: number; // верх и низ строки в окне
-  bottom: number;
-}
-
 export default function CompactApp() {
   const [view, setView] = useState<ViewId>(savedList);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [projects, setProjects] = useState<Project[]>([]);
   const [setup, setSetup] = useState(false); // страница настроек вместо списка
-  const [hover, setHover] = useState<Hover | null>(null);
+  const [card, setCard] = useState<CardAnchor | null>(null); // открытая карточка задачи
+  const [people, setPeople] = useState<Person[]>([]);
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -63,11 +55,12 @@ export default function CompactApp() {
   const [cur, setCur] = useState<number | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
-  const timer = useRef(0);
-
+  const cardOpen = useRef(false);
+  cardOpen.current = !!card;
+  
   const reload = () =>
-    Promise.all([loadTasks(), loadSettings(), loadProjects()])
-      .then(([t, st, p]) => (setTasks(t), setSettings(st), setProjects(p), setError(null)))
+    Promise.all([loadTasks(), loadSettings(), loadProjects(), loadPeopleList()])
+      .then(([t, st, p, r]) => (setTasks(t), setSettings(st), setProjects(p), setPeople(r), setError(null)))
       .catch((e) => setError(String(e)));
 
   useEffect(() => {
@@ -79,13 +72,15 @@ export default function CompactApp() {
       listen<boolean>("compact-open", (e) => (reload(), setCur(e.payload ? 0 : null), e.payload && input.current?.blur())),
       listen("tasks-changed", () => reload()),
       // Окно спряталось: карточку убираем, фокус из строки ввода снимаем, набранный текст остаётся
-      listen("compact-hidden", () => (setHover(null), setCur(null), input.current?.blur())),
+      listen("compact-hidden", () => (setCard(null), setCur(null), input.current?.blur())),
     ];
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
       e.preventDefault();
-      // Первый Esc закрывает поиск или уводит фокус из строки ввода, следующий закрывает окно
-      if (findOpen.current) (setFind(null), setHover(null));
+      // Открытая карточка закрывается первой; окно остаётся
+      if (cardOpen.current) return setCard(null);
+      // Следующий Esc закрывает поиск или уводит фокус из строки ввода, потом закрывает окно
+      if (findOpen.current) setFind(null);
       else if (document.activeElement === input.current) input.current?.blur();
       else invoke("compact_hide").catch(() => {});
     };
@@ -94,7 +89,7 @@ export default function CompactApp() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Пока пишешь задачу, окно не закрывается от ухода курсора
-  useEffect(() => void hold(focused || text.trim() !== "" || findFocus || !!find?.trim()), [focused, text, findFocus, find]);
+  useEffect(() => void hold(focused || text.trim() !== "" || findFocus || !!find?.trim() || !!card), [focused, text, findFocus, find, card]);
 
   // Масштаб компактного окна: поверх размера из внешнего вида. --z нужен, чтобы прозрачный отступ под ручки оставался 10 px (PAD в compact.rs)
   const zoom = zoomOf(settings);
@@ -110,10 +105,10 @@ export default function CompactApp() {
     return () => void un.then((f) => f());
   }, [zoom]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const pick = (v: ViewId) => (setView(v), saveList(v), setHover(null), setSetup(false), setFind(null), setCur((c) => (c == null ? null : 0)));
+  const pick = (v: ViewId) => (setView(v), saveList(v), setCard(null), setSetup(false), setFind(null), setCur((c) => (c == null ? null : 0)));
   const toggleFind = () => {
     setSetup(false);
-    setHover(null);
+    setCard(null);
     if (find !== null) return setFind(null);
     setFind("");
     window.setTimeout(() => findRef.current?.focus(), 0);
@@ -136,7 +131,6 @@ export default function CompactApp() {
   const searching = find !== null && !setup;
   const items = searching ? compactSearch(find, tasks, settings) : compactItems(view, tasks, settings);
   const tabs = compactTabs(settings, tasks, view);
-  const openTask = (t: Task) => invoke("compact_open_task", { id: t.id }).catch(() => {});
 
   // Клавиатура: обработчик один, свежие список и курсор берёт из ref
   const kb = useRef({ items, cur, view, tabs, setup });
@@ -145,7 +139,7 @@ export default function CompactApp() {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
       const { items: xs, cur: c, view: v, tabs: ts, setup: inSetup } = kb.current;
-      if (inSetup) return;
+      if (inSetup || cardOpen.current) return;
       const inAdd = document.activeElement === input.current;
       const inFind = document.activeElement === findRef.current;
       // Из строки поиска ↓ уходит к списку, остальные клавиши остаются полю
@@ -164,7 +158,9 @@ export default function CompactApp() {
         pick(stepList(v, act === "right" ? 1 : -1, ts));
         setCur(0);
       } else if (c != null) {
-        openTask(xs[c].task);
+        // Enter на выбранной строке открывает ту же карточку, что клик мышью
+        const el = list.current?.querySelector<HTMLElement>(`[data-row="${c}"]`);
+        if (el) openCard(xs[c].task, el);
       }
     };
     addEventListener("keydown", onKey);
@@ -190,7 +186,7 @@ export default function CompactApp() {
         setUndo(x);
         window.setTimeout(() => setUndo((u) => (u?.id === x.id ? null : u)), 5000);
       }
-      setHover(null);
+      setCard(null);
       await emit("tasks-changed");
     } catch (e) {
       setError(String(e));
@@ -209,15 +205,16 @@ export default function CompactApp() {
       setError(String(e));
     }
   };
-  const enter = (task: Task, el: HTMLElement) => {
-    clearTimeout(timer.current);
+  const openCard = (task: Task, el: HTMLElement) => {
     const r = el.getBoundingClientRect();
-    // Короткая пауза: при движении мыши по списку карточки не мелькают
-    timer.current = window.setTimeout(() => setHover({ task, top: r.top, bottom: r.bottom }), hover ? 60 : 280);
+    setCard({ task, top: r.top, bottom: r.bottom });
   };
-  const leave = () => (clearTimeout(timer.current), setHover(null));
+  const openInMain = (id: number) => invoke("compact_open_task", { id }).catch(() => {});
+  // Карточка следует за задачей при обновлении данных; если задачу удалили или закрыли в списке, карточка убирается
+  const cardTask = card && tasks.find((t) => t.id === card.task.id);
 
   return (
+    <PeopleCtx.Provider value={people}>
     <div className={`cv-root${side === "left" ? " left" : ""}`}>
       {HANDLES[side].map((h) => (
         <div key={h} className={`cv-grip g-${h}`} onPointerDown={(e) => (e.preventDefault(), invoke("compact_resize", { dir: h }).catch(() => {}))} />
@@ -239,7 +236,7 @@ export default function CompactApp() {
             <Search size={15} />
           </button>
           <button type="button" className={`cv-tab cv-gear${setup ? " on" : ""}`} data-tip="Настройки компактного вида" aria-label="Настройки компактного вида"
-            aria-pressed={setup} onClick={() => (setSetup(!setup), setHover(null))}>
+            aria-pressed={setup} onClick={() => (setSetup(!setup), setCard(null))}>
             <Gear size={15} />
           </button>
         </nav>
@@ -251,7 +248,7 @@ export default function CompactApp() {
           <div className="cv-find">
             <Search size={14} />
             <input ref={findRef} className="cv-find-in" value={find} placeholder="Поиск по названию во всех списках" spellCheck={false} maxLength={200}
-              onChange={(e) => (setFind(e.target.value), setHover(null), setCur(null))} onFocus={() => setFindFocus(true)} onBlur={() => setFindFocus(false)} />
+              onChange={(e) => (setFind(e.target.value), setCard(null), setCur(null))} onFocus={() => setFindFocus(true)} onBlur={() => setFindFocus(false)} />
             {find && <button type="button" className="cv-mini" aria-label="Очистить" onClick={() => (setFind(""), findRef.current?.focus())}><X size={13} /></button>}
           </div>
         ) : (
@@ -260,16 +257,15 @@ export default function CompactApp() {
             <span className="cv-title">{listName(view)}</span>
           </div>
         )}
-        <div ref={list} className="cv-list" onScroll={leave}>
+        <div ref={list} className="cv-list" onScroll={() => setCard(null)}>
           {items.length === 0 && <div className="cv-empty">{error ? `Не загрузилось: ${error}` : searching ? (find?.trim() ? "Ничего не нашлось" : "Введи часть названия") : "Здесь пусто"}</div>}
           {items.map(({ task, group }, i) => {
             return (
               <div key={task.id}>
                 {group && <div className="cv-group">{group}</div>}
-                <div role="button" tabIndex={0} data-row={i} className={`cv-row${hover?.task.id === task.id ? " hot" : ""}${kbRow === i ? " kb" : ""}`}
-                  onMouseEnter={(e) => enter(task, e.currentTarget)} onMouseLeave={leave}
-                  onClick={() => openTask(task)}
-                  onKeyDown={(e) => e.key === "Enter" && openTask(task)}>
+                <div role="button" tabIndex={0} data-row={i} className={`cv-row${card?.task.id === task.id ? " hot" : ""}${kbRow === i ? " kb" : ""}`}
+                  onClick={(e) => openCard(task, e.currentTarget)}
+                  onKeyDown={(e) => e.key === "Enter" && openCard(task, e.currentTarget)}>
                   <button type="button" className={`cv-chk${task.status === "done" ? " on" : ""}`} aria-label={task.status === "done" ? "Вернуть в работу" : "Сделано"}
                     data-tip={task.status === "done" ? "Вернуть в работу" : "Сделано"}
                     onClick={(e) => (e.stopPropagation(), toggleDone(task))} onKeyDown={(e) => e.stopPropagation()}>
@@ -298,74 +294,16 @@ export default function CompactApp() {
           (note || (error && items.length > 0)) && <div className={`cv-note${error ? " err" : ""}`}>{error ? `Не сохранилось: ${error}` : note}</div>
         )}
       </div>
-      {hover && <TaskCard hover={hover} projects={projects} />}
+      {card && cardTask && (
+        <>
+          {/* Клик вне карточки только закрывает её: до строк и кнопок под ним он не доходит */}
+          <div className="cv-scrim" onPointerDown={(e) => e.preventDefault()} onClick={() => setCard(null)} onContextMenu={(e) => (e.preventDefault(), setCard(null))} />
+          <TaskCard anchor={{ ...card, task: cardTask }} project={projects.find((p) => p.id === cardTask.project_id)} settings={settings}
+            onClose={() => setCard(null)} onOpen={openInMain} onSub={toggleSub} />
+        </>
+      )}
       <Tooltips />
     </div>
-  );
-}
-
-/** Всплывающая карточка задачи: под строкой, а если внизу не хватает места — над ней */
-function TaskCard({ hover, projects }: { hover: Hover; projects: Project[] }) {
-  const box = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number } | null>(null);
-  useLayoutEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    const h = el.offsetHeight;
-    const room = window.innerHeight - 14;
-    const below = hover.bottom + 4;
-    const top = below + h <= room ? below : Math.max(14, hover.top - 4 - h);
-    setPos({ top });
-  }, [hover]);
-  const x = hover.task;
-  const space = projects.find((p) => p.id === x.project_id)?.name;
-  const stage = STAGES.find((s) => s.key === stageOf(x));
-  const rule = parseRule(x.recurrence);
-  const subDone = x.subtasks.filter((s) => s.done).length;
-  const rows: [string, string][] = [];
-  const due = dueLabel(x);
-  if (due) rows.push([x.kind === "meeting" ? "Когда" : "Срок", due]);
-  if (x.priority) rows.push(["Важность", priorityName(x.priority)]);
-  if (space) rows.push(["Пространство", space]);
-  if (x.waiting_for) rows.push(["Жду", x.waiting_until ? `${x.waiting_for}, напомнить ${fmtDay(x.waiting_until).toLowerCase()}` : x.waiting_for]);
-  if (x.assigned_by) rows.push(["Кто назначил", x.assigned_by]);
-  if (x.participants.length) rows.push(["Участники", x.participants.join(", ")]);
-  if (x.remind_at) rows.push(["Напоминание", fmtStamp(x.remind_at)]);
-  if (rule) rows.push(["Повтор", describe(rule)]);
-  if (x.links.length) rows.push(["Ссылки", x.links.map((l) => l.title || l.url).join(", ")]);
-  if (x.files.length) rows.push(["Файлы", x.files.map((f) => f.name).join(", ")]);
-  if (x.relations.length) rows.push(["Связи", x.relations.map((r) => `${RELATION_NAMES[r.kind].toLowerCase()}: ${r.other_title}`).join("; ")]);
-  return (
-    <div ref={box} className="cv-pop" style={{ top: pos?.top ?? 0, visibility: pos ? "visible" : "hidden" }} role="tooltip">
-      <div className="cv-pop-title">{x.title || "Без названия"}</div>
-      <div className="cv-pop-chips">
-        {stage && <span className="cv-chip" style={{ ["--acc" as string]: `var(--${stage.accent})` }}>{stage.name}</span>}
-        {x.kind === "meeting" && <span className="cv-chip">Встреча</span>}
-        {x.tags.map((g) => (
-          <span key={g.id} className="cv-chip tag">#{g.name}</span>
-        ))}
-      </div>
-      {rows.length > 0 && (
-        <dl className="cv-pop-rows">
-          {rows.map(([k, v]) => (
-            <div key={k}>
-              <dt>{k}</dt>
-              <dd>{v}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-      {x.subtasks.length > 0 && (
-        <div className="cv-pop-sub">
-          <div className="cv-pop-lbl">Чек-лист {subDone}/{x.subtasks.length}</div>
-          {x.subtasks.slice(0, 6).map((s) => (
-            <div key={s.id} className={`cv-pop-item${s.done ? " done" : ""}`}>{s.done ? "✓" : "○"} {s.title}</div>
-          ))}
-          {x.subtasks.length > 6 && <div className="cv-pop-more">и ещё {x.subtasks.length - 6}</div>}
-        </div>
-      )}
-      {x.note.trim() && <div className="cv-pop-note">{x.note.trim()}</div>}
-      <div className="cv-pop-foot">Создана {fmtCreated(x.created_at).toLowerCase()}</div>
-    </div>
+    </PeopleCtx.Provider>
   );
 }
