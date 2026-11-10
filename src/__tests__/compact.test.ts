@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { COMPACT_LISTS, compactItems, dueLabel, dueTone, listIcon, listName } from "../compactLists";
+import { COMPACT_LISTS, compactItems, compactSearch, dueLabel, dueTone, listIcon, listName } from "../compactLists";
 import { freezeToday, task } from "./helpers";
 
 beforeEach(freezeToday); // сегодня 2026-10-10
@@ -101,5 +101,21 @@ describe("настройки компактного вида", () => {
     expect(compactTabs({}, xs, "tasks")).toEqual(COMPACT_LISTS);
     expect(compactTabs({ "compact:hide-empty": "1" }, xs, "tasks")).toEqual(["tasks", "today"]);
     expect(compactTabs({ "compact:hide-empty": "1" }, xs, "waiting")).toEqual(["tasks", "today", "waiting"]);
+  });
+
+  it("поиск идёт по названию во всех списках, каждая задача один раз под своим списком", () => {
+    const xs = [
+      task({ id: 1, title: "Купить молоко", status: "inbox" }),
+      task({ id: 2, title: "Молоко для кота", due_date: "2026-10-10" }),
+      task({ id: 3, title: "Позвонить Ане", waiting_for: "Аня" }),
+      task({ id: 4, title: "МОЛОКО просрочено", due_date: "2026-10-05" }),
+      task({ id: 5, title: "Молоко сделано", status: "done" }),
+      task({ id: 6, title: "Хлеб" }),
+    ];
+    const found = compactSearch("молоко", xs);
+    expect(ids(found).sort()).toEqual([1, 2, 4]);
+    expect(found.filter((i) => i.group).map((i) => i.group)).toEqual(["Новые", "Просроченные", "Сегодня"]);
+    expect(compactSearch("  ", xs)).toEqual([]);
+    expect(compactSearch("нет такого", xs)).toEqual([]);
   });
 });
