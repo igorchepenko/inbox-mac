@@ -160,6 +160,8 @@ struct QuickKey(Mutex<Shortcut>);
 struct TrayQuickItem(MenuItem<Wry>);
 /// Галочка «Значок у края экрана»: меню переключает её само, а мы ставим по сохранённому
 struct TrayEdgeItem(CheckMenuItem<Wry>);
+/// Пункт «Компактный вид» в меню строки меню: в нём подписано его сочетание (compact.rs)
+struct TrayCompactItem(MenuItem<Wry>);
 
 fn migrations() -> Vec<Migration> {
     vec![
@@ -925,6 +927,9 @@ fn set_quick_shortcut(
     let next: Shortcut = accel
         .parse()
         .map_err(|e| format!("Не получилось разобрать сочетание: {e}"))?;
+    if compact::key(&app) == Some(next) {
+        return Err("Это сочетание уже открывает компактный вид".into());
+    }
     let mut cur = key.0.lock().map_err(|e| e.to_string())?;
     let gs = app.global_shortcut();
     if *cur != next || !gs.is_registered(next) {
@@ -976,10 +981,14 @@ pub fn run() {
             autostart_args,
         ))
         .plugin(
-            // Зарегистрировано всегда одно сочетание, быстрого ввода, поэтому сверять, какое нажато, не нужно
+            // Сочетаний два: компактного вида (compact.rs) и быстрого ввода, его можно сменить в настройках
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
+                .with_handler(|app, shortcut, event| {
                     if event.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    if compact::is_key(app, shortcut) {
+                        compact::toggle_from_key(app);
                         return;
                     }
                     if TESTING_QUICK.swap(false, Ordering::Relaxed) {
@@ -1017,7 +1026,10 @@ pub fn run() {
             compact::compact_hold,
             compact::compact_hide,
             compact::compact_resize,
-            compact::compact_open_task
+            compact::compact_open_task,
+            compact::compact_prefs,
+            compact::set_compact_place,
+            compact::set_compact_shortcut
         ])
         // «Настройки…» ⌘, в меню приложения
         .on_menu_event(|app, event| {
@@ -1060,8 +1072,15 @@ pub fn run() {
             let open_i = MenuItem::with_id(app, "open", "Открыть Inbox", true, None::<&str>)?;
             let settings_i =
                 MenuItem::with_id(app, "tray-settings", "Настройки…", true, None::<&str>)?;
-            // Значок у правого края экрана с компактным видом (compact.rs)
+            // Значок у края экрана с компактным видом и его сочетание (compact.rs)
             compact::setup(app.handle());
+            let compact_i = MenuItem::with_id(
+                app,
+                "compact",
+                compact::tray_text(&compact::current_label(app.handle())),
+                true,
+                None::<&str>,
+            )?;
             let edge_i = CheckMenuItem::with_id(
                 app,
                 "edge",
@@ -1080,10 +1099,11 @@ pub fn run() {
             let sep2 = PredefinedMenuItem::separator(app)?;
             let menu = Menu::with_items(
                 app,
-                &[&quick_i, &open_i, &settings_i, &edge_i, &sep2, &profile_sub, &sep, &quit_i],
+                &[&quick_i, &open_i, &settings_i, &compact_i, &edge_i, &sep2, &profile_sub, &sep, &quit_i],
             )?;
             app.manage(TrayQuickItem(quick_i.clone()));
             app.manage(TrayEdgeItem(edge_i.clone()));
+            app.manage(TrayCompactItem(compact_i.clone()));
             app.manage(TrayProfiles {
                 sub: profile_sub.clone(),
                 items: Mutex::new(Vec::new()),
@@ -1117,6 +1137,7 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "quick" => toggle_quick(app),
                     "open" => show_main(app),
+                    "compact" => compact::toggle_from_menu(app),
                     "tray-settings" => open_settings(app),
                     "edge" => {
                         let on = !compact::enabled(app);

@@ -8,6 +8,9 @@
 .edge-n { font-family: var(--mono); font-size: 10px; font-weight: 600; line-height: 1; color: var(--muted); }
 :root[data-look="glass"] .edge { background: var(--bg); border-color: var(--edge); }
 :root[data-look="glass"] .edge.on { background: color-mix(in srgb, var(--stand) 16%, var(--bg)); }
+/* У левого края экрана — зеркально: скругление справа, тень вправо */
+.edge.left { inset: 0 3px 0 0; border-right: 1px solid var(--border); border-left: 0; border-radius: 0 12px 12px 0; box-shadow: 2px 0 6px -3px rgba(0, 0, 0, .35); }
+:root[data-look="glass"] .edge.left { border-right-color: var(--edge); }
 
 /* Окно: карточка с прозрачным отступом 10px (под тень и ручки размера, PAD в compact.rs).
    Фон непрозрачный: полупрозрачный в окне-панели macOS сначала просвечивает, пока окно не перерисуется */
@@ -25,6 +28,11 @@
 .cv-grip.g-w { left: 0; top: 18px; bottom: 18px; width: 9px; cursor: ew-resize; }
 .cv-grip.g-nw { left: 0; top: 0; width: 18px; height: 18px; cursor: nwse-resize; }
 .cv-grip.g-sw { left: 0; bottom: 0; width: 18px; height: 18px; cursor: nesw-resize; }
+/* Значок у левого края: ручки справа */
+.cv-root.left .cv-grip.g-n, .cv-root.left .cv-grip.g-s { left: 0; right: 18px; }
+.cv-grip.g-e { right: 0; top: 18px; bottom: 18px; width: 9px; cursor: ew-resize; }
+.cv-grip.g-ne { right: 0; top: 0; width: 18px; height: 18px; cursor: nesw-resize; }
+.cv-grip.g-se { right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; }
 
 /* Переключатель списков: иконки цветом списка, как в меню главного окна; выбранный — фон выделения и обводка */
 .cv-tabs { display: flex; gap: 2px; padding: 8px 8px 4px; background: var(--side); border-bottom: 1px solid var(--line); }
@@ -47,9 +55,9 @@
 .cv-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 8px; display: flex; flex-direction: column; gap: 4px; }
 .cv-row { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 10px; text-align: left;
   background: var(--surface); border: 1px solid var(--line); }
-.cv-row:hover, .cv-row.hot { border-color: color-mix(in srgb, var(--stand) 75%, transparent); background: color-mix(in srgb, var(--stand) 7%, var(--surface)); }
+.cv-row:hover, .cv-row.hot, .cv-row.kb { border-color: color-mix(in srgb, var(--stand) 75%, transparent); background: color-mix(in srgb, var(--stand) 7%, var(--surface)); }
 :root[data-look="glass"] .cv-row { border-radius: 12px; border-color: var(--edge); }
-:root[data-look="glass"] .cv-row:hover, :root[data-look="glass"] .cv-row.hot { border-color: color-mix(in srgb, var(--stand) 75%, transparent); }
+:root[data-look="glass"] .cv-row:hover, :root[data-look="glass"] .cv-row.hot, :root[data-look="glass"] .cv-row.kb { border-color: color-mix(in srgb, var(--stand) 75%, transparent); }
 .cv-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
 .cv-due { flex: none; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .cv-due.overdue { color: var(--move); }

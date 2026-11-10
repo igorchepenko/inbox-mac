@@ -1,4 +1,4 @@
-//! Компактный вид: значок Inbox у правого края экрана и маленькое окно со списками рядом с ним.
+//! Компактный вид: значок Inbox у края экрана и маленькое окно со списками рядом с ним.
 //!
 //! Два окна из tauri.conf.json: `edge` — сам значок (панель, которая не забирает клавиатуру у твоей программы)
 //! и `compact` — окно со списками. Наведение, клик и перетаскивание значка ловит фоновый поток: раз в 60 мс
@@ -9,7 +9,14 @@
 //! - курсор задержался на значке → окно открывается «по наведению» и закрывается, когда курсор ушёл с значка и окна;
 //! - клик по значку → окно открывается «закреплённым» и закрывается кликом мимо, Esc или повторным кликом по значку;
 //! - пока в строке ввода фокус или набран текст, окно по уходу курсора не закрывается (compact_hold);
-//! - значок можно тащить вверх и вниз вдоль края, место и размер окна запоминаются в compact.json.
+//! - значок можно тащить вверх и вниз вдоль края, место и размер окна запоминаются в compact.json;
+//! - край (правый или левый) и монитор (основной или тот, где курсор) выбираются в настройках;
+//! - своё глобальное сочетание (по умолчанию ⌥⇧Space) открывает окно без мыши: дальше стрелки и Enter (Compact.tsx).
+//!
+//! Настройки места и сочетания хранятся здесь же, в compact.json, а не в базе профиля: значок один на приложение
+//! и нужен до того, как открылось хоть одно окно. Окно настроек читает и меняет их командами compact_prefs,
+//! set_compact_place и set_compact_shortcut (обёртки в src/compactPrefs.ts), об изменениях все окна узнают
+//! из события compact-prefs.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -17,6 +24,10 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+
+/// Сочетание по умолчанию: рядом с ⌥Space быстрого ввода
+pub const DEFAULT_KEY: &str = "Alt+Shift+Space";
 
 /// Размер значка в точках экрана
 const EDGE_W: f64 = 30.0;
@@ -34,6 +45,7 @@ const SLACK: f64 = 6.0;
 const TICK: Duration = Duration::from_millis(60);
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[serde(default)]
 struct Saved {
     /// Середина значка по высоте рабочей области экрана, от 0 (верх) до 1 (низ)
     y: f64,
@@ -42,6 +54,12 @@ struct Saved {
     h: f64,
     /// Показывать ли значок (галочка в меню строки меню)
     on: bool,
+    /// К какому краю прижат значок: right или left
+    side: String,
+    /// На каком мониторе: main — основной, current — тот, где сейчас курсор
+    screen: String,
+    /// Сочетание, которое открывает окно, в формате «Alt+Shift+Space». Пустая строка — без сочетания
+    key: String,
 }
 
 impl Default for Saved {
@@ -51,8 +69,34 @@ impl Default for Saved {
             w: 360.0,
             h: 480.0,
             on: true,
+            side: "right".into(),
+            screen: "main".into(),
+            key: DEFAULT_KEY.into(),
         }
     }
+}
+
+impl Saved {
+    fn left(&self) -> bool {
+        self.side == "left"
+    }
+    fn current(&self) -> bool {
+        self.screen == "current"
+    }
+}
+
+/// Настройки компактного вида для окна настроек (src/compactPrefs.ts)
+#[derive(serde::Serialize, Clone)]
+pub struct Prefs {
+    side: String,
+    screen: String,
+    key: String,
+    /// Подпись сочетания для меню, «⌥⇧Space»
+    label: String,
+    /// Сочетание удалось занять
+    key_ok: bool,
+    /// Почему не удалось занять сохранённое сочетание
+    key_error: Option<String>,
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -67,6 +111,7 @@ struct Resize {
     north: bool,
     south: bool,
     west: bool,
+    east: bool,
     cursor: (f64, f64),
     rect: Rect,
 }
@@ -111,7 +156,12 @@ struct Inner {
     hidden_at: Option<Instant>,
     /// Где сейчас значок, в пикселях экрана
     edge: Option<Rect>,
+    /// Рабочая область монитора, на котором значок: туда же ставим окно
+    area: Option<Rect>,
     scale: f64,
+    /// Занятое сейчас сочетание компактного вида и ошибка, если занять не вышло
+    key: Option<Shortcut>,
+    key_error: Option<String>,
 }
 
 pub struct Compact(Mutex<Inner>);
@@ -169,8 +219,22 @@ pub fn setup(app: &AppHandle) {
         away_since: None,
         hidden_at: None,
         edge: None,
+        area: None,
         scale: 1.0,
+        key: None,
+        key_error: None,
     })));
+    let accel = load(app).key;
+    if !accel.is_empty() {
+        if let Err(e) = register(app, &accel) {
+            eprintln!("Не удалось занять сочетание компактного вида {accel}: {e}");
+            if let Some(st) = state(app) {
+                if let Ok(mut g) = st.0.lock() {
+                    g.key_error = Some(e);
+                }
+            }
+        }
+    }
     place_edge(app, None);
     if on {
         show_edge(app);
@@ -199,16 +263,41 @@ fn show_edge(app: &AppHandle) {
     let _ = w.show();
 }
 
-/// Поставить значок к правому краю рабочей области главного экрана (без строки меню и Dock).
+/// Монитор, на котором точка (x, y) в пикселях экрана
+fn monitor_at(app: &AppHandle, x: f64, y: f64) -> Option<tauri::Monitor> {
+    app.available_monitors().ok()?.into_iter().find(|m| {
+        let (p, s) = (m.position(), m.size());
+        x >= p.x as f64
+            && x < p.x as f64 + s.width as f64
+            && y >= p.y as f64
+            && y < p.y as f64 + s.height as f64
+    })
+}
+
+/// Поставить значок к правому или левому краю рабочей области монитора (без строки меню и Dock).
 /// top — верх значка в пикселях при перетаскивании, иначе берём сохранённое место
 fn place_edge(app: &AppHandle, top: Option<f64>) {
     let Some(w) = app.get_webview_window("edge") else {
         return;
     };
-    let Ok(Some(m)) = app.primary_monitor() else {
+    let Some(st) = state(app) else { return };
+    let (left, current, edge) =
+        st.0.lock()
+            .map(|g| (g.saved.left(), g.saved.current(), g.edge))
+            .unwrap_or((false, false, None));
+    // Пока значок тащат, он остаётся на своём мониторе. «Текущий» монитор — тот, где курсор
+    let here = if top.is_some() {
+        edge.and_then(|r| monitor_at(app, r.x + r.w / 2.0, r.y + r.h / 2.0))
+    } else if current {
+        app.cursor_position()
+            .ok()
+            .and_then(|c| monitor_at(app, c.x, c.y))
+    } else {
+        None
+    };
+    let Some(m) = here.or_else(|| app.primary_monitor().ok().flatten()) else {
         return;
     };
-    let Some(st) = state(app) else { return };
     let scale = m.scale_factor();
     let area = m.work_area();
     let (ax, ay, aw, ah) = (
@@ -222,11 +311,17 @@ fn place_edge(app: &AppHandle, top: Option<f64>) {
     let y = top
         .unwrap_or(ay + frac * ah - eh / 2.0)
         .clamp(ay, (ay + ah - eh).max(ay));
-    let x = ax + aw - ew;
+    let x = if left { ax } else { ax + aw - ew };
     let rect = Rect { x, y, w: ew, h: eh };
     let changed = {
         let Ok(mut g) = st.0.lock() else { return };
         g.scale = scale;
+        g.area = Some(Rect {
+            x: ax,
+            y: ay,
+            w: aw,
+            h: ah,
+        });
         if top.is_some() && ah > eh {
             g.saved.y = ((y + eh / 2.0 - ay) / ah).clamp(0.0, 1.0);
         }
@@ -241,23 +336,29 @@ fn place_edge(app: &AppHandle, top: Option<f64>) {
     }
 }
 
-/// Открыть окно слева от значка, по высоте напротив него, не вылезая за экран
-fn show(app: &AppHandle, mode: Open) {
+/// Открыть окно рядом со значком (со стороны экрана), по высоте напротив него, не вылезая за экран.
+/// keys — открыли сочетанием: окно сразу ставит курсор на первую задачу для стрелок и Enter
+fn show(app: &AppHandle, mode: Open, keys: bool) {
     let Some(w) = app.get_webview_window("compact") else {
         return;
     };
     let Some(st) = state(app) else { return };
-    let (edge, scale) = {
+    let (edge, area, scale, left) = {
         let Ok(g) = st.0.lock() else { return };
-        (g.edge, g.scale)
+        (g.edge, g.area, g.scale, g.saved.left())
     };
-    let Some(edge) = edge else { return };
-    if let (Ok(size), Ok(Some(m))) = (w.outer_size(), app.primary_monitor()) {
-        let area = m.work_area();
-        let (ay, ah) = (area.position.y as f64, area.size.height as f64);
+    let (Some(edge), Some(area)) = (edge, area) else {
+        return;
+    };
+    if let Ok(size) = w.outer_size() {
+        let (ay, ah) = (area.y, area.h);
         let (cw, ch) = (size.width as f64, size.height as f64);
         let pad = PAD * scale;
-        let x = edge.x - cw + pad - GAP * scale;
+        let x = if left {
+            edge.x + edge.w - pad + GAP * scale
+        } else {
+            edge.x - cw + pad - GAP * scale
+        };
         let y =
             (edge.y + edge.h / 2.0 - ch / 2.0).clamp(ay - pad, (ay + ah - ch + pad).max(ay - pad));
         let _ = w.set_position(PhysicalPosition::new(x.round() as i32, y.round() as i32));
@@ -268,7 +369,7 @@ fn show(app: &AppHandle, mode: Open) {
         g.hover_since = None;
     }
     // Список перечитывается при каждом открытии: задачи могли поменять в главном окне
-    let _ = app.emit_to("compact", "compact-open", ());
+    let _ = app.emit_to("compact", "compact-open", keys);
     #[cfg(target_os = "macos")]
     {
         let panel = w.clone();
@@ -366,16 +467,21 @@ fn pressed() -> bool {
 
 fn tick(app: &AppHandle) {
     let Some(st) = state(app) else { return };
-    // Раз в пару секунд сверяем место значка с экраном: подключили монитор, переставили Dock
+    // Раз в пару секунд сверяем место значка с экраном: подключили монитор, переставили Dock.
+    // Если значок ходит за курсором по мониторам, сверяем чаще, но не пока окно открыто или значок тащат
     static TICKS: AtomicU32 = AtomicU32::new(0);
-    if TICKS.fetch_add(1, Ordering::Relaxed) % 40 == 39 {
-        let idle =
-            st.0.lock()
-                .map(|g| g.drag.is_none() && g.saved.on)
-                .unwrap_or(false);
-        if idle {
-            place_edge(app, None);
-        }
+    let n = TICKS.fetch_add(1, Ordering::Relaxed);
+    let (idle, follow) =
+        st.0.lock()
+            .map(|g| {
+                (
+                    g.drag.is_none() && g.resize.is_none() && g.saved.on,
+                    g.saved.current() && g.open == Open::No,
+                )
+            })
+            .unwrap_or((false, false));
+    if idle && (n % 40 == 39 || (follow && n % 5 == 4)) {
+        place_edge(app, None);
     }
     let Ok(cursor) = app.cursor_position() else {
         return;
@@ -427,6 +533,9 @@ fn tick(app: &AppHandle) {
                 if r.west {
                     n.w = (r.rect.w - dx).max(min_w);
                     n.x = r.rect.x + r.rect.w - n.w;
+                }
+                if r.east {
+                    n.w = (r.rect.w + dx).max(min_w);
                 }
                 if r.north {
                     n.h = (r.rect.h - dy).max(min_h);
@@ -497,7 +606,7 @@ fn tick(app: &AppHandle) {
 
     match act {
         Act::None => {}
-        Act::Show(m) => show(app, m),
+        Act::Show(m) => show(app, m, false),
         Act::Hide => hide(app),
         Act::Toggle => {
             let (open, recently) =
@@ -520,7 +629,7 @@ fn tick(app: &AppHandle) {
                 Open::Pinned => hide(app),
                 // Только что закрылось от этого же клика (окно потеряло фокус): не открываем снова
                 Open::No if recently => {}
-                Open::No => show(app, Open::Pinned),
+                Open::No => show(app, Open::Pinned, false),
             }
         }
         Act::MoveEdge(top) => {
@@ -558,7 +667,7 @@ pub fn compact_hold(app: AppHandle, on: bool) {
     }
 }
 
-/// Нажали на ручку размера: dir — n, s, w, nw или sw. Дальше окно за мышью ведёт фоновый поток, пока кнопка зажата
+/// Нажали на ручку размера: dir — n, s, w, e, nw, sw, ne или se (у левого края экрана ручки справа). Дальше окно за мышью ведёт фоновый поток, пока кнопка зажата
 #[tauri::command]
 pub fn compact_resize(app: AppHandle, dir: String) {
     let Some(w) = app.get_webview_window("compact") else {
@@ -574,6 +683,7 @@ pub fn compact_resize(app: AppHandle, dir: String) {
             north: dir.contains('n'),
             south: dir.contains('s'),
             west: dir.contains('w'),
+            east: dir.contains('e'),
             cursor: (c.x, c.y),
             rect: Rect {
                 x: p.x as f64,
@@ -599,4 +709,224 @@ pub fn compact_open_task(app: AppHandle, id: i64) {
     hide(&app);
     crate::show_main(&app);
     let _ = app.emit_to("main", "open-task", id);
+}
+
+// ── Сочетание клавиш и место значка ──
+
+/// «Alt+Shift+Space» → «⌥⇧Space», как labelFromAccel в src/prefs.ts
+pub fn label(accel: &str) -> String {
+    if accel.is_empty() {
+        return String::new();
+    }
+    let parts: Vec<&str> = accel.split('+').collect();
+    let has = |m: &[&str]| {
+        parts
+            .iter()
+            .any(|p| m.iter().any(|x| p.eq_ignore_ascii_case(x)))
+    };
+    let mut out = String::new();
+    if has(&["Control", "Ctrl"]) {
+        out.push('⌃');
+    }
+    if has(&["Alt", "Option"]) {
+        out.push('⌥');
+    }
+    if has(&["Shift"]) {
+        out.push('⇧');
+    }
+    if has(&["Super", "Cmd", "Command", "Meta"]) {
+        out.push('⌘');
+    }
+    let code = parts.last().copied().unwrap_or("");
+    let key = match code {
+        "Enter" => "↩",
+        "Tab" => "⇥",
+        "Backspace" => "⌫",
+        "Escape" => "Esc",
+        "ArrowUp" => "↑",
+        "ArrowDown" => "↓",
+        "ArrowLeft" => "←",
+        "ArrowRight" => "→",
+        c => c
+            .strip_prefix("Key")
+            .or_else(|| c.strip_prefix("Digit"))
+            .unwrap_or(c),
+    };
+    out.push_str(key);
+    out
+}
+
+/// Занять сочетание вместо прежнего. Не вышло — прежнее остаётся, возвращаем причину
+fn register(app: &AppHandle, accel: &str) -> Result<(), String> {
+    let next: Shortcut = accel
+        .parse()
+        .map_err(|e| format!("Не получилось разобрать сочетание: {e}"))?;
+    let quick = app
+        .try_state::<crate::QuickKey>()
+        .and_then(|k| k.0.lock().ok().map(|k| *k));
+    if quick == Some(next) {
+        return Err("Это сочетание уже открывает быстрый ввод".into());
+    }
+    let Some(st) = state(app) else {
+        return Err("Компактный вид ещё не готов".into());
+    };
+    let old = st.0.lock().ok().and_then(|g| g.key);
+    let gs = app.global_shortcut();
+    if old == Some(next) && gs.is_registered(next) {
+        return Ok(());
+    }
+    if let Some(o) = old {
+        let _ = gs.unregister(o);
+    }
+    if let Err(e) = gs.register(next) {
+        if let Some(o) = old {
+            let _ = gs.register(o);
+        }
+        return Err(format!(
+            "Сочетание занято системой или другим приложением ({e})"
+        ));
+    }
+    if let Ok(mut g) = st.0.lock() {
+        g.key = Some(next);
+        g.key_error = None;
+    }
+    Ok(())
+}
+
+/// Это сочетание компактного вида? Для общего обработчика сочетаний в lib.rs
+pub fn is_key(app: &AppHandle, s: &Shortcut) -> bool {
+    key(app).is_some_and(|k| k == *s)
+}
+
+/// Занятое сейчас сочетание компактного вида
+pub fn key(app: &AppHandle) -> Option<Shortcut> {
+    state(app).and_then(|st| st.0.lock().ok().and_then(|g| g.key))
+}
+
+/// Нажали сочетание: открыть окно с клавиатурой или спрятать, если уже открыто
+pub fn toggle_from_key(app: &AppHandle) {
+    let Some(st) = state(app) else { return };
+    let open = st.0.lock().map(|g| g.open).unwrap_or(Open::No);
+    if open != Open::No {
+        hide(app);
+        return;
+    }
+    // Значок на «текущем» мониторе мог ещё не дойти за курсором: ставим сразу
+    place_edge(app, None);
+    show(app, Open::Pinned, true);
+}
+
+fn prefs(app: &AppHandle) -> Prefs {
+    let Some(st) = state(app) else {
+        let s = Saved::default();
+        return Prefs {
+            label: label(&s.key),
+            side: s.side,
+            screen: s.screen,
+            key: s.key,
+            key_ok: false,
+            key_error: None,
+        };
+    };
+    let (s, key, err) =
+        st.0.lock()
+            .map(|g| (g.saved.clone(), g.key, g.key_error.clone()))
+            .unwrap_or((Saved::default(), None, None));
+    let key_ok = !s.key.is_empty() && key.is_some_and(|k| app.global_shortcut().is_registered(k));
+    Prefs {
+        label: label(&s.key),
+        side: s.side,
+        screen: s.screen,
+        key: s.key,
+        key_ok,
+        key_error: err,
+    }
+}
+
+/// Сообщить всем окнам новые настройки: значок меняет сторону, окно настроек — подписи
+fn announce(app: &AppHandle) -> Prefs {
+    let p = prefs(app);
+    let _ = app.emit("compact-prefs", p.clone());
+    if let Some(t) = app.try_state::<crate::TrayCompactItem>() {
+        let _ = t.0.set_text(tray_text(&p.label));
+    }
+    p
+}
+
+/// Подпись пункта «Компактный вид» в меню строки меню
+pub fn tray_text(label: &str) -> String {
+    if label.is_empty() {
+        "Компактный вид".into()
+    } else {
+        format!("Компактный вид    {label}")
+    }
+}
+
+/// Подпись сочетания для меню строки меню при запуске
+pub fn current_label(app: &AppHandle) -> String {
+    prefs(app).label
+}
+
+/// Настройки компактного вида: край, монитор, сочетание и занято ли оно
+#[tauri::command]
+pub fn compact_prefs(app: AppHandle) -> Prefs {
+    prefs(&app)
+}
+
+/// Край экрана (right, left) и монитор (main, current) для значка
+#[tauri::command]
+pub fn set_compact_place(app: AppHandle, side: String, screen: String) -> Result<Prefs, String> {
+    if side != "right" && side != "left" {
+        return Err(format!("Неизвестный край: {side}"));
+    }
+    if screen != "main" && screen != "current" {
+        return Err(format!("Неизвестный монитор: {screen}"));
+    }
+    hide(&app);
+    let Some(st) = state(&app) else {
+        return Err("Компактный вид ещё не готов".into());
+    };
+    let s = {
+        let mut g = st.0.lock().map_err(|e| e.to_string())?;
+        g.saved.side = side;
+        g.saved.screen = screen;
+        // Сторона или монитор сменились: ставим значок заново, даже если пиксели совпали
+        g.edge = None;
+        g.saved.clone()
+    };
+    save(&app, &s);
+    place_edge(&app, None);
+    Ok(announce(&app))
+}
+
+/// Сменить сочетание, которое открывает компактный вид. accel в формате «Alt+Shift+KeyI»,
+/// пустая строка — убрать сочетание. Если сочетание занято, оставляем прежнее и возвращаем ошибку
+#[tauri::command]
+pub fn set_compact_shortcut(app: AppHandle, accel: String) -> Result<Prefs, String> {
+    let Some(st) = state(&app) else {
+        return Err("Компактный вид ещё не готов".into());
+    };
+    if accel.is_empty() {
+        let old = st.0.lock().ok().and_then(|mut g| {
+            g.key_error = None;
+            g.key.take()
+        });
+        if let Some(o) = old {
+            let _ = app.global_shortcut().unregister(o);
+        }
+    } else {
+        register(&app, &accel)?;
+    }
+    let s = {
+        let mut g = st.0.lock().map_err(|e| e.to_string())?;
+        g.saved.key = accel;
+        g.saved.clone()
+    };
+    save(&app, &s);
+    Ok(announce(&app))
+}
+
+/// Пункт «Компактный вид» в меню строки меню: открыть окно у значка
+pub fn toggle_from_menu(app: &AppHandle) {
+    toggle_from_key(app);
 }
