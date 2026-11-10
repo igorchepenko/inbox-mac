@@ -2,12 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { ArrowUp, Settings as Gear } from "lucide-react";
-import { addTask, loadProjects, updateSubtask, loadSettings, loadTasks, type Project, type Task } from "./db";
+import { ArrowUp, Check, Search, Settings as Gear, X } from "lucide-react";
+import { addTask, completeTask, reopenTask, loadProjects, updateSubtask, loadSettings, loadTasks, type Project, type Task } from "./db";
 import { Icon } from "./icons";
 import { Tooltips } from "./Tooltips";
-import { compactItems, compactTabs, rowShown, zoomOf, dueLabel, listAccent, listIcon, listName, savedList, saveList } from "./compactLists";
+import { compactItems, compactSearch, compactTabs, rowShown, zoomOf, dueLabel, listAccent, listIcon, listName, savedList, saveList } from "./compactLists";
 import { countFor, type ViewId } from "./views";
+import { isBlocked } from "./relations";
+import { marks } from "./search";
 import { stageOf, STAGES } from "./boardOps";
 import { priorityName } from "./priority";
 import { fmtDay, fmtStamp } from "./dates";
@@ -46,6 +48,12 @@ export default function CompactApp() {
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [undo, setUndo] = useState<Task | null>(null); // только что отмеченная сделанной: можно вернуть
+  const [find, setFind] = useState<string | null>(null); // null — поиск закрыт, строка — открыт с запросом
+  const [findFocus, setFindFocus] = useState(false);
+  const findRef = useRef<HTMLInputElement>(null);
+  const findOpen = useRef(false);
+  findOpen.current = find !== null;
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const timer = useRef(0);
@@ -66,8 +74,9 @@ export default function CompactApp() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
       e.preventDefault();
-      // Первый Esc уводит фокус из строки ввода, следующий закрывает окно
-      if (document.activeElement === input.current) input.current?.blur();
+      // Первый Esc закрывает поиск или уводит фокус из строки ввода, следующий закрывает окно
+      if (findOpen.current) (setFind(null), setHover(null));
+      else if (document.activeElement === input.current) input.current?.blur();
       else invoke("compact_hide").catch(() => {});
     };
     addEventListener("keydown", onKey);
@@ -75,7 +84,7 @@ export default function CompactApp() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Пока пишешь задачу, окно не закрывается от ухода курсора
-  useEffect(() => void hold(focused || text.trim() !== ""), [focused, text]);
+  useEffect(() => void hold(focused || text.trim() !== "" || findFocus || !!find?.trim()), [focused, text, findFocus, find]);
 
   // Масштаб компактного окна: поверх размера из внешнего вида. --z нужен, чтобы прозрачный отступ под ручки оставался 10 px (PAD в compact.rs)
   const zoom = zoomOf(settings);
@@ -91,7 +100,14 @@ export default function CompactApp() {
     return () => void un.then((f) => f());
   }, [zoom]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const pick = (v: ViewId) => (setView(v), saveList(v), setHover(null), setSetup(false));
+  const pick = (v: ViewId) => (setView(v), saveList(v), setHover(null), setSetup(false), setFind(null));
+  const toggleFind = () => {
+    setSetup(false);
+    setHover(null);
+    if (find !== null) return setFind(null);
+    setFind("");
+    window.setTimeout(() => findRef.current?.focus(), 0);
+  };
 
   const save = async () => {
     const title = text.trim();
@@ -107,10 +123,41 @@ export default function CompactApp() {
     }
   };
 
-  const items = compactItems(view, tasks, settings);
+  const searching = find !== null && !setup;
+  const items = searching ? compactSearch(find, tasks, settings) : compactItems(view, tasks, settings);
   const tabs = compactTabs(settings, tasks, view);
   const show = rowShown(settings);
   const toggleSub = (id: number, done: boolean) => updateSubtask(id, { done: done ? 1 : 0 }).then(() => emit("tasks-changed"), (e) => setError(String(e)));
+  const flash = (msg: string, ms = 2200) => (setNote(msg), window.setTimeout(() => setNote((n) => (n === msg ? null : n)), ms));
+  // Кружок слева: сделано/вернуть тем же путём, что в главном окне, чтобы у повторяющейся появился следующий повтор
+  const toggleDone = async (x: Task) => {
+    try {
+      if (x.status === "done") await reopenTask(x);
+      else if (isBlocked(x)) return flash("Сначала закрой задачи, которые её блокируют", 3200);
+      else {
+        await completeTask(x);
+        setUndo(x);
+        window.setTimeout(() => setUndo((u) => (u?.id === x.id ? null : u)), 5000);
+      }
+      setHover(null);
+      await emit("tasks-changed");
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+  const takeBack = async () => {
+    const x = undo;
+    if (!x) return;
+    setUndo(null);
+    try {
+      // Свежая запись из базы: после completeTask у повторяющейся появился next_id
+      const fresh = (await loadTasks()).find((t) => t.id === x.id);
+      if (fresh) await reopenTask(fresh);
+      await emit("tasks-changed");
+    } catch (e) {
+      setError(String(e));
+    }
+  };
   const enter = (task: Task, el: HTMLElement) => {
     clearTimeout(timer.current);
     const r = el.getBoundingClientRect();
@@ -136,6 +183,10 @@ export default function CompactApp() {
               </button>
             );
           })}
+          <button type="button" className={`cv-tab cv-gear${searching ? " on" : ""}`} data-tip="Поиск по названию" aria-label="Поиск по названию"
+            aria-pressed={searching} onClick={toggleFind}>
+            <Search size={15} />
+          </button>
           <button type="button" className={`cv-tab cv-gear${setup ? " on" : ""}`} data-tip="Настройки компактного вида" aria-label="Настройки компактного вида"
             aria-pressed={setup} onClick={() => (setSetup(!setup), setHover(null))}>
             <Gear size={15} />
@@ -145,13 +196,21 @@ export default function CompactApp() {
           <CompactSettings settings={settings} onBack={() => setSetup(false)} onChanged={reload} />
         ) : (
           <>
-        <div className="cv-head" style={{ ["--acc" as string]: `var(--${listAccent(view)})` }}>
-          <span className="cv-head-ic"><Icon name={listIcon(view, settings)} size={15} /></span>
-          <span className="cv-title">{listName(view)}</span>
-          <span className="cv-count">{countFor(view, tasks) || ""}</span>
-        </div>
+        {searching ? (
+          <div className="cv-find">
+            <Search size={14} />
+            <input ref={findRef} className="cv-find-in" value={find} placeholder="Поиск по названию во всех списках" spellCheck={false} maxLength={200}
+              onChange={(e) => (setFind(e.target.value), setHover(null))} onFocus={() => setFindFocus(true)} onBlur={() => setFindFocus(false)} />
+            {find && <button type="button" className="cv-mini" aria-label="Очистить" onClick={() => (setFind(""), findRef.current?.focus())}><X size={13} /></button>}
+          </div>
+        ) : (
+          <div className="cv-head" style={{ ["--acc" as string]: `var(--${listAccent(view)})` }}>
+            <span className="cv-head-ic"><Icon name={listIcon(view, settings)} size={15} /></span>
+            <span className="cv-title">{listName(view)}</span>
+          </div>
+        )}
         <div className="cv-list" onScroll={leave}>
-          {items.length === 0 && <div className="cv-empty">{error ? `Не загрузилось: ${error}` : "Здесь пусто"}</div>}
+          {items.length === 0 && <div className="cv-empty">{error ? `Не загрузилось: ${error}` : searching ? (find?.trim() ? "Ничего не нашлось" : "Введи часть названия") : "Здесь пусто"}</div>}
           {items.map(({ task, group }) => {
             return (
               <div key={task.id}>
@@ -160,8 +219,13 @@ export default function CompactApp() {
                   onMouseEnter={(e) => enter(task, e.currentTarget)} onMouseLeave={leave}
                   onClick={() => invoke("compact_open_task", { id: task.id }).catch(() => {})}
                   onKeyDown={(e) => e.key === "Enter" && invoke("compact_open_task", { id: task.id }).catch(() => {})}>
+                  <button type="button" className={`cv-chk${task.status === "done" ? " on" : ""}`} aria-label={task.status === "done" ? "Вернуть в работу" : "Сделано"}
+                    data-tip={task.status === "done" ? "Вернуть в работу" : "Сделано"}
+                    onClick={(e) => (e.stopPropagation(), toggleDone(task))} onKeyDown={(e) => e.stopPropagation()}>
+                    {task.status === "done" && <Check size={10} strokeWidth={3.4} />}
+                  </button>
                   <RowMark task={task} show={show} />
-                  <span className="cv-name">{task.title || "Без названия"}</span>
+                  <span className="cv-name">{searching && find ? marks(task.title || "Без названия", find).map((part, i) => (i % 2 ? <mark key={i}>{part}</mark> : part)) : task.title || "Без названия"}</span>
                   <RowMeta task={task} project={projects.find((p) => p.id === task.project_id)} show={show} onSub={toggleSub} />
                 </div>
               </div>
@@ -177,7 +241,11 @@ export default function CompactApp() {
             <ArrowUp size={15} strokeWidth={2.4} />
           </button>
         </form>
-        {(note || (error && items.length > 0)) && <div className={`cv-note${error ? " err" : ""}`}>{error ? `Не сохранилось: ${error}` : note}</div>}
+        {undo && !error ? (
+          <div className="cv-note">Сделано: «{undo.title || "Без названия"}» <button type="button" className="cv-undo" onClick={takeBack}>Вернуть</button></div>
+        ) : (
+          (note || (error && items.length > 0)) && <div className={`cv-note${error ? " err" : ""}`}>{error ? `Не сохранилось: ${error}` : note}</div>
+        )}
       </div>
       {hover && <TaskCard hover={hover} projects={projects} />}
       <Tooltips />

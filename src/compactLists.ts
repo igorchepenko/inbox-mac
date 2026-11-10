@@ -2,6 +2,7 @@ import type { Task } from "./db";
 import { fmtDay, today } from "./dates";
 import { countFor, listFor, revOf, sortOf, sortsFor, VIEWS, type ListItem, type SortBy, type ViewId } from "./views";
 import { FIELDS, type FieldId, type Shown } from "./fields";
+import { needle, searchTasks } from "./search";
 
 /*
  * Компактный вид (окно у значка на краю экрана): какие списки, в каком порядке и что писать в строке задачи.
@@ -181,4 +182,22 @@ export function dueTone(x: Pick<Task, "due_date">, t = today()): "overdue" | "to
   if (!x.due_date) return null;
   if (x.due_date < t) return "overdue";
   return x.due_date === t ? "today" : null;
+}
+
+/** В каком списке показывать найденную задачу, если она есть в нескольких: сначала самый узкий, «Задачи» — последним */
+const SEARCH_ORDER: ViewId[] = ["inbox", "overdue", "today", "soon", "waiting", "tasks"];
+
+/**
+ * Поиск по названию сразу по всем шести спискам. Каждая задача один раз, под заголовком своего списка;
+ * внутри списка порядок и сортировка те же, что в самом списке компактного вида. Пустой запрос — пусто
+ */
+export function compactSearch(query: string, tasks: Task[], settings: Record<string, string> = {}): ListItem[] {
+  if (!needle(query)) return [];
+  const seen = new Set<number>();
+  const out: ListItem[] = [];
+  for (const v of SEARCH_ORDER) {
+    const found = searchTasks(query, compactItems(v, tasks, settings).map((i) => i.task)).filter((x) => !seen.has(x.id));
+    found.forEach((x, i) => (seen.add(x.id), out.push({ task: x, group: i === 0 ? listName(v) : undefined })));
+  }
+  return out;
 }
