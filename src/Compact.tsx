@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { ArrowUp } from "lucide-react";
-import { addTask, loadProjects, loadSettings, loadTasks, type Project, type Task } from "./db";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { ArrowUp, Settings as Gear } from "lucide-react";
+import { addTask, loadProjects, updateSubtask, loadSettings, loadTasks, type Project, type Task } from "./db";
 import { Icon } from "./icons";
 import { Tooltips } from "./Tooltips";
-import { COMPACT_LISTS, compactItems, dueLabel, dueTone, listAccent, listIcon, listName, savedList, saveList } from "./compactLists";
+import { compactItems, compactTabs, rowShown, zoomOf, dueLabel, listAccent, listIcon, listName, savedList, saveList } from "./compactLists";
 import { countFor, type ViewId } from "./views";
 import { stageOf, STAGES } from "./boardOps";
 import { priorityName } from "./priority";
@@ -15,6 +16,9 @@ import { describe, parseRule } from "./recurrence";
 import { RELATION_NAMES } from "./relations";
 import { clampRow, keyAction, stepList, stepRow } from "./compactKeys";
 import { loadCompactPrefs, onCompactPrefs, type EdgeSide } from "./compactPrefs";
+import { currentZoom } from "./prefs";
+import CompactSettings from "./CompactSettings";
+import { RowMark, RowMeta } from "./CompactRow";
 import "./compact.css";
 
 /*
@@ -40,6 +44,7 @@ export default function CompactApp() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [projects, setProjects] = useState<Project[]>([]);
+  const [setup, setSetup] = useState(false); // страница настроек вместо списка
   const [hover, setHover] = useState<Hover | null>(null);
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
@@ -82,7 +87,21 @@ export default function CompactApp() {
   // Пока пишешь задачу, окно не закрывается от ухода курсора
   useEffect(() => void hold(focused || text.trim() !== ""), [focused, text]);
 
-  const pick = (v: ViewId) => (setView(v), saveList(v), setHover(null), setCur((c) => (c == null ? null : 0)));
+  // Масштаб компактного окна: поверх размера из внешнего вида. --z нужен, чтобы прозрачный отступ под ручки оставался 10 px (PAD в compact.rs)
+  const zoom = zoomOf(settings);
+  const applyZoom = () => {
+    const z = currentZoom() * zoom;
+    document.documentElement.style.setProperty("--z", String(z));
+    getCurrentWebview().setZoom(z).catch(() => {});
+  };
+  useEffect(applyZoom, [zoom]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // Внешний вид главного окна мог сбросить масштаб: при каждом показе окна ставим свой
+    const un = listen("compact-open", () => window.setTimeout(applyZoom, 50));
+    return () => void un.then((f) => f());
+  }, [zoom]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pick = (v: ViewId) => (setView(v), saveList(v), setHover(null), setSetup(false), setCur((c) => (c == null ? null : 0)));
 
   const save = async () => {
     const title = text.trim();
@@ -136,6 +155,9 @@ export default function CompactApp() {
     if (kbRow == null) return;
     list.current?.querySelector(`[data-row="${kbRow}"]`)?.scrollIntoView({ block: "nearest" });
   }, [kbRow, view]);
+  const tabs = compactTabs(settings, tasks, view);
+  const show = rowShown(settings);
+  const toggleSub = (id: number, done: boolean) => updateSubtask(id, { done: done ? 1 : 0 }).then(() => emit("tasks-changed"), (e) => setError(String(e)));
   const enter = (task: Task, el: HTMLElement) => {
     clearTimeout(timer.current);
     const r = el.getBoundingClientRect();
@@ -151,7 +173,7 @@ export default function CompactApp() {
       ))}
       <div className="cv-card">
         <nav className="cv-tabs" aria-label="Списки">
-          {COMPACT_LISTS.map((v) => {
+          {tabs.map((v) => {
             const n = countFor(v, tasks);
             return (
               <button key={v} type="button" className={`cv-tab${v === view ? " on" : ""}`} style={{ ["--acc" as string]: `var(--${listAccent(v)})` }}
@@ -161,7 +183,15 @@ export default function CompactApp() {
               </button>
             );
           })}
+          <button type="button" className={`cv-tab cv-gear${setup ? " on" : ""}`} data-tip="Настройки компактного вида" aria-label="Настройки компактного вида"
+            aria-pressed={setup} onClick={() => (setSetup(!setup), setHover(null))}>
+            <Gear size={15} />
+          </button>
         </nav>
+        {setup ? (
+          <CompactSettings settings={settings} onBack={() => setSetup(false)} onChanged={reload} />
+        ) : (
+          <>
         <div className="cv-head" style={{ ["--acc" as string]: `var(--${listAccent(view)})` }}>
           <span className="cv-head-ic"><Icon name={listIcon(view, settings)} size={15} /></span>
           <span className="cv-title">{listName(view)}</span>
@@ -170,21 +200,23 @@ export default function CompactApp() {
         <div ref={list} className="cv-list" onScroll={leave}>
           {items.length === 0 && <div className="cv-empty">{error ? `Не загрузилось: ${error}` : "Здесь пусто"}</div>}
           {items.map(({ task, group }, i) => {
-            const due = dueLabel(task);
-            const tone = dueTone(task);
             return (
               <div key={task.id}>
                 {group && <div className="cv-group">{group}</div>}
-                <button type="button" data-row={i} className={`cv-row${hover?.task.id === task.id ? " hot" : ""}${kbRow === i ? " kb" : ""}`}
+                <div role="button" tabIndex={0} data-row={i} className={`cv-row${hover?.task.id === task.id ? " hot" : ""}${kbRow === i ? " kb" : ""}`}
                   onMouseEnter={(e) => enter(task, e.currentTarget)} onMouseLeave={leave}
-                  onClick={() => openTask(task)}>
+                  onClick={() => openTask(task)}
+                  onKeyDown={(e) => e.key === "Enter" && openTask(task)}>
+                  <RowMark task={task} show={show} />
                   <span className="cv-name">{task.title || "Без названия"}</span>
-                  {due && <span className={`cv-due${tone ? ` ${tone}` : ""}`}>{due}</span>}
-                </button>
+                  <RowMeta task={task} project={projects.find((p) => p.id === task.project_id)} show={show} onSub={toggleSub} />
+                </div>
               </div>
             );
           })}
         </div>
+          </>
+        )}
         <form className="cv-add" onSubmit={(e) => (e.preventDefault(), save())}>
           <input ref={input} className="field cv-input" value={text} placeholder="Новая задача" spellCheck={false} maxLength={500}
             onChange={(e) => setText(e.target.value)} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} />
