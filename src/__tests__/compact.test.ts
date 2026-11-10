@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { COMPACT_LISTS, compactItems, dueLabel, dueTone, listIcon, listName } from "../compact";
+import { COMPACT_LISTS, compactItems, dueLabel, dueTone, listIcon, listName } from "../compactLists";
 import { freezeToday, task } from "./helpers";
 
 beforeEach(freezeToday); // сегодня 2026-10-10

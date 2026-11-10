@@ -6,7 +6,7 @@ import { ArrowUp } from "lucide-react";
 import { addTask, loadProjects, loadSettings, loadTasks, type Project, type Task } from "./db";
 import { Icon } from "./icons";
 import { Tooltips } from "./Tooltips";
-import { COMPACT_LISTS, compactItems, dueLabel, dueTone, listAccent, listIcon, listName, savedList, saveList } from "./compact";
+import { COMPACT_LISTS, compactItems, dueLabel, dueTone, listAccent, listIcon, listName, savedList, saveList } from "./compactLists";
 import { countFor, type ViewId } from "./views";
 import { stageOf, STAGES } from "./boardOps";
 import { priorityName } from "./priority";
