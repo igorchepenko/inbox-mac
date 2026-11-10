@@ -59,3 +59,47 @@ describe("компактный вид", () => {
     expect(dueTone(task({ due_date: "2026-10-11" }))).toBeNull();
   });
 });
+
+import { cardShown, compactSort, compactTabs, listOrder, moveList, rowFields, sortValue, toggleIn, zoomOf } from "../compactLists";
+
+describe("настройки компактного вида", () => {
+  it("сортировка своя, если выбрана, иначе как в главном окне", () => {
+    expect(compactSort("today", {}).own).toBe(false);
+    expect(compactSort("today", { "compact:sort:today": "priority:rev" })).toEqual({ sort: "priority", rev: true, own: true });
+    expect(compactSort("today", { "compact:sort:today": "мусор" }).own).toBe(false);
+    expect(sortValue("priority", true)).toBe("priority:rev");
+  });
+
+  it("поля строки: по умолчанию дата, время и срок; отдельно от главного окна", () => {
+    expect(rowFields({})).toEqual(["date", "time", "due"]);
+    expect(rowFields({ "compact:row": '["tags","date"]' })).toEqual(["date", "tags"]);
+    expect(rowFields({ "compact:row": "не json" })).toEqual(["date", "time", "due"]);
+    expect(rowFields({ "fields:list": "[]" })).toEqual(["date", "time", "due"]);
+  });
+
+  it("поля карточки: видно всё, пока не скрыто", () => {
+    expect(cardShown({})("note")).toBe(true);
+    expect(cardShown({ "compact:card": '["note"]' })("note")).toBe(false);
+    expect(JSON.parse(toggleIn(["a", "b"], "a", false))).toEqual(["b"]);
+  });
+
+  it("масштаб: по умолчанию 0.9, мусор и выход за границы игнорируются", () => {
+    expect(zoomOf({})).toBe(0.9);
+    expect(zoomOf({ "compact:zoom": "1" })).toBe(1);
+    expect(zoomOf({ "compact:zoom": "5" })).toBe(0.9);
+  });
+
+  it("порядок списков: свой, недостающие в конце, дубли и мусор убираются", () => {
+    expect(listOrder({})).toEqual(COMPACT_LISTS);
+    expect(listOrder({ "compact:order": '["waiting","tasks","tasks","x"]' })).toEqual(["waiting", "tasks", "inbox", "today", "overdue", "soon"]);
+    expect(moveList(COMPACT_LISTS, "inbox", -1)[0]).toBe("inbox");
+    expect(moveList(COMPACT_LISTS, "tasks", -1)).toEqual(COMPACT_LISTS);
+  });
+
+  it("пустые списки прячутся, кроме «Задач» и открытого", () => {
+    const xs = [task({ id: 1, due_date: "2026-10-10" })];
+    expect(compactTabs({}, xs, "tasks")).toEqual(COMPACT_LISTS);
+    expect(compactTabs({ "compact:hide-empty": "1" }, xs, "tasks")).toEqual(["tasks", "today"]);
+    expect(compactTabs({ "compact:hide-empty": "1" }, xs, "waiting")).toEqual(["tasks", "today", "waiting"]);
+  });
+});

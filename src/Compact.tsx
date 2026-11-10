@@ -1,11 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { ArrowUp } from "lucide-react";
-import { addTask, loadProjects, loadSettings, loadTasks, type Project, type Task } from "./db";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { ArrowUp, Settings as Gear } from "lucide-react";
+import { addTask, loadProjects, updateSubtask, loadSettings, loadTasks, type Project, type Task } from "./db";
 import { Icon } from "./icons";
 import { Tooltips } from "./Tooltips";
-import { COMPACT_LISTS, compactItems, dueLabel, dueTone, listAccent, listIcon, listName, savedList, saveList } from "./compactLists";
+import { compactItems, compactTabs, rowShown, zoomOf, dueLabel, listAccent, listIcon, listName, savedList, saveList } from "./compactLists";
 import { countFor, type ViewId } from "./views";
 import { stageOf, STAGES } from "./boardOps";
 import { priorityName } from "./priority";
@@ -13,6 +14,9 @@ import { fmtDay, fmtStamp } from "./dates";
 import { fmtCreated } from "./TaskBits";
 import { describe, parseRule } from "./recurrence";
 import { RELATION_NAMES } from "./relations";
+import { currentZoom } from "./prefs";
+import CompactSettings from "./CompactSettings";
+import { RowMark, RowMeta } from "./CompactRow";
 import "./compact.css";
 
 /*
@@ -37,6 +41,7 @@ export default function CompactApp() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [projects, setProjects] = useState<Project[]>([]);
+  const [setup, setSetup] = useState(false); // страница настроек вместо списка
   const [hover, setHover] = useState<Hover | null>(null);
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
@@ -72,7 +77,21 @@ export default function CompactApp() {
   // Пока пишешь задачу, окно не закрывается от ухода курсора
   useEffect(() => void hold(focused || text.trim() !== ""), [focused, text]);
 
-  const pick = (v: ViewId) => (setView(v), saveList(v), setHover(null));
+  // Масштаб компактного окна: поверх размера из внешнего вида. --z нужен, чтобы прозрачный отступ под ручки оставался 10 px (PAD в compact.rs)
+  const zoom = zoomOf(settings);
+  const applyZoom = () => {
+    const z = currentZoom() * zoom;
+    document.documentElement.style.setProperty("--z", String(z));
+    getCurrentWebview().setZoom(z).catch(() => {});
+  };
+  useEffect(applyZoom, [zoom]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // Внешний вид главного окна мог сбросить масштаб: при каждом показе окна ставим свой
+    const un = listen("compact-open", () => window.setTimeout(applyZoom, 50));
+    return () => void un.then((f) => f());
+  }, [zoom]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pick = (v: ViewId) => (setView(v), saveList(v), setHover(null), setSetup(false));
 
   const save = async () => {
     const title = text.trim();
@@ -89,6 +108,9 @@ export default function CompactApp() {
   };
 
   const items = compactItems(view, tasks, settings);
+  const tabs = compactTabs(settings, tasks, view);
+  const show = rowShown(settings);
+  const toggleSub = (id: number, done: boolean) => updateSubtask(id, { done: done ? 1 : 0 }).then(() => emit("tasks-changed"), (e) => setError(String(e)));
   const enter = (task: Task, el: HTMLElement) => {
     clearTimeout(timer.current);
     const r = el.getBoundingClientRect();
@@ -104,7 +126,7 @@ export default function CompactApp() {
       ))}
       <div className="cv-card">
         <nav className="cv-tabs" aria-label="Списки">
-          {COMPACT_LISTS.map((v) => {
+          {tabs.map((v) => {
             const n = countFor(v, tasks);
             return (
               <button key={v} type="button" className={`cv-tab${v === view ? " on" : ""}`} style={{ ["--acc" as string]: `var(--${listAccent(v)})` }}
@@ -114,7 +136,15 @@ export default function CompactApp() {
               </button>
             );
           })}
+          <button type="button" className={`cv-tab cv-gear${setup ? " on" : ""}`} data-tip="Настройки компактного вида" aria-label="Настройки компактного вида"
+            aria-pressed={setup} onClick={() => (setSetup(!setup), setHover(null))}>
+            <Gear size={15} />
+          </button>
         </nav>
+        {setup ? (
+          <CompactSettings settings={settings} onBack={() => setSetup(false)} onChanged={reload} />
+        ) : (
+          <>
         <div className="cv-head" style={{ ["--acc" as string]: `var(--${listAccent(view)})` }}>
           <span className="cv-head-ic"><Icon name={listIcon(view, settings)} size={15} /></span>
           <span className="cv-title">{listName(view)}</span>
@@ -123,21 +153,23 @@ export default function CompactApp() {
         <div className="cv-list" onScroll={leave}>
           {items.length === 0 && <div className="cv-empty">{error ? `Не загрузилось: ${error}` : "Здесь пусто"}</div>}
           {items.map(({ task, group }) => {
-            const due = dueLabel(task);
-            const tone = dueTone(task);
             return (
               <div key={task.id}>
                 {group && <div className="cv-group">{group}</div>}
-                <button type="button" className={`cv-row${hover?.task.id === task.id ? " hot" : ""}`}
+                <div role="button" tabIndex={0} className={`cv-row${hover?.task.id === task.id ? " hot" : ""}`}
                   onMouseEnter={(e) => enter(task, e.currentTarget)} onMouseLeave={leave}
-                  onClick={() => invoke("compact_open_task", { id: task.id }).catch(() => {})}>
+                  onClick={() => invoke("compact_open_task", { id: task.id }).catch(() => {})}
+                  onKeyDown={(e) => e.key === "Enter" && invoke("compact_open_task", { id: task.id }).catch(() => {})}>
+                  <RowMark task={task} show={show} />
                   <span className="cv-name">{task.title || "Без названия"}</span>
-                  {due && <span className={`cv-due${tone ? ` ${tone}` : ""}`}>{due}</span>}
-                </button>
+                  <RowMeta task={task} project={projects.find((p) => p.id === task.project_id)} show={show} onSub={toggleSub} />
+                </div>
               </div>
             );
           })}
         </div>
+          </>
+        )}
         <form className="cv-add" onSubmit={(e) => (e.preventDefault(), save())}>
           <input ref={input} className="field cv-input" value={text} placeholder="Новая задача" spellCheck={false} maxLength={500}
             onChange={(e) => setText(e.target.value)} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} />

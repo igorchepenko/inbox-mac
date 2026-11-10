@@ -11,7 +11,7 @@
 
 /* Окно: карточка с прозрачным отступом 10px (под тень и ручки размера, PAD в compact.rs).
    Фон непрозрачный: полупрозрачный в окне-панели macOS сначала просвечивает, пока окно не перерисуется */
-.cv-root { position: relative; height: 100vh; padding: 10px; }
+.cv-root { position: relative; height: 100vh; padding: calc(10px / var(--z, 1)); }
 .cv-card { height: 100%; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); border: 1px solid var(--border);
   border-radius: 16px; box-shadow: 0 6px 18px -8px rgba(0, 0, 0, .45); }
 /* «Стекло»: тот же фон с цветными пятнами, что у главного окна */
@@ -45,12 +45,14 @@
 
 /* Список: строки-карточки, как в главном окне, с промежутком между ними */
 .cv-list { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 8px; display: flex; flex-direction: column; gap: 4px; }
-.cv-row { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 10px; text-align: left;
+.cv-row { width: 100%; display: flex; cursor: default; flex-wrap: nowrap; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 10px; text-align: left;
   background: var(--surface); border: 1px solid var(--line); }
 .cv-row:hover, .cv-row.hot { border-color: color-mix(in srgb, var(--stand) 75%, transparent); background: color-mix(in srgb, var(--stand) 7%, var(--surface)); }
 :root[data-look="glass"] .cv-row { border-radius: 12px; border-color: var(--edge); }
 :root[data-look="glass"] .cv-row:hover, :root[data-look="glass"] .cv-row.hot { border-color: color-mix(in srgb, var(--stand) 75%, transparent); }
 .cv-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.cv-row > * { flex: none; }
+.cv-row > .cv-name { flex: 1; }
 .cv-due { flex: none; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .cv-due.overdue { color: var(--move); }
 .cv-due.today { color: var(--amber); }
@@ -87,3 +89,29 @@
 .cv-pop-note { padding-top: 6px; border-top: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
 .cv-pop-foot { color: var(--muted); font-size: 11px; }
+
+/* Кнопка настроек справа от иконок списков */
+.cv-gear { flex: none; width: 32px; margin-left: 4px; color: var(--muted); }
+.cv-gear.on { color: var(--fg); }
+
+/* Страница настроек вместо списка */
+.cv-set { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.cv-set-head { display: flex; align-items: center; gap: 6px; padding: 10px 10px 6px; }
+.cv-back { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; color: var(--muted); }
+.cv-back:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.cv-set-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 12px 12px; }
+.cv-set h3 { margin: 14px 0 6px; font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.cv-hint { margin: 4px 0; font-size: 11.5px; color: var(--muted); }
+.cv-check { display: flex; align-items: center; gap: 7px; padding: 3px 0; font-size: 12.5px; cursor: default; }
+.cv-checks { display: grid; grid-template-columns: 1fr 1fr; column-gap: 8px; }
+.cv-lists { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.cv-list-set { display: flex; align-items: center; gap: 6px; }
+.cv-list-ic { display: grid; place-items: center; width: 22px; color: var(--acc); }
+.cv-list-name { width: 84px; flex: none; font-size: 12.5px; }
+.cv-select { flex: 1; min-width: 0; padding: 4px 6px; font-size: 12px; }
+.cv-mini { flex: none; width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; color: var(--muted); }
+.cv-mini:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.cv-mini:disabled { opacity: .3; }
+.cv-zoom { display: flex; align-items: center; gap: 8px; }
+.cv-zoom input { flex: 1; min-width: 0; }
+.cv-zoom-n { width: 38px; font-family: var(--mono); font-size: 11.5px; text-align: right; }
