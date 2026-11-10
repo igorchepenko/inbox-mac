@@ -13,18 +13,21 @@ import { fmtDay, fmtStamp } from "./dates";
 import { fmtCreated } from "./TaskBits";
 import { describe, parseRule } from "./recurrence";
 import { RELATION_NAMES } from "./relations";
+import { clampRow, keyAction, stepList, stepRow } from "./compactKeys";
+import { loadCompactPrefs, onCompactPrefs, type EdgeSide } from "./compactPrefs";
 import "./compact.css";
 
 /*
  * Окно компактного вида: открывается от значка у правого края экрана (src-tauri/src/compact.rs).
  * Сверху переключатель списков иконками, в строке задачи название и дата, при наведении карточка со всем,
- * что есть у задачи, внизу строка ввода: Enter записывает задачу в «Новые» с одним названием
+ * что есть у задачи, внизу строка ввода: Enter записывает задачу в «Новые» с одним названием.
+ * С клавиатуры (окно открыли сочетанием): ↑ и ↓ по задачам, ← и → по спискам, Enter открывает задачу (compactKeys.ts)
  */
 
 const hold = (on: boolean) => invoke("compact_hold", { on }).catch(() => {});
 
-/** Ручки по краям окна: тянешь — окно меняет размер. Правый край прижат к значку, поэтому ручек справа нет */
-const HANDLES = ["n", "s", "w", "nw", "sw"];
+/** Ручки по краям окна: тянешь — окно меняет размер. Край со стороны значка прижат к нему, там ручек нет */
+const HANDLES: Record<EdgeSide, string[]> = { right: ["n", "s", "w", "nw", "sw"], left: ["n", "s", "e", "ne", "se"] };
 
 interface Hover {
   task: Task;
@@ -42,7 +45,11 @@ export default function CompactApp() {
   const [focused, setFocused] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [side, setSide] = useState<EdgeSide>("right");
+  // Строка под клавиатурным курсором, null — курсора нет (окно открыли мышью)
+  const [cur, setCur] = useState<number | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   const timer = useRef(0);
 
   const reload = () =>
@@ -52,11 +59,14 @@ export default function CompactApp() {
 
   useEffect(() => {
     reload();
+    loadCompactPrefs().then((p) => setSide(p.side));
     const un = [
-      listen("compact-open", () => reload()),
+      onCompactPrefs((p) => setSide(p.side)),
+      // Открыли сочетанием: курсор на первой задаче, клавиатура у списка, а не у строки ввода
+      listen<boolean>("compact-open", (e) => (reload(), setCur(e.payload ? 0 : null), e.payload && input.current?.blur())),
       listen("tasks-changed", () => reload()),
       // Окно спряталось: карточку убираем, фокус из строки ввода снимаем, набранный текст остаётся
-      listen("compact-hidden", () => (setHover(null), input.current?.blur())),
+      listen("compact-hidden", () => (setHover(null), setCur(null), input.current?.blur())),
     ];
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
@@ -72,7 +82,7 @@ export default function CompactApp() {
   // Пока пишешь задачу, окно не закрывается от ухода курсора
   useEffect(() => void hold(focused || text.trim() !== ""), [focused, text]);
 
-  const pick = (v: ViewId) => (setView(v), saveList(v), setHover(null));
+  const pick = (v: ViewId) => (setView(v), saveList(v), setHover(null), setCur((c) => (c == null ? null : 0)));
 
   const save = async () => {
     const title = text.trim();
@@ -89,6 +99,43 @@ export default function CompactApp() {
   };
 
   const items = compactItems(view, tasks, settings);
+  const openTask = (t: Task) => invoke("compact_open_task", { id: t.id }).catch(() => {});
+
+  // Клавиатура: обработчик один, свежие список и курсор берёт из ref
+  const kb = useRef({ items, cur, view });
+  kb.current = { items, cur: clampRow(cur, items.length), view };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      const inInput = document.activeElement === input.current;
+      const act = keyAction(e, inInput);
+      if (!act) return;
+      const { items: xs, cur: c, view: v } = kb.current;
+      // Без курсора Enter остаётся кнопке в фокусе
+      if (act === "enter" && (c == null || !xs[c])) return;
+      e.preventDefault();
+      if (act === "up" || act === "down") {
+        // ↓ с последней задачи уходит в строку ввода, ↑ из неё возвращает к последней задаче
+        if (act === "down" && c != null && c === xs.length - 1) return (setCur(null), input.current?.focus());
+        if (inInput) input.current?.blur();
+        setCur(stepRow(c, act === "down" ? 1 : -1, xs.length));
+      } else if (act === "left" || act === "right") {
+        pick(stepList(v, act === "right" ? 1 : -1, COMPACT_LISTS));
+        setCur(0);
+      } else if (c != null) {
+        openTask(xs[c].task);
+      }
+    };
+    addEventListener("keydown", onKey);
+    return () => removeEventListener("keydown", onKey);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Строка под курсором всегда видна
+  const kbRow = clampRow(cur, items.length);
+  useEffect(() => {
+    if (kbRow == null) return;
+    list.current?.querySelector(`[data-row="${kbRow}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [kbRow, view]);
   const enter = (task: Task, el: HTMLElement) => {
     clearTimeout(timer.current);
     const r = el.getBoundingClientRect();
@@ -98,8 +145,8 @@ export default function CompactApp() {
   const leave = () => (clearTimeout(timer.current), setHover(null));
 
   return (
-    <div className="cv-root">
-      {HANDLES.map((h) => (
+    <div className={`cv-root${side === "left" ? " left" : ""}`}>
+      {HANDLES[side].map((h) => (
         <div key={h} className={`cv-grip g-${h}`} onPointerDown={(e) => (e.preventDefault(), invoke("compact_resize", { dir: h }).catch(() => {}))} />
       ))}
       <div className="cv-card">
@@ -120,17 +167,17 @@ export default function CompactApp() {
           <span className="cv-title">{listName(view)}</span>
           <span className="cv-count">{countFor(view, tasks) || ""}</span>
         </div>
-        <div className="cv-list" onScroll={leave}>
+        <div ref={list} className="cv-list" onScroll={leave}>
           {items.length === 0 && <div className="cv-empty">{error ? `Не загрузилось: ${error}` : "Здесь пусто"}</div>}
-          {items.map(({ task, group }) => {
+          {items.map(({ task, group }, i) => {
             const due = dueLabel(task);
             const tone = dueTone(task);
             return (
               <div key={task.id}>
                 {group && <div className="cv-group">{group}</div>}
-                <button type="button" className={`cv-row${hover?.task.id === task.id ? " hot" : ""}`}
+                <button type="button" data-row={i} className={`cv-row${hover?.task.id === task.id ? " hot" : ""}${kbRow === i ? " kb" : ""}`}
                   onMouseEnter={(e) => enter(task, e.currentTarget)} onMouseLeave={leave}
-                  onClick={() => invoke("compact_open_task", { id: task.id }).catch(() => {})}>
+                  onClick={() => openTask(task)}>
                   <span className="cv-name">{task.title || "Без названия"}</span>
                   {due && <span className={`cv-due${tone ? ` ${tone}` : ""}`}>{due}</span>}
                 </button>
